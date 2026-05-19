@@ -45,5 +45,5 @@ pnpm-debug.log*
 /wiki-architecture.png
 /wiki-councils.png
 /wiki-mockup-page.png
-/snappeal-tunnel.png
-/snappeal-taps.png
+/snappeal-*.png
+*.screenshot.png
