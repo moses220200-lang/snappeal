@@ -2,6 +2,8 @@
 
 What the user is paying £2.99 for, technically. The submission engine is the bridge between the AI-drafted letter and the council's "we received your appeal" confirmation.
 
+**Status as of 2026-05-20** — the engine is implemented and wired end-to-end. The portal path uses `claude -p` with Playwright MCP attached (live behind `SNAPPEAL_SUBMISSION_LIVE=1`). The email path uses a Resend-compatible API call (Resend by default, stubbed in dev). Both are dispatched via the [job queue](./job-queue.md) so `/api/submit` returns in &lt;100ms while the actual work runs on a worker.
+
 ## The two paths
 
 ```mermaid
@@ -31,13 +33,15 @@ Both paths produce the same observable outcome from the user's perspective: an a
 
 ## Path 1 — LLM + Playwright MCP (primary)
 
-When the council's online portal is supported and healthy:
+Implemented in `lib/server/submission/portal.ts`. When the council's online portal is supported and healthy:
 
-1. The Submit action enqueues a job to a **Vercel Workflow** (WDK) — durable, retry-safe.
-2. The workflow boots a **Vercel Sandbox** microVM running a **Playwright MCP server**.
-3. An **LLM agent** inside the workflow consumes the council's form schema from the [knowledge base](knowledge-base.md) and uses MCP browser tools (click, fill, select, upload, wait) to complete the form.
-4. The agent uploads the PCN photo and any evidence photos from Vercel Blob.
-5. On submission, the agent extracts the confirmation reference and submission screenshot, writes them back to the appeal record.
+1. `/api/submit` enqueues a `submit_appeal` job in the [Postgres queue](./job-queue.md) — durable, retry-safe.
+2. A worker (booted by `instrumentation.ts`) claims the job with `FOR UPDATE SKIP LOCKED`.
+3. The worker calls `runPortalAutomation()`, which spawns the headless `claude` CLI with `@playwright/mcp@latest` attached via `--mcp-config` and `--allowedTools 'mcp__playwright__* Read Write'`.
+4. A purpose-built **system prompt** tells the agent: open the portal URL, find the "challenge a PCN" form, fill it from the appeal payload (PCN reference, vehicle reg, contravention code, location, issued-at, reply-to email), paste the drafted letter into the representation field verbatim, submit, capture the confirmation reference + screenshot, and return a single `{success, councilReference, errorMessage}` JSON.
+5. The screenshot is saved to a temp dir; the JSON is parsed; the result is recorded in the `submissions` table and the appeal status flips.
+
+A **5-minute wall-clock cap** and an **agent-side "stop after 30 steps" instruction** prevent runaway loops. Captcha / login-wall / payment-page signals trigger an abort with success=false — never a silent submit.
 
 **Why an LLM agent rather than scripted Playwright?** Three reasons:
 
@@ -67,19 +71,26 @@ When fallback fires:
 
 ## Decision logic — which path?
 
-The workflow consults the KB at submission time:
+`lib/server/submission/index.ts → runSubmission()` makes the call at the moment the worker picks up the job:
 
+```ts
+if (council.automationStatus === "automated_beta" || "automated_ga") {
+  try {
+    return await runPortalAutomation({ appeal, council });
+  } catch (err) {
+    // Portal failed mid-run. If the council has an email on file, try that.
+    if (council.appealEmail) {
+      const fallback = await sendCouncilEmail({ appeal, council });
+      return { ...fallback, lastError: `portal failed: ${err.message}` };
+    }
+    return { method: "portal", status: "failed", lastError: err.message };
+  }
+}
+if (council.appealEmail) return await sendCouncilEmail({ appeal, council });
+return mockSubmission(appeal, "no portal automation and no email on file");
 ```
-if council.submission_methods includes "portal" 
-   AND council.automation_status in ("automated_beta", "automated_ga")
-   AND engine.portal_health == "ok"
-   AND not engine.portal_recently_congested(council, last 60 min)
-then path = portal
-else if council.submission_methods includes "email"
-   AND council.appeal_email is set
-then path = email
-else path = manual    # falls back to v0.1 "copy + open portal" UX
-```
+
+When `SNAPPEAL_SUBMISSION_LIVE` is unset (the default for dev + CI), `runSubmission()` short-circuits to a deterministic `mockSubmission()` that records a fake `MOCK-XXXXXX` reference — so the full flow can be exercised without real network side effects.
 
 A small number of councils support only postal submission for certain stages — these are deferred to a manual-handoff queue and the user is told before payment.
 
@@ -121,16 +132,16 @@ For every borough not yet automated, **the email fallback path is active from da
 | Council closed for submissions (e.g. system down) | Retry with backoff for up to 6 hours; then ops escalation | User sees "Queued — council system down, retrying" |
 | Workflow itself crashes | Vercel Workflow retries idempotently | User sees no change; we observe internally |
 
-## Response tracking (stub)
+## Response tracking — implemented
 
-Council replies arrive at the user's transactional alias (`<user-id>@appeals.snappeal.ai`). Our inbound mail handler:
+Council replies arrive at the per-appeal alias (`<appeal-id>@appeals.snappeal.ai`, stored on `appeals.reply_email`). `/api/inbound` is the webhook target:
 
-1. Parses the council's reply (LLM-assisted, since reply formats differ).
-2. Classifies into one of: *cancelled*, *rejected, with right to appeal*, *charge offer*, *request for more info*, *other*.
-3. Updates the appeal's status from `under_review` → `decision_pending` → outcome.
-4. Notifies the user (push + email).
+1. Accepts a Postmark / Resend / SES envelope (from / to / subject / text / html / headers).
+2. `lib/server/inbound.ts → processInboundMessage()` runs a small Claude CLI call with a tiny schema to classify into `cancelled | rejected | acknowledged | request | unknown`.
+3. The full message + classification lands in the `inbound_messages` table.
+4. When the classification is `cancelled` or `rejected`, the appeal's `status` is updated; the Tickets list pill flips ("Won" / "Lost") and the Inbox thread shows the new message.
 
-Detailed design lives in `architecture/response-tracking.md` (stub — to be written alongside v0.2 build).
+Production needs DNS + MX wiring for `appeals.snappeal.ai` plus a transactional provider that forwards to the webhook — pending pick (Postmark Inbound is the front-runner).
 
 ## Sources and references
 

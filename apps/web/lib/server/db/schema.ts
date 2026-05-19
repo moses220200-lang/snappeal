@@ -76,24 +76,80 @@ export const councils = pgTable("councils", {
     .defaultNow(),
 });
 
+/* ───── users (email/password auth) ───── */
+
+export const users = pgTable("users", {
+  id: text("id").primaryKey(), // ulid-style
+  email: text("email").notNull().unique(),
+  /** pbkdf2-sha256 hash, stored as `<saltHex>:<hashHex>`. NULL for OAuth-only users. */
+  passwordHash: text("password_hash"),
+  displayName: text("display_name"),
+  role: text("role").notNull().default("user"), // 'user' | 'admin'
+  /** Default pricing tier ('buy_time' | 'grounds' | 'care_plan'). Persisted server-side; client mirror in localStorage is convenience-only. */
+  serviceTier: text("service_tier").notNull().default("grounds"),
+  /** Transactional notification prefs ({ emailOnCouncilReply, emailOnSubmission, pushOnCouncilReply }). */
+  notificationPrefs: jsonb("notification_prefs"),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
+});
+
+/* ───── subscriptions (Care Plan) ───── */
+export const subscriptions = pgTable("subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeCustomerId: text("stripe_customer_id"),
+  status: text("status").notNull().default("incomplete"),
+  product: text("product").notNull().default("care_plan"),
+  pricePence: integer("price_pence").notNull().default(999),
+  currency: text("currency").notNull().default("gbp"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: text("cancel_at_period_end").notNull().default("false"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/* ───── care_plan_waitlist ───── */
+export const carePlanWaitlist = pgTable("care_plan_waitlist", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  /** Optional userId when the joiner was signed in. */
+  userId: text("user_id"),
+  /** Optional sessionId when the joiner was a guest. */
+  sessionId: text("session_id"),
+  source: text("source"), // 'profile_page' | 'paywall' | etc.
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /* ───── appeals ───── */
 
 export const appeals = pgTable(
   "appeals",
   {
     id: text("id").primaryKey(), // app-side ulid
-    sessionId: text("session_id").notNull(), // anonymous client session
+    /** Anonymous client session — set on first appeal, persists across guest visits. */
+    sessionId: text("session_id").notNull(),
+    /** Clerk userId once the guest signs in. NULL = still anonymous. */
+    userId: text("user_id"),
+    /** Reply-to email alias the council sees on outbound letters / portal forms. */
+    replyEmail: text("reply_email"),
     status: appealStatus("status").notNull().default("draft"),
     step: text("step").notNull().default("photos"),
-    ticket: jsonb("ticket").notNull(),
+    /** Nullable until /api/generate succeeds. */
+    ticket: jsonb("ticket"),
     grounds: jsonb("grounds").$type<string[]>().notNull().default([]),
     notes: text("notes"),
     letterSubject: text("letter_subject"),
     letterBody: text("letter_body"),
     letterWordCount: integer("letter_word_count"),
     letterAddressedTo: text("letter_addressed_to"),
-    timeline: jsonb("timeline").notNull(),
+    timeline: jsonb("timeline").notNull().default([]),
     councilSlug: text("council_slug").references(() => councils.slug),
+    /** Pricing tier for this appeal: 'buy_time' | 'grounds' | 'care_plan'. */
+    serviceTier: text("service_tier").notNull().default("grounds"),
+    modelUsed: text("model_used"),
+    costPenceMillis: integer("cost_pence_millis"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -103,8 +159,67 @@ export const appeals = pgTable(
   },
   (t) => [
     index("appeals_session_idx").on(t.sessionId),
+    index("appeals_user_idx").on(t.userId),
     index("appeals_status_idx").on(t.status),
   ],
+);
+
+/* ───── jobs (Postgres-backed work queue) ─────
+ *
+ * Used for any work that's either expensive (Claude CLI subprocess), long
+ * (Playwright MCP submission, ~minutes), or that must survive a crash.
+ *
+ * Claim with `FOR UPDATE SKIP LOCKED` so N workers can run in parallel
+ * without stepping on each other. `lockedAt`/`lockedBy` are advisory —
+ * if a worker dies mid-job the lock is reclaimed after a stale-lock cutoff.
+ */
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(), // 'submit_appeal' | 'generate_draft' | future kinds
+    appealId: text("appeal_id"),
+    payload: jsonb("payload").notNull(),
+    status: text("status").notNull().default("queued"), // 'queued' | 'running' | 'done' | 'failed'
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedBy: text("locked_by"),
+    lastError: text("last_error"),
+    result: jsonb("result"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("jobs_status_runafter_idx").on(t.status, t.runAfter),
+    index("jobs_appeal_idx").on(t.appealId),
+  ],
+);
+
+/**
+ * Inbound mail from councils. Per-appeal alias is `<appeal-id>@appeals.snappeal.ai`;
+ * the email-relay webhook lands here. Parsing happens in lib/server/inbound.ts.
+ */
+export const inboundMessages = pgTable(
+  "inbound_messages",
+  {
+    id: text("id").primaryKey(),
+    appealId: text("appeal_id").references(() => appeals.id, {
+      onDelete: "cascade",
+    }),
+    fromAddr: text("from_addr").notNull(),
+    toAddr: text("to_addr").notNull(),
+    subject: text("subject"),
+    bodyText: text("body_text"),
+    bodyHtml: text("body_html"),
+    classification: text("classification"), // 'cancelled' | 'rejected' | 'acknowledged' | 'request' | 'unknown'
+    rawHeaders: jsonb("raw_headers"),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("inbound_appeal_idx").on(t.appealId)],
 );
 
 /* ───── appeal_photos ───── */

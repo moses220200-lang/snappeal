@@ -10,6 +10,9 @@ type StripePaymentFormProps = {
   sessionId: string;
   /** Where the user lands after successful confirmation. */
   returnUrl: string;
+  /** Called when payment succeeds in-place (no redirect). Use to chain to
+   * the next step (e.g. /api/generate) without a page reload. */
+  onSucceededInPlace?: (paymentIntentId: string) => void;
 };
 
 /**
@@ -20,6 +23,7 @@ type StripePaymentFormProps = {
 export function StripePaymentForm({
   sessionId,
   returnUrl,
+  onSucceededInPlace,
 }: StripePaymentFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,12 +124,18 @@ export function StripePaymentForm({
 
   return (
     <Elements stripe={stripePromise} options={options}>
-      <CheckoutForm returnUrl={returnUrl} />
+      <CheckoutForm returnUrl={returnUrl} onSucceededInPlace={onSucceededInPlace} />
     </Elements>
   );
 }
 
-function CheckoutForm({ returnUrl }: { returnUrl: string }) {
+function CheckoutForm({
+  returnUrl,
+  onSucceededInPlace,
+}: {
+  returnUrl: string;
+  onSucceededInPlace?: (paymentIntentId: string) => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -136,14 +146,25 @@ function CheckoutForm({ returnUrl }: { returnUrl: string }) {
     if (!stripe || !elements) return;
     setSubmitting(true);
     setError(null);
-    const { error: stripeError } = await stripe.confirmPayment({
+    const { error: stripeError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
         return_url: new URL(returnUrl, window.location.origin).toString(),
       },
+      // Stay on this page for card / Apple Pay / Google Pay; only redirect
+      // for bank methods that genuinely need it.
+      redirect: "if_required",
     });
     if (stripeError) {
       setError(stripeError.message ?? "Payment failed");
+      setSubmitting(false);
+      return;
+    }
+    if (paymentIntent && paymentIntent.status === "succeeded") {
+      onSucceededInPlace?.(paymentIntent.id);
+      // Submit button stays disabled; the parent renders the
+      // GeneratingOverlay on top of us.
+    } else {
       setSubmitting(false);
     }
   };

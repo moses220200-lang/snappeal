@@ -1,33 +1,50 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import {
   GenerateRequest,
   GenerateResponse,
   jsonError,
 } from "@/lib/server/contracts";
 import { generateDraft } from "@/lib/server/ai";
+import {
+  attachDraftToAppeal,
+  createAppeal,
+  getAppealById,
+  DatabaseNotConfiguredError,
+} from "@/lib/server/appeals";
+import { stripe } from "@/lib/server/stripe";
 import { env } from "@/lib/server/env";
+import { getViewer } from "@/lib/server/viewer";
+import { generateSemaphore } from "@/lib/server/concurrency";
 
 export const runtime = "nodejs";
-/** Vision + drafting can take up to ~30s; bump the function timeout. */
-export const maxDuration = 60;
+/** Vision + drafting can take up to ~90s; bump the function timeout. */
+export const maxDuration = 180;
 
 /**
  * POST /api/generate
  *
- * Single Claude vision call via Vercel AI Gateway: extracts the ticket
- * fields from the PCN photo, identifies the strongest grounds, and drafts
- * the appeal letter — all in one structured response.
+ * Runs the Claude CLI in headless mode to extract the PCN fields and draft
+ * an appeal letter. Persists the result to the appeals table (creating a
+ * fresh row when the request doesn't supply an appealId) and returns the
+ * appealId + the typed draft.
  *
- * Authorisation: this endpoint should only be hit AFTER a successful
- * Stripe payment. v0.1 trusts the client to call it post-payment; v0.2
- * gates it on a server-side payment-intent status check (a TODO at the
- * bottom of this file).
+ * Authorisation: when SNAPPEAL_SKIP_PAYMENT_CHECK is unset, the request
+ * must reference a Stripe PaymentIntent that has reached the `succeeded`
+ * status. The prototype default skips that check so the demo flow works
+ * without a webhook round-trip.
  */
+const ExtendedRequest = GenerateRequest.extend({
+  /** Optional: re-use an existing appeal row (e.g. user retries generation). */
+  appealId: z.string().optional(),
+  /** Optional: when set, verified against Stripe before running. */
+  paymentIntentId: z.string().optional(),
+});
+
 export async function POST(request: Request) {
-  let body: GenerateRequest;
+  let body: z.infer<typeof ExtendedRequest>;
   try {
-    const json = await request.json();
-    body = GenerateRequest.parse(json);
+    body = ExtendedRequest.parse(await request.json());
   } catch (err) {
     return NextResponse.json(
       jsonError("BAD_REQUEST", "Invalid generate request body", String(err)),
@@ -35,32 +52,80 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    const draft = await generateDraft({
-      pcnPhotoDataUrl: body.pcnPhoto,
-      evidencePhotoDataUrls: body.evidencePhotos,
-      notes: body.notes,
-    });
+  if (process.env.SNAPPEAL_SKIP_PAYMENT_CHECK !== "1") {
+    if (!body.paymentIntentId) {
+      return NextResponse.json(
+        jsonError("PAYMENT_REQUIRED", "paymentIntentId required when payment-check is enabled"),
+        { status: 402 },
+      );
+    }
+    if (!env.STRIPE_SECRET_KEY) {
+      return NextResponse.json(
+        jsonError("STRIPE_NOT_CONFIGURED", "Stripe is not configured"),
+        { status: 503 },
+      );
+    }
+    const intent = await stripe().paymentIntents.retrieve(body.paymentIntentId);
+    if (intent.status !== "succeeded") {
+      return NextResponse.json(
+        jsonError("PAYMENT_NOT_SUCCEEDED", `PaymentIntent status: ${intent.status}`),
+        { status: 402 },
+      );
+    }
+  }
 
-    const response: GenerateResponse = {
+  try {
+    // Ensure we have an appeal row to attach the draft to.
+    let appealId = body.appealId;
+    if (appealId) {
+      const existing = await getAppealById(appealId);
+      if (!existing) {
+        return NextResponse.json(
+          jsonError("NOT_FOUND", `Appeal ${appealId} not found`),
+          { status: 404 },
+        );
+      }
+    } else {
+      const viewer = await getViewer();
+      const created = await createAppeal({
+        sessionId: body.sessionId,
+        userId: viewer.userId,
+        notes: body.notes ?? null,
+      });
+      appealId = created.id;
+    }
+
+    // Cap concurrent Claude CLI subprocesses so a burst of users doesn't
+    // exhaust the host. Excess requests queue here and run FIFO.
+    const release = await generateSemaphore.acquire();
+    let draft;
+    try {
+      draft = await generateDraft({
+        pcnPhotoDataUrl: body.pcnPhoto,
+        evidencePhotoDataUrls: body.evidencePhotos,
+        notes: body.notes,
+        confirmedTicket: body.confirmedTicket,
+      });
+    } finally {
+      release();
+    }
+
+    const updated = await attachDraftToAppeal(appealId, draft);
+
+    const response: GenerateResponse & { appealId: string } = {
+      appealId: updated.id,
       ticket: draft.ticket,
       groundIds: draft.groundIds,
       letter: draft.letter,
-      modelUsed: env.AI_MODEL_ID,
+      modelUsed: draft.modelUsed,
       generatedAt: new Date().toISOString(),
     };
-
     return NextResponse.json(response);
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to generate appeal";
+    if (err instanceof DatabaseNotConfiguredError) {
+      return NextResponse.json(jsonError("DATABASE_NOT_CONFIGURED", err.message), { status: 503 });
+    }
+    const message = err instanceof Error ? err.message : "Failed to generate appeal";
     return NextResponse.json(jsonError("AI_ERROR", message), { status: 500 });
   }
 }
-
-// TODO (v0.2):
-//   1. Require `paymentIntentId` in the request body.
-//   2. Verify `paymentIntent.status === "succeeded"` via Stripe before
-//      running the AI call — defeats the "skip pay + call generate" abuse.
-//   3. Persist the draft to Postgres against the appeal record.
-//   4. Stream tokens to the client (replace generateObject → streamObject).

@@ -26,6 +26,8 @@ export const test = base.extend({
           "snappeal.installBanner.dismissedAt",
           String(Date.now()),
         );
+        // First-launch wizard pre-completed so it doesn't intercept clicks.
+        localStorage.setItem("snappeal.wizardDone", "1");
       } catch {
         /* ignore — quota or privacy mode */
       }

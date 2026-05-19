@@ -45,6 +45,34 @@ export const Ticket = z.object({
   amountPence: z.number().int().nonnegative(),
 });
 
+/**
+ * Per-field confidence scores returned by the extract endpoint. Each value
+ * is in [0, 1] — 1 = "100% sure I read this correctly from the photo".
+ * Used to render the amber dot on low-confidence fields in the capture UI.
+ */
+export const TicketConfidence = z.object({
+  issuer: z.number().min(0).max(1).optional(),
+  councilSlug: z.number().min(0).max(1).optional(),
+  pcnRef: z.number().min(0).max(1).optional(),
+  vehicleReg: z.number().min(0).max(1).optional(),
+  contraventionCode: z.number().min(0).max(1).optional(),
+  location: z.number().min(0).max(1).optional(),
+  issuedAt: z.number().min(0).max(1).optional(),
+  amountPence: z.number().min(0).max(1).optional(),
+});
+
+/**
+ * Photo-coach feedback. Output of a quick Claude pass over the PCN photo
+ * BEFORE we trust the extraction — surfaces "try again" advice when the
+ * image is unreadable.
+ */
+export const PhotoCoach = z.object({
+  legible: z.boolean(),
+  quality: z.enum(["good", "ok", "poor"]),
+  issues: z.array(z.string()).max(5),
+  advice: z.string().max(280),
+});
+
 export const Letter = z.object({
   subject: z.string(),
   body: z.string(),
@@ -88,6 +116,9 @@ export const GenerateRequest = z.object({
     .default([]),
   /** Optional 'what happened' notes. */
   notes: z.string().max(2000).optional(),
+  /** Optional already-extracted ticket fields (from /api/extract). When
+   * present, the drafter trusts these instead of re-OCRing the photo. */
+  confirmedTicket: Ticket.partial().optional(),
 });
 
 export const GenerateResponse = z.object({
@@ -116,7 +147,7 @@ export const SubmitRequest = z.object({
 
 export const SubmitResponse = z.object({
   submissionId: z.string(),
-  status: z.enum(["queued", "submitted", "failed"]),
+  status: z.enum(["queued", "submitting", "submitted", "failed"]),
   method: SubmissionMethod,
   councilReference: z.string().nullable(),
   submittedAt: z.string().nullable(),

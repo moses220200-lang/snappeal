@@ -134,6 +134,7 @@ nav:
     - Data model: architecture/data-model.md
     - AI pipeline: architecture/ai-pipeline.md
     - Submission engine: architecture/submission-engine.md
+    - Job queue: architecture/job-queue.md
     - Knowledge base: architecture/knowledge-base.md
     - Auth: architecture/auth.md
     - Infrastructure: architecture/infra.md

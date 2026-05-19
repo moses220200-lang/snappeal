@@ -1,0 +1,665 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Bell,
+  Camera,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  FileText,
+  Scale,
+  ShieldCheck,
+  Sparkles,
+  X,
+} from "lucide-react";
+
+/**
+ * First-launch wizard — short, focused, all-in-one onboarding for users
+ * who've never seen Snappeal. By design this only plays ONCE per device.
+ *
+ * Contextual interventions (grounds quiz at the right moment, camera
+ * permission prompt when /app/capture is first opened, OAuth upsell after
+ * the first appeal) live in their respective pages — not here. This file
+ * is the welcome, the tier pick, the permission warm-up, and the sign-in
+ * offer. After that, the wizard never re-renders.
+ */
+const STORAGE_KEY = "snappeal.wizardDone";
+const SERVICE_KEY = "snappeal.serviceTier";
+
+type Step = "welcome" | "service" | "quiz" | "permissions" | "auth" | "done";
+type ServiceTier = "buy_time" | "grounds" | "care_plan";
+
+interface QuizAnswers {
+  insidePermitArea: boolean | null;
+  hasEvidence: boolean | null;
+  alreadyPaid: boolean | null;
+}
+
+export function WizardOnboarding() {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>("welcome");
+  const [tier, setTier] = useState<ServiceTier | null>(null);
+  const [quiz, setQuiz] = useState<QuizAnswers>({
+    insidePermitArea: null,
+    hasEvidence: null,
+    alreadyPaid: null,
+  });
+
+  // Skip wizard entirely if it's already been completed.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(STORAGE_KEY) === "1") {
+      // Hydrate skip-state from localStorage on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStep("done");
+    }
+  }, []);
+
+  const finish = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, "1");
+      if (tier) window.localStorage.setItem(SERVICE_KEY, tier);
+    }
+    setStep("done");
+    router.refresh();
+  };
+
+  if (step === "done") return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-snappeal-navy overflow-y-auto">
+      <button
+        type="button"
+        onClick={finish}
+        aria-label="Skip onboarding"
+        className="fixed top-6 right-5 z-10 size-9 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition"
+      >
+        <X className="size-4" />
+      </button>
+
+      <div className="min-h-full flex flex-col px-6 py-12 max-w-md mx-auto">
+        {step === "welcome" && <WelcomeStep onNext={() => setStep("service")} />}
+        {step === "service" && (
+          <ServiceStep
+            tier={tier}
+            onPick={(t) => setTier(t)}
+            onNext={() => setStep(tier === "grounds" ? "quiz" : "permissions")}
+            onBack={() => setStep("welcome")}
+          />
+        )}
+        {step === "quiz" && (
+          <QuizStep
+            quiz={quiz}
+            onUpdate={(patch) => setQuiz((q) => ({ ...q, ...patch }))}
+            onBack={() => setStep("service")}
+            onNext={() => setStep("permissions")}
+          />
+        )}
+        {step === "permissions" && (
+          <PermissionsStep onBack={() => setStep(tier === "grounds" ? "quiz" : "service")} onNext={() => setStep("auth")} />
+        )}
+        {step === "auth" && <AuthStep onFinish={finish} />}
+      </div>
+    </div>
+  );
+}
+
+function StepShell({
+  badge,
+  title,
+  subtitle,
+  children,
+  footer,
+}: {
+  badge: string;
+  title: string;
+  subtitle?: string;
+  children?: React.ReactNode;
+  footer: React.ReactNode;
+}) {
+  return (
+    <div className="flex-1 flex flex-col">
+      <p className="inline-flex self-start items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+        {badge}
+      </p>
+      <h2 className="mt-5 text-3xl font-bold tracking-tight text-white leading-tight">
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="mt-2 text-sm text-white/70 leading-relaxed">{subtitle}</p>
+      )}
+      <div className="mt-7 flex-1 flex flex-col gap-3">{children}</div>
+      <div className="mt-8 flex flex-col gap-2">{footer}</div>
+    </div>
+  );
+}
+
+function WelcomeStep({ onNext }: { onNext: () => void }) {
+  return (
+    <StepShell
+      badge="Welcome"
+      title="Snap. Appeal. Done."
+      subtitle="The fastest way to challenge a London parking ticket. AI drafts your appeal in under a minute."
+      footer={
+        <button
+          type="button"
+          onClick={onNext}
+          className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
+        >
+          Get started
+        </button>
+      }
+    >
+      <WelcomeAnimation />
+      <ul className="mt-3 flex flex-col gap-2.5">
+        {[
+          { icon: Camera, label: "Snap your PCN" },
+          { icon: Sparkles, label: "AI drafts your appeal" },
+          { icon: ShieldCheck, label: "We submit it for you" },
+        ].map(({ icon: Icon, label }) => (
+          <li key={label} className="flex items-center gap-3 text-sm text-white/85">
+            <span className="size-9 rounded-xl bg-white/10 text-white flex items-center justify-center">
+              <Icon className="size-[1.125rem]" />
+            </span>
+            {label}
+          </li>
+        ))}
+      </ul>
+    </StepShell>
+  );
+}
+
+function WelcomeAnimation() {
+  return (
+    <div className="relative rounded-3xl bg-gradient-to-br from-snappeal-navy via-snappeal-primary-800 to-snappeal-primary-700 p-6 overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-20"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)",
+          backgroundSize: "22px 22px",
+        }}
+      />
+      <div className="absolute inset-4 pointer-events-none">
+        <span className="absolute -top-1 -left-1 size-9 border-t-[3px] border-l-[3px] border-white/70 rounded-tl-xl" />
+        <span className="absolute -top-1 -right-1 size-9 border-t-[3px] border-r-[3px] border-white/70 rounded-tr-xl" />
+        <span className="absolute -bottom-1 -left-1 size-9 border-b-[3px] border-l-[3px] border-white/70 rounded-bl-xl" />
+        <span className="absolute -bottom-1 -right-1 size-9 border-b-[3px] border-r-[3px] border-white/70 rounded-br-xl" />
+      </div>
+      <div className="relative flex items-center justify-center h-52">
+        <div className="snappeal-splash-ticket w-32 drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]">
+          <MiniWestminsterPCN />
+        </div>
+        <span className="snappeal-generating-line absolute left-6 right-6 h-1.5 rounded-full bg-gradient-to-r from-transparent via-snappeal-primary to-transparent shadow-[0_0_18px_rgba(0,122,255,0.85)]" />
+      </div>
+    </div>
+  );
+}
+
+function MiniWestminsterPCN() {
+  return (
+    <svg viewBox="0 0 220 300" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+      <defs>
+        <linearGradient id="wizardTicketBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fde047" />
+          <stop offset="100%" stopColor="#e6bf30" />
+        </linearGradient>
+      </defs>
+      <rect width="220" height="300" rx="6" fill="url(#wizardTicketBody)" />
+      <rect width="220" height="58" fill="#dc2626" />
+      <text x="110" y="24" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="9" fontWeight={700} fill="#fff" letterSpacing={1.4}>
+        WESTMINSTER CITY COUNCIL
+      </text>
+      <text x="110" y="44" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="14" fontWeight={800} fill="#fff" letterSpacing={1.5}>
+        PENALTY CHARGE NOTICE
+      </text>
+      <rect y="64" width="220" height="12" fill="#0a1929" />
+      <text x="110" y="73" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="7" fontWeight={700} fill="#fde047" letterSpacing={1.2}>
+        DO NOT REMOVE — DRIVER OR KEEPER ONLY
+      </text>
+      {[
+        ["PCN REF", "WC12345678"],
+        ["VEHICLE", "AB12 CDE"],
+        ["CODE", "12"],
+        ["LOCATION", "Marylebone High St"],
+        ["ISSUED", "12 May · 09:14"],
+        ["AMOUNT", "£160"],
+      ].map(([label, value], i) => {
+        const y = 96 + i * 30;
+        return (
+          <g key={label}>
+            <text x="14" y={y} fontFamily="Inter, system-ui, sans-serif" fontSize="7" fontWeight={700} fill="#0a1929" letterSpacing={1.1}>
+              {label}
+            </text>
+            <text x="14" y={y + 12} fontFamily="IBM Plex Mono, Menlo, monospace" fontSize="10" fontWeight={700} fill="#0a1929">
+              {value}
+            </text>
+          </g>
+        );
+      })}
+      <rect y="280" width="220" height="20" fill="#0a1929" fillOpacity={0.85} />
+      <text x="110" y="293" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="7" fontWeight={700} fill="#fff" letterSpacing={0.9}>
+        £80 IF PAID WITHIN 14 DAYS · OR APPEAL
+      </text>
+    </svg>
+  );
+}
+
+function ServiceStep({
+  tier,
+  onPick,
+  onNext,
+  onBack,
+}: {
+  tier: ServiceTier | null;
+  onPick: (t: ServiceTier) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const options: {
+    id: ServiceTier;
+    icon: typeof Clock;
+    title: string;
+    pitch: string;
+    badge?: string;
+    comingSoon?: boolean;
+  }[] = [
+    {
+      id: "buy_time",
+      icon: Clock,
+      title: "Buy time",
+      pitch: "Free holding challenge — protects the £80 discount window while you decide whether to fight the full case.",
+      badge: "Free",
+    },
+    {
+      id: "grounds",
+      icon: Scale,
+      title: "I have grounds",
+      pitch: "Full AI-drafted appeal with quiz + evidence review, tailored to your council.",
+      badge: "£2.99 · most popular",
+    },
+    {
+      id: "care_plan",
+      icon: Sparkles,
+      title: "Care Plan",
+      pitch: "Unlimited grounds-based appeals included. Plus 90% appeal-rate guarantee, roadside invoice recovery, and priority support.",
+      badge: "£9.99/mo",
+      comingSoon: true,
+    },
+  ];
+
+  return (
+    <StepShell
+      badge="Step 1 of 3"
+      title="What do you need?"
+      subtitle="Pick the path that fits your case. You can change this anytime."
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!tier || tier === "care_plan"}
+            className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-40 disabled:shadow-none"
+          >
+            {tier === "care_plan" ? "Join waitlist (coming soon)" : "Continue"}
+          </button>
+          <button type="button" onClick={onBack} className="text-xs text-white/60 hover:text-white py-2">
+            Back
+          </button>
+        </>
+      }
+    >
+      {options.map((opt) => {
+        const isPicked = tier === opt.id;
+        const disabled = opt.comingSoon;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onPick(opt.id)}
+            className={`text-left rounded-2xl p-4 flex items-start gap-3 transition border ${
+              isPicked
+                ? "bg-white text-snappeal-navy border-transparent"
+                : disabled
+                  ? "bg-white/5 text-white/60 border-white/10"
+                  : "bg-white/10 text-white border-white/15 hover:bg-white/15"
+            }`}
+          >
+            <span
+              className={`size-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                isPicked
+                  ? "bg-snappeal-primary-100 text-snappeal-primary"
+                  : "bg-white/15"
+              }`}
+            >
+              <opt.icon className={`size-5 ${isPicked ? "text-snappeal-primary" : "text-white"}`} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold flex items-center gap-2 flex-wrap">
+                {opt.title}
+                {opt.badge && (
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+                      isPicked
+                        ? "bg-snappeal-primary-100 text-snappeal-primary-700"
+                        : "bg-white/15 text-white"
+                    }`}
+                  >
+                    {opt.badge}
+                  </span>
+                )}
+                {opt.comingSoon && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-amber-400/20 text-amber-200 px-2 py-0.5">
+                    Coming soon
+                  </span>
+                )}
+              </p>
+              <p className={`text-xs mt-1 leading-relaxed ${isPicked ? "text-snappeal-muted" : "text-white/75"}`}>
+                {opt.pitch}
+              </p>
+            </div>
+            {isPicked && <CheckCircle2 className="size-5 text-snappeal-success flex-shrink-0" />}
+          </button>
+        );
+      })}
+    </StepShell>
+  );
+}
+
+function QuizStep({
+  quiz,
+  onUpdate,
+  onNext,
+  onBack,
+}: {
+  quiz: QuizAnswers;
+  onUpdate: (patch: Partial<QuizAnswers>) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const questions: { key: keyof QuizAnswers; q: string; yes: string; no: string }[] = [
+    {
+      key: "insidePermitArea",
+      q: "Were you parked in a controlled / permit area?",
+      yes: "Yes",
+      no: "No / not sure",
+    },
+    {
+      key: "hasEvidence",
+      q: "Do you have photos or a note that supports your side?",
+      yes: "Yes",
+      no: "Just the PCN photo",
+    },
+    {
+      key: "alreadyPaid",
+      q: "Have you already paid the penalty?",
+      yes: "Yes",
+      no: "No",
+    },
+  ];
+  const canContinue = questions.every((q) => quiz[q.key] !== null);
+  return (
+    <StepShell
+      badge="Step 2 of 3"
+      title="3-question case check"
+      subtitle="We'll use your answers to pick the strongest legal ground."
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!canContinue}
+            className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-40"
+          >
+            Continue
+          </button>
+          <button type="button" onClick={onBack} className="text-xs text-white/60 hover:text-white py-2">
+            Back
+          </button>
+        </>
+      }
+    >
+      {questions.map(({ key, q, yes, no }) => (
+        <div key={key} className="rounded-2xl bg-white/10 p-4 border border-white/15">
+          <p className="text-sm font-semibold text-white">{q}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onUpdate({ [key]: true })}
+              className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition ${
+                quiz[key] === true
+                  ? "bg-snappeal-action text-white"
+                  : "bg-white/10 text-white hover:bg-white/15"
+              }`}
+            >
+              {yes}
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdate({ [key]: false })}
+              className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition ${
+                quiz[key] === false
+                  ? "bg-snappeal-action text-white"
+                  : "bg-white/10 text-white hover:bg-white/15"
+              }`}
+            >
+              {no}
+            </button>
+          </div>
+        </div>
+      ))}
+    </StepShell>
+  );
+}
+
+function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  const [camera, setCamera] = useState<"unknown" | "granted" | "denied">("unknown");
+  const [notif, setNotif] = useState<"unknown" | "granted" | "denied">("unknown");
+
+  const askCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach((t) => t.stop());
+      setCamera("granted");
+    } catch {
+      setCamera("denied");
+    }
+  };
+  const askNotif = async () => {
+    if (!("Notification" in window)) {
+      setNotif("denied");
+      return;
+    }
+    const status = await Notification.requestPermission();
+    setNotif(status === "granted" ? "granted" : "denied");
+  };
+
+  return (
+    <StepShell
+      badge="Step 3 of 3"
+      title="Get the most from Snappeal"
+      subtitle="Two quick permissions. You can change either anytime in your phone settings."
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onNext}
+            className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
+          >
+            Continue
+          </button>
+          <button type="button" onClick={onBack} className="text-xs text-white/60 hover:text-white py-2">
+            Back
+          </button>
+        </>
+      }
+    >
+      <PermissionRow
+        icon={Camera}
+        label="Camera access"
+        body="Snap your PCN with the rear camera — no library digging."
+        state={camera}
+        onAsk={askCamera}
+      />
+      <PermissionRow
+        icon={Bell}
+        label="Notifications"
+        body="Ping you when the council responds. Nothing else."
+        state={notif}
+        onAsk={askNotif}
+      />
+    </StepShell>
+  );
+}
+
+function PermissionRow({
+  icon: Icon,
+  label,
+  body,
+  state,
+  onAsk,
+}: {
+  icon: typeof Camera;
+  label: string;
+  body: string;
+  state: "unknown" | "granted" | "denied";
+  onAsk: () => void;
+}) {
+  return (
+    <div className="rounded-2xl bg-white/10 p-4 border border-white/15 flex items-start gap-3">
+      <span className="size-11 rounded-xl bg-white/15 text-white flex items-center justify-center flex-shrink-0">
+        <Icon className="size-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-white">{label}</p>
+        <p className="text-xs text-white/70 mt-1 leading-relaxed">{body}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onAsk}
+        disabled={state === "granted"}
+        className={`text-xs font-bold uppercase tracking-wide rounded-full px-3 py-1.5 self-center whitespace-nowrap transition ${
+          state === "granted"
+            ? "bg-snappeal-success text-white"
+            : state === "denied"
+              ? "bg-white/10 text-white/60"
+              : "bg-white text-snappeal-navy hover:bg-white/90"
+        }`}
+      >
+        {state === "granted" ? "On" : state === "denied" ? "Off" : "Allow"}
+      </button>
+    </div>
+  );
+}
+
+function AuthStep({ onFinish }: { onFinish: () => void }) {
+  const router = useRouter();
+  const goToSignUp = () => {
+    // Mark wizard complete before navigating so it doesn't replay on return.
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("snappeal.wizardDone", "1");
+    }
+    router.push("/sign-up");
+  };
+  return (
+    <StepShell
+      badge="Almost there"
+      title="Sign in or stay a guest"
+      subtitle="Sign in for cross-device sync, reply tracking, and inbox parsing of council replies."
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onFinish}
+            className="rounded-2xl bg-white/10 border border-white/20 text-white font-semibold py-3.5 hover:bg-white/15 transition"
+          >
+            Continue as guest
+          </button>
+          <p className="text-[11px] text-white/55 text-center mt-1">
+            Your appeals stay on this device. You can sign in any time later.
+          </p>
+        </>
+      }
+    >
+      <OAuthButton
+        kind="apple"
+        title="Continue with Apple"
+        subtitle="OAuth coming soon — sign in with email for now."
+        onClick={goToSignUp}
+      />
+      <OAuthButton
+        kind="google"
+        title="Continue with Google"
+        subtitle="OAuth coming soon — sign in with email for now."
+        onClick={goToSignUp}
+      />
+      <OAuthButton
+        kind="email"
+        title="Continue with email"
+        subtitle="Create an account or sign in with a password."
+        onClick={goToSignUp}
+      />
+    </StepShell>
+  );
+}
+
+function OAuthButton({
+  kind,
+  title,
+  subtitle,
+  onClick,
+}: {
+  kind: "apple" | "google" | "email";
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+}) {
+  const palette =
+    kind === "apple"
+      ? "bg-black text-white border-black hover:bg-black/90"
+      : kind === "google"
+        ? "bg-white text-snappeal-navy border-snappeal-border hover:bg-white/95"
+        : "bg-snappeal-primary text-white border-snappeal-primary hover:bg-snappeal-primary-600";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left rounded-2xl p-4 flex items-center gap-3 border transition ${palette}`}
+    >
+      <span className="size-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+        <OAuthGlyph kind={kind} />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold">{title}</p>
+        <p className={`text-xs mt-0.5 leading-relaxed ${kind === "google" ? "text-snappeal-muted" : "text-white/75"}`}>
+          {subtitle}
+        </p>
+      </div>
+      <ChevronRight className={`size-4 ${kind === "google" ? "text-snappeal-muted" : "text-white/70"}`} />
+    </button>
+  );
+}
+
+function OAuthGlyph({ kind }: { kind: "apple" | "google" | "email" }) {
+  if (kind === "apple") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.234-.01-.317-.03-.013-.1-.027-.21-.027-.32 0-1.13.524-2.27 1.158-2.97.804-.95 2.13-1.65 3.222-1.7.014.13.028.26.028.37zM21 17.42c-.49 1.09-1.04 2.18-1.7 3.27-.88 1.45-2.05 3.26-3.5 3.28-1.3.02-1.62-.84-3.36-.83-1.75 0-2.1.85-3.39.85-1.45-.05-2.56-1.7-3.44-3.15-2.46-4.06-2.71-8.83-1.2-11.37C5.36 7.62 6.94 6.7 8.42 6.7c1.32 0 2.16.71 3.27.71 1.07 0 1.72-.71 3.25-.71 1.16 0 2.4.63 3.27 1.72-2.88 1.58-2.41 5.7.79 9z"/>
+      </svg>
+    );
+  }
+  if (kind === "google") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.07 5.07 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.24 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.11A6.62 6.62 0 0 1 5.5 12c0-.73.12-1.44.34-2.11V7.05H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.95l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.46 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.05l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/>
+      </svg>
+    );
+  }
+  return <FileText className="size-5" />;
+}

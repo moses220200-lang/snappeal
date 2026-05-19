@@ -4,102 +4,159 @@
 
 ```mermaid
 flowchart TB
-    subgraph Client["Client — installed PWA / iOS / Android"]
-        UI[Capture · Notes · Pay · Letter · Submit]
+    subgraph Client["Client — PWA (iOS Safari · Android Chrome · desktop)"]
+        UI["Capture · Notes · Pay · Letter · Submit · Inbox"]
+        SW["Service worker (sw.js)<br/>Web Push + offline shell"]
     end
 
-    subgraph Vercel["Vercel — Next.js 16 (App Router, Fluid Compute)"]
+    subgraph Vercel["Web tier — Next.js 16 App Router"]
         direction TB
         API[/API routes/]
-        Generate["/api/generate<br/>AI Gateway → Claude Sonnet 4.6 (vision)"]
+        Auth["/api/auth/*<br/>email + JWT cookie"]
+        Extract["/api/extract<br/>pre-payment OCR + confidence + photo coach"]
+        Generate["/api/generate (+ /generate-stream)<br/>full draft via Claude CLI"]
+        Improve["/api/improve-notes<br/>'Strengthen my notes' rewrite"]
+        Transcribe["/api/transcribe<br/>voice → text (Whisper)"]
         Checkout["/api/checkout<br/>Stripe PaymentIntent"]
-        Webhook["/api/stripe/webhook<br/>marks paid → unlocks generation"]
-        Submit["/api/submit<br/>enqueues submission Workflow (v0.2)"]
-        Admin["/admin/*<br/>Material UI + Clerk-gated"]
-        Wiki[("/wiki<br/>(static MkDocs site)")]
+        Care["/api/subscriptions/care-plan<br/>£9.99/mo subscription"]
+        Webhook["/api/stripe/webhook"]
+        Submit["/api/submit<br/>enqueues submission job"]
+        Inbound["/api/inbound<br/>mail webhook → classify"]
+        Inbox["/api/inbox<br/>thread aggregator + AI summary"]
+        Jobs["/api/jobs/[id]<br/>polling"]
+        Admin["/admin/*<br/>role-gated dashboard"]
+    end
+
+    subgraph Worker["Worker tier — same Node process today, separate box in prod"]
+        QueueLoop["Worker pool<br/>claim → run → mark done/failed"]
+        PortalAgent["Submission portal agent<br/>Claude CLI + Playwright MCP"]
+        EmailAgent["Submission email agent<br/>Resend / Postmark / SES"]
     end
 
     subgraph Storage["Storage"]
-        Blob[("Vercel Blob<br/>PCN + evidence photos")]
-        DB[("Neon Postgres<br/>users · appeals · councils · payments · submissions")]
+        DB[("Postgres<br/>10 tables — users · appeals · submissions · inbound_messages · jobs · subscriptions · care_plan_waitlist · councils · appeal_photos · payments")]
+        Blob[("Vercel Blob (planned)<br/>photos in prod")]
     end
 
-    subgraph Sandbox["Vercel Sandbox (v0.2)"]
-        PWMCP["Playwright MCP server<br/>fills council portal forms"]
+    subgraph External["External services"]
+        ClaudeCLI[("claude CLI<br/>headless mode<br/>Sonnet 4.6")]
+        StripeSVC[(Stripe)]
+        Council[(Council portal)]
+        PostmarkSVC[(Postmark / Resend)]
     end
 
-    UI -- "HTTPS" --> API
+    UI --> API
+    UI -.->|"register"| SW
+    API --> Auth
+    API --> Extract
     API --> Generate
+    API --> Improve
+    API --> Transcribe
     API --> Checkout
+    API --> Care
     API --> Submit
-    Generate -.->|"vision OCR + draft"| Claude[(Claude Sonnet 4.6)]
-    Checkout -.->|"Apple Pay / Google Pay"| Stripe[(Stripe)]
-    Stripe -.->|"webhook"| Webhook
-    Submit -.->|"durable enqueue"| Workflow{{Vercel Workflow}}
-    Workflow --> PWMCP
-    PWMCP -.->|"submission"| Council[(Council portal)]
-    API --> DB
-    API --> Blob
-    Admin --> DB
+    API --> Inbound
+    API --> Inbox
+    API --> Jobs
 
+    Extract -.-> ClaudeCLI
+    Generate -.-> ClaudeCLI
+    Improve -.-> ClaudeCLI
+    Inbound -.->|"classify"| ClaudeCLI
+
+    Submit -.->|"enqueue"| DB
+    QueueLoop -.->|"claim"| DB
+    QueueLoop --> PortalAgent
+    QueueLoop --> EmailAgent
+    PortalAgent -.-> ClaudeCLI
+    PortalAgent -.->|"Playwright MCP"| Council
+    EmailAgent -.-> PostmarkSVC
+    PostmarkSVC -.->|"reply webhook"| Inbound
+
+    Checkout -.-> StripeSVC
+    Care -.-> StripeSVC
+    StripeSVC -.->|"webhook"| Webhook
+
+    API --> DB
+    Admin --> DB
+    QueueLoop --> DB
+
+    style Extract fill:#2563eb,color:#ffffff
     style Generate fill:#2563eb,color:#ffffff
-    style Checkout fill:#2563eb,color:#ffffff
-    style PWMCP fill:#16a34a,color:#ffffff
+    style PortalAgent fill:#16a34a,color:#ffffff
+    style ClaudeCLI fill:#0a1929,color:#ffffff
 ```
 
 ## Components in narrative
 
-**Client (PWA → Capacitor wrapper in v0.3).** Next.js 16 App Router, mobile-first. Lives behind the same domain as the wiki and admin (served by Vercel; no separate hosting for the customer app). State persists locally (IndexedDB) for anonymous users; syncs to Postgres once the user signs in (v0.2 onward, Clerk).
+**Client.** Next.js 16 PWA, mobile-first. Service worker (`public/sw.js`) handles Web Push and a tiny offline shell. Three persistence layers: sessionStorage (in-flight capture data), localStorage (sessionId + service tier + wizard-done flag), and the server (everything else, via `/api/appeals/*`).
 
-**Next.js API routes (Fluid Compute).** Default runtime is Fluid Compute Node.js. The four hot paths:
+**Web tier (Next.js API routes).** Stateless request handlers. Auth via HS256 JWT in an httpOnly cookie. Every route validates input through a zod schema in `lib/server/contracts.ts`. The "heavy" routes (`/api/generate`, `/api/extract`, `/api/improve-notes`) shell out to `claude -p` via `lib/server/claude-cli.ts`; the in-process `Semaphore` caps concurrent subprocesses.
 
-- `/api/generate` — single AI call. Receives PCN photo + evidence photos + notes + KB context. Returns structured JSON with extracted ticket fields + identified council slug + drafted letter. Streams letter tokens to the client.
-- `/api/checkout` — creates a Stripe PaymentIntent for 299p GBP. Returns client secret + Payment Element config.
-- `/api/stripe/webhook` — verifies Stripe signature, marks the appeal `paid`, unlocks letter generation.
-- `/api/submit` — v0.1 stub (records submission intent + returns council portal URL). v0.2 enqueues a Vercel Workflow.
+**Worker tier.** Today this is the same Node process as the web — boots from `instrumentation.ts` and loops on `claimNext()` against the `jobs` table (`FOR UPDATE SKIP LOCKED`). Submission jobs are claimed in two slots; portal submissions run a Claude+Playwright MCP agent in a subprocess. **In production this lifts off onto a dedicated box** (Fly.io / Railway / a Vercel Sandbox) so the web tier can stay stateless and serverless.
 
-**Database (Neon Postgres via Vercel Marketplace).** Tables: `users`, `sessions`, `appeals`, `appeal_photos`, `councils`, `contraventions`, `payments`, `submissions`, `wiki_pages`. Drizzle ORM. EU region for UK data residency.
+**Storage.** Postgres 16 in dev (Docker), Neon Postgres in prod. Photos currently live in client sessionStorage as data URLs; Vercel Blob signed-URL uploads land in v0.2.
 
-**Object storage (Vercel Blob).** Private buckets. Photos uploaded directly from client via signed URLs. 90-day TTL after appeal resolved (Phase B onward).
+**External services.** Claude CLI (subscription auth in dev, ANTHROPIC_API_KEY in prod). Stripe for payments + the upcoming Care Plan subscription. Postmark/Resend (TBD) for transactional and inbound email. Council portals via the Playwright MCP agent.
 
-**Admin (Phase B).** Next.js 16 + Material UI. Clerk-gated by `admin` org role. CRUD for councils, contraventions, wiki content. Appeals dashboard.
+## Two-tier deployment topology (production)
 
-**Wiki (Phase A — what you're reading).** MkDocs Material, static build, served via Vercel's static site hosting (or Caddy in the local dev compose).
+Because the AI work needs a binary and the submission engine needs a browser, the production target splits into two tiers:
 
-**AI pipeline.** Vercel AI Gateway routes to Claude Sonnet 4.6 by default; failover to Claude Haiku 4.5 for cost-sensitive extraction. See [ai-pipeline.md](ai-pipeline.md).
+```
+┌──────────────────────────────────┐     ┌──────────────────────────────────┐
+│ Vercel (Web tier)                │     │ Fly/Railway/Sandbox (Worker tier)│
+│ - Next.js Functions              │     │ - claude CLI binary              │
+│ - /api/auth/*                    │     │ - Playwright + Chromium          │
+│ - /api/appeals/*                 │     │ - instrumentation boots worker   │
+│ - /api/checkout, /api/inbound    │     │ - subscribes to Postgres LISTEN  │
+│ - All pages (SSR + static)       │     │ - polls jobs table every 1.5s    │
+│ - SNAPPEAL_DISABLE_WORKER=1      │     │ - DATABASE_URL points at Neon    │
+└────────────────┬─────────────────┘     └─────────────────┬────────────────┘
+                 │                                          │
+                 └──────────┬─────────────┬─────────────────┘
+                            │             │
+                  ┌─────────▼─────────┐  ┌▼──────────────────┐
+                  │ Neon Postgres     │  │ Vercel Blob       │
+                  │ (EU region)       │  │ (photos)          │
+                  └───────────────────┘  └───────────────────┘
+```
 
-**Submission engine.** A durable Vercel Workflow runs two paths: **portal automation** (Vercel Sandbox + Playwright MCP + LLM agent fills the council's online form) and **email fallback** (transactional email from a per-user alias when the portal is congested, unsupported, or down). Both paths are first-class — the engine picks the best available route at submission time. See [submission-engine.md](submission-engine.md).
+The web tier short-circuits any heavy AI work that lands in a serverless function by setting `SNAPPEAL_DISABLE_WORKER=1` — pages and auth routes still work, but `/api/generate` will 500 unless either (a) it's routed to a Vercel Sandbox function with the binary, or (b) the AI calls are rewritten to use the Anthropic SDK directly on the web tier.
 
-**Knowledge base.** The council records that everything keys off. Schema in [knowledge-base.md](knowledge-base.md). Editable by admins in Phase B.
-
-## Latency budget (v0.1 happy path)
+## Latency budget
 
 | Stage | Target |
 |---|---|
-| Photo upload (client → Blob) per image | < 800 ms |
+| Photo upload (client → server) per image | < 800 ms |
 | PaymentIntent create | < 400 ms |
 | Apple Pay confirm round-trip | 1–3 s (user-controlled) |
-| AI call: first letter token | < 2 s |
-| AI call: complete letter | < 12 s |
-| End-to-end: photos done → letter complete | **< 20 s** |
+| `/api/extract` (pre-payment OCR + coach) | < 8 s |
+| `/api/generate` first chunk via SSE | < 2 s |
+| `/api/generate` full letter | 25–35 s (cache-warm) |
+| Submission job claim → portal opened | < 5 s |
+| **End-to-end: snap → submitted** | **< 90 s** (depending on council portal latency) |
 
-If we cannot hit "first letter token < 2 s" the streaming UX collapses to a spinner; that is a release-blocker.
+## Failure modes
 
-## Failure modes (v0.1)
-
-- **AI extraction fails** → user falls back to manual entry on the details form.
-- **AI generation fails** → retry once automatically; on second failure, the appeal is held in `failed-to-generate` state and the user is offered a service-failure refund (the rare case where we refund — distinct from outcome refunds, which we never offer).
-- **Payment fails** → return user to notes step, photos + notes still in IndexedDB.
-- **Stripe webhook arrives late** → generation polls payment status for up to 30 s, then surfaces "still waiting on payment" with a refresh button.
+| Failure | Behaviour |
+|---|---|
+| Claude CLI binary missing | `/api/health` reports `claudeCli: missing`; AI routes 500 with `AI_ERROR` |
+| Database down | Routes return 503 `DATABASE_NOT_CONFIGURED` |
+| Image unreadable | Photo coach returns `quality: 'poor'`; UI shows a retake sheet |
+| AI returns invalid council slug | `attachDraftToAppeal` resolves to NULL FK; raw slug kept on the ticket jsonb |
+| Submission job fails | Exponential backoff (30s/2m/5m), then `failed`; user sees "try again" |
+| Push notification fails | Silent — falls back to inbox-only state changes |
+| Stripe webhook arrives late | Generation gate is `SNAPPEAL_SKIP_PAYMENT_CHECK=1` by default in dev; prod will gate generation on `paymentIntent.status === 'succeeded'` |
 
 ## Why these choices
 
 | Decision | Why |
 |---|---|
-| Next.js 16 App Router | Same stack as the eventual admin; Vercel's first-class framework; supports streaming. |
-| Vercel Fluid Compute (not Edge) | Full Node.js compatibility for AI SDK v6 + Stripe SDK + Playwright; Edge limitations are no longer a price worth paying. |
-| Vercel AI Gateway (not direct Anthropic) | Per-call observability, model failover, no provider lock-in. |
-| Neon Postgres (not SQLite/file) | Multi-region, branchable for dev/staging, integrates with Vercel Marketplace. |
-| Vercel Blob (not S3) | Auto-provisioned via Marketplace, integrated billing. |
-| Playwright MCP (not custom Puppeteer) | MCP gives the AI agent a structured browser API instead of generated CSS selectors. |
-| Capacitor (not Expo/React Native) | The customer app is 95% web; rewriting in RN buys little and costs months. |
+| Claude CLI (not direct SDK) | Same wrapper for one-shot and agentic; native `--json-schema` and `--mcp-config` support; consistent model + cache across kinds of work |
+| Postgres-backed queue (not Redis / BullMQ) | One dependency; survives restarts; SKIP LOCKED gives us multi-worker safety for free |
+| In-process worker in dev | Zero setup; same code can be lifted to a dedicated box for prod |
+| Email auth + JWT (not Clerk) | Avoids vendor lock-in; ~150 lines of crypto + cookies; Clerk can layer in later for OAuth |
+| Fake-pay buttons in dev (`NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`) | Test the full flow end-to-end without real Stripe keys |
+| `claude -p` over OAuth in dev, `--bare` + `ANTHROPIC_API_KEY` in prod | Best of both — easy dev setup, deterministic prod |
+| Single PWA, no React Native (yet) | The customer app is 95% web; Capacitor wrapper in v0.3 buys "App Store presence" without rewriting |

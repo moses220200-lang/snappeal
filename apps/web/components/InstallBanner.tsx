@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Apple, Smartphone, X } from "lucide-react";
 
 const DISMISSED_KEY = "snappeal.installBanner.dismissedAt";
@@ -28,9 +29,16 @@ type Variant = "landing" | "app";
  *     directly on Chromium browsers.
  */
 export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
+  const pathname = usePathname();
   const [show, setShow] = useState(false);
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
+
+  // Landing variant only shows on landing-style pages (/, /privacy, /terms).
+  // Inside /app the floating banner would overlap the bottom nav.
+  const landingScope =
+    !pathname || pathname === "/" || pathname === "/privacy" || pathname === "/terms";
+  const outOfScope = variant === "landing" && !landingScope;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -68,7 +76,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
   }, []);
 
-  if (!show) return null;
+  if (outOfScope || !show) return null;
 
   const dismiss = () => {
     try {

@@ -13,7 +13,7 @@
  * Idempotent — uses an upsert keyed on `slug`, so repeat runs are safe.
  */
 
-import "dotenv/config";
+// .env.local is loaded by `tsx --env-file=.env.local` in package.json.
 import { councils as seedCouncils } from "../lib/mock-data";
 import { getDb, schema } from "../lib/server/db/client";
 import { sql } from "drizzle-orm";

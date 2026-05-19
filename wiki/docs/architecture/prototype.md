@@ -2,208 +2,279 @@
 
 What actually exists in the repo right now, file-by-file, so a new contributor (or a fresh Claude conversation) can pick up without re-reading the whole git log.
 
-Last refreshed: **2026-05-19**. Commit at time of writing: `e2bb34d` (web CI: ✅ green).
+Last refreshed: **2026-05-20**. The prototype has graduated from "frontend + mock fixtures" into a real SaaS: live email auth, real Postgres persistence, Claude CLI for all reasoning, Playwright MCP submission engine, a Postgres job queue, and a three-tier pricing model.
 
 ---
 
 ## Where things live
 
 ```
-parkingappeal/                            # working dir (rename to snappeal/ — see README)
-├── docker-compose.yml                    # name: snappeal → wiki + cloudflared tunnel
-├── Caddyfile                             # local proxy (we now use the central host Caddy instead)
-├── README.md                             # quick-start + deploy + ports + dir rename guide
-├── CONTRIBUTING.md                       # sync policy: wiki is source of truth
-├── LICENSE                               # proprietary
+parkingappeal/                                    # working dir (rename to snappeal/ — see README)
+├── docker-compose.yml                            # name: snappeal → db + wiki + cloudflared tunnel
+├── Caddyfile                                     # local proxy (we now use the central host Caddy instead)
+├── README.md                                     # quick-start + deploy + ports + dir rename guide
+├── CONTRIBUTING.md                               # sync policy: wiki is source of truth
+├── LICENSE                                       # proprietary
 ├── .github/workflows/
-│   ├── wiki.yml                          # mkdocs build on push (anchor / link checks)
-│   └── web.yml                           # apps/web — lint → tsc → build → e2e
+│   ├── wiki.yml                                  # mkdocs build on push (anchor / link checks)
+│   └── web.yml                                   # apps/web — lint → tsc → build → e2e
 ├── fixtures/
-│   └── mock-data.json                    # canonical contract (single source of truth)
-├── wiki/                                 # MkDocs Material site (this wiki)
-│   └── docs/                             # business / product / architecture / councils / legal / users / admin
+│   └── mock-data.json                            # canonical contract (kept only for landing + tests)
+├── wiki/                                         # MkDocs Material site (this wiki)
+│   └── docs/                                     # business / product / architecture / councils / legal / users / admin
 └── apps/
-    └── web/                              # Next.js 16 PWA — landing + /app routes
-        ├── app/                          # App Router
-        │   ├── page.tsx                  #  /                landing
-        │   ├── privacy/page.tsx          #  /privacy         draft policy
-        │   ├── terms/page.tsx            #  /terms           draft ToS
-        │   ├── app/                      #  /app/*           in-app routes (mobile-first)
-        │   │   ├── layout.tsx            #    shared shell: safe-top + max-w-md + BottomNav
-        │   │   ├── page.tsx              #    Home (Hello + Start an Appeal + capture + Latest ticket + How it works + Tips)
-        │   │   ├── capture/page.tsx      #    Step 1 — Photos (viewfinder hero + 3-method capture)
-        │   │   ├── notes/page.tsx        #    Step 2 — Notes
-        │   │   ├── paywall/page.tsx      #    Step 3 — £2.99 Stripe Payment Element
-        │   │   ├── letter/[id]/page.tsx  #    Step 4 — drafted letter + Copy/Share/Track
-        │   │   ├── tickets/page.tsx      #    Tickets list
-        │   │   ├── tickets/[id]/page.tsx #    Ticket detail (timeline + submission)
-        │   │   ├── tips/page.tsx         #    Tips library
-        │   │   └── profile/page.tsx      #    Profile/Settings (no auth in v0.1)
-        │   └── api/                      #  /api/*           server-side routes
-        │       ├── health/route.ts       #    GET → config status
-        │       ├── checkout/route.ts     #    POST → Stripe PaymentIntent
-        │       ├── generate/route.ts     #    POST → Claude vision + draft (zod-typed)
-        │       ├── submit/route.ts       #    POST → v0.1 mock confirmation
-        │       └── stripe/webhook/route.ts  # POST → signature-verified webhook
-        ├── components/                   # 11 components — see "Components" below
+    └── web/                                      # Next.js 16 PWA — landing + /app routes
+        ├── instrumentation.ts                    #   boots the in-process job worker on server start
+        ├── next.config.ts                        #   allowedDevOrigins for HMR over 127.0.0.1 / cloudflared
+        ├── app/                                  # App Router
+        │   ├── layout.tsx                        #     root layout — Splash + InstallBanner (landing-only) + no-zoom viewport
+        │   ├── page.tsx                          #     /                landing
+        │   ├── privacy/page.tsx                  #     /privacy         draft policy
+        │   ├── terms/page.tsx                    #     /terms           draft ToS
+        │   ├── sign-in/page.tsx                  #     /sign-in         email/password sign-in
+        │   ├── sign-up/page.tsx                  #     /sign-up         email/password sign-up
+        │   ├── app/                              #     /app/*           in-app routes (mobile-first)
+        │   │   ├── layout.tsx                    #       shell: safe-top + max-w-md + BottomNav + WizardOnboarding
+        │   │   ├── page.tsx                      #       Home (header + Start hero + PricingTiers + capture shortcuts + latest ticket + how it works + tips)
+        │   │   ├── capture/page.tsx              #       Step 1 — Photos: rear-camera/upload PCN + auto-extract+confirm metadata + 6-slot evidence grid
+        │   │   ├── notes/page.tsx                #       Step 2 — Notes (tier-aware CTA: free vs £2.99)
+        │   │   ├── paywall/page.tsx              #       Step 3 — Pay (Buy Time = free button; Grounds = fake-pay row or real Stripe)
+        │   │   ├── letter/[id]/page.tsx          #       Step 4 — drafted letter, real /api/appeals/[id], submit-then-poll
+        │   │   ├── tickets/page.tsx              #       Tickets list (filter tabs: All / In Progress / Awaiting / Won / Lost + Most Recent badge)
+        │   │   ├── tickets/[id]/page.tsx         #       Ticket detail (timeline + summary + linked letter)
+        │   │   ├── inbox/page.tsx                #       Chat-style sent + received thread per appeal
+        │   │   ├── tips/page.tsx                 #       Tips library
+        │   │   └── profile/page.tsx              #       Profile (signed-in or guest), Sign in/Create/Sign out
+        │   └── api/                              #     /api/*           server-side routes
+        │       ├── health/route.ts               #       GET  → integrations + capabilities (Claude CLI / DB / Stripe / submission mode)
+        │       ├── auth/sign-up/route.ts         #       POST → create user, set JWT cookie, claim guest appeals
+        │       ├── auth/sign-in/route.ts         #       POST → verify password, set JWT cookie, claim guest appeals
+        │       ├── auth/sign-out/route.ts        #       POST → clear JWT cookie
+        │       ├── auth/me/route.ts              #       GET  → current viewer
+        │       ├── appeals/route.ts              #       POST → create draft appeal · GET → list for viewer
+        │       ├── appeals/[id]/route.ts         #       GET / PATCH single appeal
+        │       ├── extract/route.ts              #       POST → fast pre-payment OCR pass for the capture page
+        │       ├── generate/route.ts             #       POST → Claude CLI pipe, schema-validated draft, persists to DB
+        │       ├── submit/route.ts               #       POST → enqueues submit_appeal job, returns immediately
+        │       ├── inbox/route.ts                #       GET  → chat threads aggregating outbound + submissions + inbound
+        │       ├── inbound/route.ts              #       POST → mail webhook (Postmark/Resend/SES envelope), classifies via Claude
+        │       ├── jobs/[id]/route.ts            #       GET  → job status polling
+        │       ├── checkout/route.ts             #       POST → Stripe PaymentIntent (£2.99) — real Stripe path
+        │       └── stripe/webhook/route.ts       #       POST → signature-verified webhook
+        ├── components/                           # 16 components — see "Components" below
         ├── lib/
-        │   ├── mock-data.ts              # typed fixtures mirroring fixtures/mock-data.json
-        │   ├── stripe-client.ts          # singleton loadStripe() for the Payment Element
+        │   ├── client/session.ts                 # localStorage/sessionStorage helpers (sessionId, photos, notes, tier, ticket)
+        │   ├── id.ts                             # nanoid-style id generator
+        │   ├── mock-data.ts                      # typed fixtures — kept only for landing page demo
+        │   ├── stripe-client.ts                  # singleton loadStripe() for the Payment Element
         │   └── server/
-        │       ├── env.ts                # requireEnv() + hasDatabase()
-        │       ├── contracts.ts          # zod schemas for ALL API routes
-        │       ├── stripe.ts             # lazy Stripe SDK + PRICE_PENCE
-        │       ├── ai.ts                 # generateDraft() — single Claude call
+        │       ├── env.ts                        # requireEnv() + hasDatabase()
+        │       ├── auth.ts                       # pbkdf2 password hashing + HS256 JWT + cookie helpers + user CRUD
+        │       ├── viewer.ts                     # getViewer() → SessionUser from JWT cookie
+        │       ├── claude-cli.ts                 # spawn(`claude -p ...`) wrapper — structured + agentic modes
+        │       ├── ai.ts                         # generateDraft() + extractTicket() — single source of AI prompts
+        │       ├── appeals.ts                    # create/get/list/attachDraft/recordSubmission + claim helpers
+        │       ├── inbound.ts                    # parse + classify inbound council mail via Claude
+        │       ├── concurrency.ts                # in-process Semaphore (caps concurrent Claude CLI subprocesses)
+        │       ├── contracts.ts                  # zod schemas for every API route
+        │       ├── stripe.ts                     # lazy Stripe SDK + PRICE_PENCE
+        │       ├── jobs/queue.ts                 # Postgres queue: enqueue / claimNext (SKIP LOCKED) / markDone / markFailed
+        │       ├── jobs/worker.ts                # in-process worker pool, boots from instrumentation.ts
+        │       ├── submission/index.ts           # decide portal vs email per council; live or mock
+        │       ├── submission/portal.ts          # Claude + Playwright MCP agent for council portals
+        │       ├── submission/email.ts           # transactional email (stub or Resend)
         │       └── db/
-        │           ├── schema.ts         # Drizzle schema (councils, appeals, ...)
-        │           └── client.ts         # lazy Postgres / null in mock mode
+        │           ├── schema.ts                 # Drizzle schema — users, councils, appeals, photos, payments, submissions, inbound_messages, jobs
+        │           └── client.ts                 # lazy Postgres / null in mock mode
         ├── scripts/
-        │   └── seed-councils.ts          # `npm run db:seed`
+        │   ├── seed-councils.ts                  # `npm run db:seed`
+        │   ├── test-claude-cli.ts                # `npm run test:claude` — smoke test the Claude CLI wrapper
+        │   └── test-e2e-backend.ts               # `npm run test:e2e:backend` — full backend audit (create → generate → submit)
         ├── drizzle/
-        │   └── 0000_faithful_slapstick.sql # generated initial migration
-        ├── tests/                        # Playwright E2E suite (19 tests passing)
-        │   ├── _fixtures.ts              # pre-seeds sessionStorage for splash/banner
-        │   ├── landing.spec.ts           # 4 tests
-        │   ├── app.spec.ts               # 7 tests
-        │   ├── api.spec.ts               # 5 tests
-        │   └── legal.spec.ts             # 3 tests
+        │   ├── 0000_faithful_slapstick.sql       # initial schema
+        │   ├── 0001_spotty_invisible_woman.sql   # nullable ticket + userId + replyEmail + inbound_messages
+        │   ├── 0002_whole_junta.sql              # users table
+        │   └── 0003_motionless_thor_girl.sql     # jobs table
+        ├── tests/                                # Playwright E2E suite — being rewritten for the real API path
+        │   ├── _fixtures.ts
+        │   ├── landing.spec.ts
+        │   ├── app.spec.ts
+        │   ├── api.spec.ts
+        │   └── legal.spec.ts
         ├── public/
-        │   ├── logo.svg                  # System Blue shield with "S"
-        │   └── manifest.webmanifest      # PWA manifest
-        ├── playwright.config.ts          # serial, chromium, 1280×800, reuse dev server
-        ├── drizzle.config.ts             # points at lib/server/db/schema.ts
-        ├── vercel.json                   # framework: nextjs, region: lhr1, fn timeouts
-        ├── .env.example                  # every required env var documented
+        │   ├── logo.svg                          # System Blue shield with "S"
+        │   └── manifest.webmanifest               # PWA manifest
+        ├── playwright.config.ts                  # serial, chromium, 1280×800, reuse dev server
+        ├── drizzle.config.ts                     # auto-loads .env.local
+        ├── vercel.json                           # framework: nextjs, region: lhr1, fn timeouts
+        ├── .env.example                          # every required env var documented
         ├── tsconfig.json
-        └── package.json                  # scripts: dev / build / lint / db:* / test:e2e
+        └── package.json                          # scripts: dev / build / lint / db:* / test:claude / test:e2e:backend / test:e2e
 ```
 
-## Routes (17 total — all return 200)
+## Routes (30 total — all build green)
 
 | Route | Static / Dynamic | Notes |
 |---|---|---|
 | `/` | static | Desktop landing (hero + trust strip + how-it-works + download) |
 | `/privacy` | static | Draft privacy policy |
 | `/terms` | static | Draft terms of service |
-| `/app` | static | In-app Home (Hello, Latest ticket, Capture shortcuts, How it works, Tips) |
-| `/app/capture` | static | Viewfinder + 3 capture methods (real file inputs) |
-| `/app/notes` | static | Free-text notes |
-| `/app/paywall` | static (client) | Stripe Payment Element (or placeholder w/o env) |
-| `/app/letter/[id]` | dynamic | Drafted letter + Copy/Share/Track |
-| `/app/tickets` | static | Cases list |
-| `/app/tickets/[id]` | dynamic | Case detail with timeline |
+| `/sign-in` | static | Email/password sign-in |
+| `/sign-up` | static | Email/password sign-up |
+| `/app` | static | Home (Snappeal header + Start hero + PricingTiers + capture + latest ticket + how it works + tips) |
+| `/app/capture` | static | PCN photo + auto-extract+confirm metadata + 6-slot evidence grid |
+| `/app/notes` | static | Notes textarea (tier-aware CTA) |
+| `/app/paywall` | static | Free for `buy_time`; £2.99 fake-pay or real Stripe for `grounds` |
+| `/app/letter/[id]` | dynamic | Real drafted letter; submit triggers async job + UI polls |
+| `/app/tickets` | static | Filter tabs + most-recent badge + horizontal timeline cards |
+| `/app/tickets/[id]` | dynamic | Detail + timeline |
+| `/app/inbox` | static | Chat-style sent + received per appeal |
 | `/app/tips` | static | Tips library |
-| `/app/profile` | static | Settings/Help/Privacy (anonymous mode v0.1) |
-| `/api/health` | dynamic | Config status (no secrets leaked) |
-| `/api/checkout` | dynamic | Stripe PaymentIntent (£2.99) |
-| `/api/generate` | dynamic | Claude vision + draft, 60s timeout |
-| `/api/submit` | dynamic | v0.1 mock; v0.2 → Playwright MCP via Vercel Workflow |
+| `/app/profile` | static | Signed-in (avatar + email + Sign Out) or guest (Sign in + Create account) |
+| `/api/health` | dynamic | Reports claudeCli / db / stripe / submissionEngine / aiModel |
+| `/api/auth/sign-up` | dynamic | Email + password, claims guest appeals on `sessionId` |
+| `/api/auth/sign-in` | dynamic | Email + password, claims guest appeals |
+| `/api/auth/sign-out` | dynamic | Clears JWT cookie |
+| `/api/auth/me` | dynamic | Current viewer from JWT |
+| `/api/appeals` | dynamic | POST create / GET list (viewer-scoped) |
+| `/api/appeals/[id]` | dynamic | GET / PATCH |
+| `/api/extract` | dynamic | Cheap pre-payment OCR via Claude CLI |
+| `/api/generate` | dynamic | Full draft via Claude CLI (semaphore-capped) |
+| `/api/submit` | dynamic | Enqueues `submit_appeal` job |
+| `/api/inbox` | dynamic | Thread aggregator |
+| `/api/inbound` | dynamic | Mail webhook → classify + store |
+| `/api/jobs/[id]` | dynamic | Job status polling |
+| `/api/checkout` | dynamic | Stripe PaymentIntent (real path, when enabled) |
 | `/api/stripe/webhook` | dynamic | Signature-verified |
 
-## Components (11)
+## Components (16)
 
 | Component | Where | What |
 |---|---|---|
+| `AppHeader` | /app/*, top of each main tab | Shield + "Snappeal" wordmark + tagline + UK location pill |
 | `Logo` | landing nav + footer + splash | `ShieldLogo` + `Wordmark` |
 | `PhoneMockup` | landing hero | In-app preview with timeline |
 | `WindscreenBackdrop` | landing hero | CSS-only PCN-on-windscreen scene |
 | `StoreBadges` | landing download section | App Store + Google Play with Coming Soon ribbon |
-| `BottomNav` | /app shell | 5-tab nav: Home / Tickets / Camera● / Tips / Profile |
-| `AppealCard` | /app/tickets list | Status pill + summary + step progress |
+| `BottomNav` | /app shell | 5-tab nav: Home / Tickets (Receipt) / Camera● / Inbox / Profile |
+| `AppealCard` | (legacy — replaced by inline `TicketCard`) | Status pill + summary + step progress |
 | `Timeline` | ticket detail | Vertical timeline (Apple-style dots) |
-| `HorizontalTimeline` | /app home + ticket card | Horizontal 4-step with green completed + blue in-progress |
-| `CaptureMethods` | /app/capture | Real `<input capture="environment">` for camera + library |
+| `HorizontalTimeline` | /app home + tickets list | Horizontal stepper, green completed + blue in-progress |
+| `CaptureMethods` | (subsumed into /app/capture) | Real `<input capture="environment">` for camera + library |
 | `LetterActions` | /app/letter | navigator.clipboard.writeText + navigator.share + Track link |
 | `StripePaymentForm` | /app/paywall | `<Elements>` + `<PaymentElement>` themed to brand |
-| `SnappealSplash` | root layout | 3-second branded splash animation (gated by sessionStorage) |
-| `InstallBanner` | root layout (landing) | Sticky bottom-banner, beforeinstallprompt + dismissible |
+| `FakePaymentButtons` | /app/paywall | Apple Pay / Google Pay / Card buttons — simulates Stripe in dev |
+| `GeneratingOverlay` | /app/paywall (while drafting) | 30s phased progress card while Claude CLI runs |
+| `SnappealSplash` | root layout | 3-second branded splash (sessionStorage-gated) |
+| `WizardOnboarding` | /app shell | First-launch: welcome → service tier quiz → grounds quiz → permissions → OAuth/email upsell |
+| `InstallBanner` | landing-only | Sticky bottom-banner, beforeinstallprompt + dismissible (scope-gated to `/`, `/privacy`, `/terms`) |
 
-## Brand — iOS system palette
+## Brand — iOS system palette + action red
 
 | Token | Hex | Role |
 |---|---|---|
-| `--snappeal-primary` | `#007AFF` | Trust + action (Apple System Blue) |
-| `--snappeal-success` | `#34C759` | Completed steps, positive outcomes |
-| `--snappeal-navy` | `#0A1929` | Typography baseline |
+| `--snappeal-primary` | `#007AFF` | Trust + secondary action (Apple System Blue) |
+| `--snappeal-action` | `#F5454D` | **Primary CTA** ("Start an Appeal", "Generate appeal", "Create an account") |
+| `--snappeal-success` | `#34C759` | Completed steps, "Won", positive outcomes |
+| `--snappeal-navy` | `#0A1929` | Typography baseline + dark hero surfaces |
 | `--snappeal-bg` | `#FAFAFA` | Off-white page surface |
 | `--snappeal-border` | `#E5E5EA` | Apple system gray 5 (deference) |
 | `--snappeal-danger` | `#FF3B30` | Errors |
-| `--snappeal-warning` | `#FF9500` | Rare warnings |
+| `--snappeal-warning` | `#FF9500` | Test-mode banner |
 
-Why iOS palette: trust + financial-services recognition. Detailed psychology in [brand.md](../product/brand.md). Replaced an earlier purple (luxury/subscription vibe — wrong for an appeal app).
+Action red was introduced to match the mockups — gives the primary CTA the visual weight financial-services patterns demand. iOS blue stays for navigational + secondary actions.
+
+## Pricing tiers (the marketing mix)
+
+| Tier | Price | What's included | Status |
+|---|---|---|---|
+| **Buy Time** | Free | Quick holding challenge to protect the 14-day discount window | ✅ live |
+| **Full Appeal** | £2.99 one-off | AI-drafted grounds-based representation + tracked submission | ✅ live (test mode) |
+| **Care Plan** | £9.99/mo | **Unlimited grounds-based appeals** + 90% appeal-rate guarantee + roadside invoice recovery + priority support | 🟡 coming soon (Stripe subscription scaffold pending) |
+
+Tier selection happens in the wizard's Service step. Stored client-side at `localStorage["snappeal.serviceTier"]`. Paywall reads it and routes Free → no-payment confirm button, Grounds → Stripe (fake in dev) → /api/generate.
 
 ## What's wired vs mocked
 
 | Capability | Status | Notes |
 |---|---|---|
-| **Native camera capture** | ✅ wired | `<input capture="environment">` opens rear camera on iOS Safari + Android Chrome. Photo → sessionStorage. |
-| **Native photo library** | ✅ wired | `<input type="file" accept="image/*">` opens library picker. |
-| **Native share sheet** | ✅ wired | `navigator.share` on the letter screen; falls back to clipboard on Safari desktop. |
+| **Native camera capture** | ✅ wired | `<input capture="environment">` on iOS Safari + Android Chrome. Stored to sessionStorage as data URL. |
+| **Native photo library** | ✅ wired | Plain file picker, accepts up to 6 evidence photos (8 MB each). |
+| **Native share sheet** | ✅ wired | `navigator.share` on the letter screen; clipboard fallback. |
 | **Clipboard** | ✅ wired | `navigator.clipboard.writeText` with "Copied!" affordance. |
-| **PWA install** | ✅ wired | Captures `beforeinstallprompt`; install button triggers it. iOS Safari users get instructions text. |
-| **iOS safe areas** | ✅ wired | `safe-top` + `safe-bottom` env() classes; standalone-mode supported via `apple-mobile-web-app-capable`. |
-| **Stripe payment** | ✅ wired (test mode) | Real `<Elements>` + `<PaymentElement>` when env keys are set; placeholder otherwise. |
-| **AI draft generation** | ✅ wired (server-side) | `generateObject` with Claude Sonnet 4.6 via Vercel AI Gateway. Letter UI consumes mock until you wire the upload → /api/generate flow. |
-| **Council submission** | 🟡 mocked | `/api/submit` returns a fake confirmation. v0.2 wires Playwright MCP + Vercel Sandbox per council. |
-| **Database persistence** | 🟡 schema only | Drizzle schema + initial migration in `apps/web/drizzle/`. `getDb()` returns null without `DATABASE_URL` → in-memory mock-data mode. |
-| **User accounts** | ⛔ deferred to v0.2 | Locked decision (B4 in mockup audit). Profile tab is Settings/Help/Privacy only. |
+| **PWA install** | ✅ wired | Captures `beforeinstallprompt`; iOS Safari users get instructions text. |
+| **iOS safe areas + no-zoom** | ✅ wired | `safe-top` + `safe-bottom`; `maximumScale: 1` + `touch-action: pan-x pan-y`. |
+| **Stripe payment** | ✅ wired (test mode) | Real `<Elements>` + `<PaymentElement>` when env keys are set. `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1` flips to test buttons. |
+| **AI extract (pre-payment OCR)** | ✅ wired | `/api/extract` pipes to Claude CLI, fills the capture-confirm UI. |
+| **AI draft generation** | ✅ wired | `/api/generate` → `claude -p --json-schema` via `lib/server/claude-cli.ts`. Semaphore-capped (default 4 concurrent). |
+| **Council submission** | ✅ wired | `/api/submit` enqueues a `submit_appeal` job. Worker drives Playwright MCP for portal councils, email fallback for others. `SNAPPEAL_SUBMISSION_LIVE=1` to fire real Playwright; default is deterministic mock for local dev. |
+| **Database persistence** | ✅ wired | Postgres 16 in docker-compose. Four Drizzle migrations applied. All live pages read/write through the DB. |
+| **Inbound mail** | ✅ wired (stub) | `/api/inbound` accepts Postmark/Resend/SES envelopes; Claude classifies into cancelled/rejected/acknowledged/request/unknown and auto-updates the appeal status. DNS + MX setup pending. |
+| **Email/password auth (JWT)** | ✅ wired | pbkdf2-sha256 hashing, HS256 JWT in httpOnly cookie, /sign-in + /sign-up pages, sign-out button on Profile. Guest appeals claim onto the user on sign-in. |
+| **OAuth (Apple / Google)** | 🟡 designed | Wizard auth step + branded buttons in place; routes redirect to email sign-up until Developer accounts clear and Clerk/our own provider is wired. |
+| **Job queue + worker** | ✅ wired | `jobs` table, FOR UPDATE SKIP LOCKED claim, exponential backoff, stale-lock recovery. Worker boots from `instrumentation.ts`. |
+| **Care Plan subscription** | 🟡 UI only | "Coming Soon" pill on the upsell cards. Needs Stripe Subscription product + webhook. |
+| **Admin backend** | ⛔ not started | `role: 'admin'` is on the users table; UI is the next deliverable. |
+
+## Backend architecture (in two paragraphs)
+
+Every request lands in a Next.js App Router route handler. Auth-protected routes read the viewer via `lib/server/viewer.ts` (which verifies the HS256 JWT cookie). All AI reasoning — extraction during capture, the full appeal draft, inbound-mail classification — pipes through the headless `claude` CLI via `lib/server/claude-cli.ts`. The wrapper resolves the binary directly (no shell, avoids cmd.exe quote-mangling on Windows), passes `--json-schema` for structured output, and parses `structured_output` from the result. Vision is handled by saving images to a temp dir and `@`-mentioning them in the prompt with `--allowedTools Read`. Concurrency is capped by an in-process FIFO `Semaphore` so a burst can't fan out 50 subprocesses.
+
+Long-running work — Playwright MCP council submissions — goes through the Postgres-backed queue in `lib/server/jobs/`. `/api/submit` enqueues a `submit_appeal` job and returns immediately; the worker (booted by `instrumentation.ts`) claims jobs with `FOR UPDATE SKIP LOCKED`, runs the per-council strategy (portal automation via Claude+Playwright MCP for `automation_status >= automated_beta`; transactional email otherwise), records the submission row, and the frontend polls `/api/appeals/[id]` for status changes. Failed jobs retry with exponential backoff (30s / 2m / 5m) up to `maxAttempts`. Zombie locks older than 5 minutes are reclaimable.
 
 ## CI
 
 Two GitHub Actions workflows:
 
-- **`.github/workflows/wiki.yml`** — runs `mkdocs build` on every push touching `wiki/**`. Catches broken nav, missing pages.
+- **`.github/workflows/wiki.yml`** — runs `mkdocs build` on every push touching `wiki/**`.
 - **`.github/workflows/web.yml`** — on every push touching `apps/web/**` or `fixtures/**`:
   1. `npm ci`
   2. `npm run lint`
   3. `npx tsc --noEmit`
   4. `npm run build`
   5. `npx playwright install --with-deps chromium`
-  6. `npm run test:e2e` (19 tests)
+  6. `npm run test:e2e`
   7. uploads `playwright-report/` on failure
 
-Both green on `main`.
-
-## Splash + Install banner
-
-- **Splash** — `SnappealSplash` renders once per `sessionStorage` session. 3.05-second timeline:
-  1. Westminster PCN flies in
-  2. Camera shutter flash
-  3. Viewfinder brackets bracket the ticket
-  4. Blue AI scan line sweeps top→bottom
-  5. Snappeal wordmark + shield + success tick fade in
-  6. Whole thing fades out
-  - Respects `prefers-reduced-motion: reduce` (collapses to a 0.5s fade).
-- **Install banner** — `InstallBanner` (landing only). Sticky bottom card with curly "Install" CTA + App Store / Play Store placeholders. Captures `beforeinstallprompt`. Hidden in `display-mode: standalone`. Dismissed banner sleeps 7 days in `localStorage`.
+The `test:e2e` suite is being rewritten for the real API surface (see [#8 in todo](../todo.md)).
 
 ## Open work — what's next
 
-The wiki audit table (`product/v0-1-mockup-audit.md`) is the canonical list. Top of the queue:
-
-1. **End-to-end happy-path wiring** — `/app/capture` → `/app/notes` → `/app/paywall` → `/api/checkout` → `/api/generate` (with the photo from sessionStorage) → `/app/letter` rendering the *real* drafted letter, not mock.
-2. **Per-council Playwright MCP recording** — start with Westminster (highest London volume). Each recording is a deterministic CI fixture replayed by the v0.2 submission engine.
-3. **More inner-screen visual polish** — notes / paywall / tickets list / profile still on default styling.
-4. **Domain + Apple Developer + Google Play accounts** — see [todo.md](../todo.md).
-5. **Architecture wiki stubs** — `auth.md`, `ai-pipeline.md`, `submission-engine.md` were stubs; some still need the post-build details now that the code exists.
+1. **Real Stripe Subscription** for the Care Plan tier (`£9.99/mo`). Product + price + webhook.
+2. **OAuth providers** (Apple, Google) — gated on Apple Developer + Google Cloud accounts.
+3. **Admin backend UI** — `role: 'admin'` users land on `/admin` with appeals search, councils CRUD, submissions log, inbound messages, payments/refunds.
+4. **Wizard staging** — split the monolithic first-launch wizard into per-moment interventions (camera-tab first-press, grounds quiz inline on Notes, post-success upsell).
+5. **Steve-Jobs polish** — win-rate ring, confetti on cancellation, streak badges, MCP a11y audit.
+6. **Playwright E2E suite refresh** — current suite assumes mock-data; needs rewriting against the real API.
+7. **Inbound mail DNS + MX** for `appeals.snappeal.ai` once a provider (Postmark / Resend / SES) is picked.
 
 ## How to verify everything works locally
 
 ```bash
-# Wiki
+# Postgres + wiki
 docker compose up -d
-# → http://localhost:8800 (mkdocs) or via central caddy at snappeal.theailab.dev
+# → db on 127.0.0.1:5544, wiki on snappeal.theailab.dev
 
 # Prototype
 cd apps/web
 npm install
+npm run db:migrate
+npm run db:seed
 npm run dev
-# → http://localhost:3001  (landing) and /app
+# → http://localhost:3001 (landing) and /app
 
 # Health check
 curl http://localhost:3001/api/health
+# claudeCli: ok, database: ok, drafting: true, submission: mock or live
 
-# Full suite
-npm run lint && npx tsc --noEmit && npm run build && npm run test:e2e
+# Smoke-test the Claude CLI wrapper (~9s, ~$0.04 with cache-warm)
+npm run test:claude
+
+# Full backend E2E (create → generate via Claude CLI → submit)
+npm run test:e2e:backend
+
+# Build + lint + typecheck
+npm run lint && npx tsc --noEmit && npm run build
 ```
 
-19 tests should pass. Build should map 17 routes. Lint should report 0 warnings.
+Build maps 30 routes. Lint reports 0 errors. Backend E2E should complete in ~30s (Claude CLI generation) and print `🎉 E2E backend audit passed`.

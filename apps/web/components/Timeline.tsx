@@ -1,8 +1,21 @@
 import { CheckCircle2, Circle } from "lucide-react";
-import type { TimelineStep } from "@/lib/mock-data";
-import { formatDate } from "@/lib/mock-data";
 
-export function Timeline({ steps }: { steps: TimelineStep[] }) {
+type Step = {
+  id: string;
+  label: string;
+  state: "completed" | "in_progress" | "pending";
+  at: string | null;
+};
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+export function Timeline({ steps }: { steps: Step[] }) {
   return (
     <ol className="space-y-3">
       {steps.map((s, i) => (

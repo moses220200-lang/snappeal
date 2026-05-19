@@ -1,25 +1,87 @@
 # AI pipeline
 
-> :material-pencil-outline: **Stub.** Filled in early Phase C when `/api/generate` is built.
+All AI reasoning in Snappeal pipes through the headless **Claude Code CLI** (`claude -p`) — not directly through the Anthropic SDK or AI Gateway. This keeps every prompt, model, tool surface, and cost path consistent between the simple structured calls (extract a PCN, classify an inbound email) and the agentic calls (Playwright MCP portal submission).
+
+## Why Claude CLI and not the SDK?
+
+Three reasons:
+
+1. **One mental model for one-shot and agentic.** `runStructured()` and `runAgentic()` in `lib/server/claude-cli.ts` share the same spawn / JWT-style flow / temp-dir / image-handling / cleanup code. We don't maintain two parallel integration paths.
+2. **Native MCP and structured output.** `claude -p --json-schema '{...}'` returns a schema-validated `structured_output` field; `claude -p --mcp-config ./mcp.json --allowedTools 'mcp__playwright__*'` boots Playwright MCP and exposes its tools to the agent — both without us writing the protocol plumbing.
+3. **Same model + cache.** Vision + extract + classify + submission agent all run against the same Claude Sonnet 4.6 model, so the system-prompt cache stays warm across kinds of work; a follow-up call typically reads from cache for pennies.
+
+The trade-off is that the runtime needs the `claude` binary on PATH (or `CLAUDE_BIN` set). Locally that's done by `winget install Anthropic.ClaudeCode` (Windows) / `brew install anthropic/tap/claude` (mac) / the npm package. In production we run inside a Vercel Sandbox with the binary baked into the image, or use a dedicated worker container.
 
 ## At-a-glance
 
-- **Gateway**: Vercel AI Gateway (`AI_GATEWAY_API_KEY`).
-- **Primary model**: `anthropic/claude-sonnet-4-6` (vision + drafting).
-- **Failover**: `anthropic/claude-haiku-4-5` (cost-sensitive extraction-only mode).
-- **Call shape**: single `generateObject` with a Zod schema covering extracted ticket + identified council + drafted letter; letter body streams independently via `streamText` to give the user immediate feedback.
-- **Inputs**: PCN photo (required), up to 6 evidence photos, user notes (text), council KB excerpt + contravention library (text).
-- **Outputs**: extracted ticket fields, council slug, suggested ground IDs, full letter text.
+- **Binary**: `claude` (resolved by walking `PATH`; `.exe` / `.cmd` candidates on Windows).
+- **Model**: `claude-sonnet-4-6` (overridable via `CLAUDE_MODEL`).
+- **Auth**: OAuth subscription by default (the user's logged-in CLI session); `--bare` + `ANTHROPIC_API_KEY` in prod.
+- **Structured-output mode**: `--output-format json` + `--json-schema '<jsonSchema>'`. Result lives on `structured_output`.
+- **Agentic mode**: `--output-format stream-json` + `--mcp-config <path>` + `--allowedTools '...'` + `--dangerously-skip-permissions`.
 
-## Prompt strategy (planned)
+## Three callers
 
-- System prompt encodes the [design principles](../product/design-principles.md) verbatim: plain English, honest evidence, no legal vocabulary in the user-facing extracted fields, formal-but-plain register in the letter body.
-- The KB excerpt is filtered server-side to *just* the councils whose identifier hints overlap the photo, to keep prompt size in budget.
-- The system prompt explicitly forbids invented evidence ("if the photos and notes do not support a ground, do not cite that ground").
+### 1. Pre-payment extract — `lib/server/ai.ts → extractTicket()`
+
+A cheap OCR-only pass run from the capture screen via `/api/extract`. Single PCN photo in, structured `Ticket` shape out (issuer, councilSlug, pcnRef, vehicleReg, contraventionCode, location, issuedAt, amountPence). Used to populate the confirm-fields UI on `/app/capture` before the user pays.
+
+### 2. Full appeal draft — `lib/server/ai.ts → generateDraft()`
+
+The headline call. PCN photo + up to 6 evidence photos + the user's confirmed ticket fields + their notes go in; structured `{ ticket, groundIds[], letter }` comes back. Run from `/api/generate` after payment.
+
+The system prompt is long and opinionated — see the file for the canonical version. It enforces:
+
+- **No invented evidence.** If the photos and notes don't support a ground, do not cite that ground.
+- **No placeholder strings in structured fields.** Empty string is the signal; never `"[NOT READABLE]"`.
+- **250–500 word letter, plain English, no fake officer names.**
+- **Ground IDs from a closed enumeration** (`contravention-did-not-occur`, `signage-unclear`, `valid-permit`, `blue-badge`, `loading-unloading`, `breakdown`, `medical-emergency`, `vehicle-not-mine`, `penalty-exceeds-amount`, `procedural-impropriety`, `traffic-order-invalid`).
+- **councilSlug as kebab-case** matching the seeded `councils.slug` set.
+
+When the AI returns a council slug we don't know, `attachDraftToAppeal()` keeps the slug on the ticket jsonb (for diagnostics) but resolves the FK column to `NULL`. No more FK constraint violations on unrecognised images.
+
+### 3. Inbound mail classification — `lib/server/inbound.ts → processInboundMessage()`
+
+Each council reply (received via `/api/inbound`) is classified into one of `cancelled | rejected | acknowledged | request | unknown` via a short Claude CLI call with a tiny `{ outcome, reasoning }` schema. When the outcome is `cancelled` or `rejected`, the appeal's status flips automatically and shows up in the Inbox + Tickets list.
+
+## Concurrency and cost
+
+`/api/generate` is wrapped in an in-process FIFO **Semaphore** (`lib/server/concurrency.ts`, default 4 slots, overridable via `SNAPPEAL_GENERATE_CONCURRENCY`). A burst of 50 simultaneous users serialises into batches of 4 × ~30s each — predictable load, no host meltdown.
+
+Submission agentic runs go through the [job queue](./job-queue.md) instead, with a tighter cap (2 concurrent Playwright browsers).
+
+Observed cost on a real PCN photo with cache-warm system prompt: **~$0.04 / draft**, 26–31 seconds wall-clock.
+
+## File map
+
+```
+lib/server/
+├── claude-cli.ts     # runStructured() + runAgentic() — the wrapper
+├── ai.ts             # generateDraft() + extractTicket() — the prompts live here
+├── inbound.ts        # processInboundMessage() — classify council replies
+├── concurrency.ts    # Semaphore for /api/generate
+└── submission/portal.ts  # the agentic Playwright MCP runner
+```
+
+## Failure modes (and what we do)
+
+| Failure | Behaviour |
+|---|---|
+| `claude` binary missing | `/api/health` reports `claudeCli: missing`. All AI routes 500 with a clear error. |
+| User not authed to Claude | Hits the API but returns `Not logged in · Please run /login`. We treat this as an AI error and surface the message. |
+| Schema validation fails | `runStructured` throws `ClaudeCliError` with the failing payload tail (last 2 KB) for diagnostics. |
+| Image unreadable | Claude returns empty-string fields (per the prompt). We persist what's there and the letter uses bracketed placeholders the user fills in. |
+| Timeout (>120s structured / >180s agentic) | Child process killed with SIGTERM then SIGKILL; throws to the route handler. |
 
 ## Cost target
 
-- < £0.08 per generation at v0.1 volumes.
-- < £0.04 once Haiku-routed extraction is wired up.
+- < £0.08 per draft at v0.1 volumes (cache-cold worst case).
+- < £0.04 once the system prompt cache is warm and the same session/region is reused.
+- Inbound classification ≈ < £0.005 each.
 
-**TODO**: full prompts, Zod schema, golden-set regression suite.
+## Open work
+
+- Stream the letter body back to the client (`streamText`-style) for a faster perceived response.
+- Golden-set regression: a fixture of ~30 hand-labelled PCN photos + expected ticket + valid grounds, run as part of CI.
+- Per-council prompt overrides for the boroughs whose PCN template confuses the default reader.
+- Move to `--bare` + `ANTHROPIC_API_KEY` in prod to shave the cache-creation overhead.

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Camera, FileText, Home, Lightbulb, User } from "lucide-react";
+import { Camera, Home, Inbox, ReceiptText, User } from "lucide-react";
 
 type Tab = {
   href: string;
@@ -13,16 +13,16 @@ type Tab = {
 
 const TABS: readonly Tab[] = [
   { href: "/app", label: "Home", icon: Home },
-  { href: "/app/tickets", label: "Tickets", icon: FileText },
+  { href: "/app/tickets", label: "Tickets", icon: ReceiptText },
   { href: "/app/capture", label: "Camera", icon: Camera, primary: true },
-  { href: "/app/tips", label: "Tips", icon: Lightbulb },
+  { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/profile", label: "Profile", icon: User },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-snappeal-border bg-white/95 backdrop-blur safe-bottom">
+    <nav className="snappeal-glass-nav fixed bottom-0 inset-x-0 z-40 safe-bottom">
       <div className="mx-auto max-w-md flex items-end justify-around px-2 pt-1.5 pb-2">
         {TABS.map(({ href, label, icon: Icon, primary }) => {
           const active =
@@ -45,14 +45,14 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1 ${
+              className={`flex flex-col items-center gap-0.5 px-3 py-1 ${
                 active
                   ? "text-snappeal-primary"
                   : "text-snappeal-muted hover:text-snappeal-navy"
               }`}
             >
               <Icon className="size-5" />
-              <span className="text-[10px] font-medium">{label}</span>
+              <span className="text-[10px] font-semibold">{label}</span>
             </Link>
           );
         })}

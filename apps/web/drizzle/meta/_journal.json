@@ -8,6 +8,41 @@
       "when": 1779225292901,
       "tag": "0000_faithful_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779227508240,
+      "tag": "0001_spotty_invisible_woman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779230467323,
+      "tag": "0002_whole_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779230697353,
+      "tag": "0003_motionless_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779231961089,
+      "tag": "0004_illegal_exiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779232802980,
+      "tag": "0005_mysterious_peter_parker",
+      "breakpoints": true
     }
   ]
 }

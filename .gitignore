@@ -47,5 +47,23 @@ pnpm-debug.log*
 /wiki-mockup-page.png
 /snappeal-*.png
 /app-home.png
+/app-home-*.png
 /audit-*.png
+/home-*.png
+/profile-*.png
+/profile.png
+/sign-up.png
+/sign-in.png
+/tickets-*.png
+/tickets.png
+/capture-*.png
+/capture.png
+/wizard-*.png
+/wiz*.png
+/paywall-*.png
+/generating-overlay.png
 *.screenshot.png
+
+# Playwright test artefacts
+/test-results/
+/playwright-report/
