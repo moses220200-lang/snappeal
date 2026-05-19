@@ -27,6 +27,41 @@ cp .env.example .env.local   # then fill in keys — see "Backend env" below
 npm run dev
 ```
 
+## Deploying to Vercel
+
+The Next.js app lives at `apps/web/`. To deploy:
+
+```bash
+cd apps/web
+vercel link                      # connect to the Vercel project
+vercel env pull                  # pull env vars into .env.local
+vercel deploy                    # preview deploy
+vercel deploy --prod             # promote to production
+```
+
+**Required env vars** (`vercel env add` for each, or use the dashboard):
+
+| Var | Scope | Notes |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | preview + production | `sk_test_` for preview, `sk_live_` for prod |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | preview + production | matching `pk_test_` / `pk_live_` |
+| `STRIPE_WEBHOOK_SECRET` | preview + production | from Stripe webhook config |
+| `AI_GATEWAY_API_KEY` | preview + production | Vercel AI Gateway dashboard |
+| `DATABASE_URL` | preview + production | Neon Postgres via Marketplace (optional in v0.1) |
+
+**Vercel config**: `apps/web/vercel.json` pins Next.js framework, sets London region (`lhr1`), and bumps `/api/generate` + `/api/submit` to 60s function timeouts (vision OCR + per-council automation both need it).
+
+**First-time setup**:
+
+1. Install Vercel CLI: `npm i -g vercel`.
+2. From `apps/web/`, `vercel link` and create a new project (or link to an existing one).
+3. Install Marketplace integrations from the Vercel dashboard:
+   - **Stripe** (test mode is fine pre-launch)
+   - **AI Gateway** (provides `AI_GATEWAY_API_KEY` automatically)
+   - **Neon** (provides `DATABASE_URL` automatically) — optional in v0.1
+4. After integrations install, `vercel env pull` locally to get the keys into `.env.local`.
+5. `vercel deploy` triggers a preview build.
+
 ## Backend env
 
 The Next.js app exposes four API routes:
