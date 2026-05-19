@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./_fixtures";
 
 test.describe("Landing page", () => {
   test("renders hero with CTAs + brand-blue palette", async ({ page }) => {

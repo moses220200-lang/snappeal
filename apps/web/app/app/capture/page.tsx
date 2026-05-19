@@ -1,37 +1,6 @@
 import Link from "next/link";
-import {
-  Camera,
-  ChevronLeft,
-  Image as ImageIcon,
-  Keyboard,
-  Scan,
-  ShieldCheck,
-} from "lucide-react";
-
-const METHODS = [
-  {
-    id: "scan",
-    href: "/app/notes?from=scan",
-    icon: Camera,
-    title: "Scan Ticket",
-    body: "Use your camera",
-    primary: true,
-  },
-  {
-    id: "upload",
-    href: "/app/notes?from=upload",
-    icon: ImageIcon,
-    title: "Upload Photos",
-    body: "From your library",
-  },
-  {
-    id: "manual",
-    href: "/app/notes?from=manual",
-    icon: Keyboard,
-    title: "Enter PCN",
-    body: "Type it in",
-  },
-];
+import { ChevronLeft, Scan, ShieldCheck } from "lucide-react";
+import { CaptureMethods, HeroCameraTrigger } from "@/components/CaptureMethods";
 
 const FIELDS = [
   "Issuer",
@@ -64,12 +33,9 @@ export default function CapturePage() {
         </div>
       </header>
 
-      {/* Viewfinder hero */}
-      <Link
-        href="/app/notes?from=scan"
-        className="block relative rounded-3xl overflow-hidden bg-snappeal-navy aspect-[4/3] hover:opacity-95 transition active:scale-[0.99]"
-      >
-        {/* Faint grid */}
+      {/* Viewfinder hero — clicking opens the rear camera via the hidden
+       * input mounted by <CaptureMethods /> below. */}
+      <div className="relative rounded-3xl overflow-hidden bg-snappeal-navy aspect-[4/3] cursor-pointer active:scale-[0.99]">
         <div
           aria-hidden
           className="absolute inset-0 opacity-20"
@@ -79,17 +45,15 @@ export default function CapturePage() {
             backgroundSize: "40px 40px",
           }}
         />
-        {/* Corner brackets — viewfinder reticle */}
         <div className="absolute inset-8 pointer-events-none">
           <span className="absolute -top-2 -left-2 size-8 border-t-2 border-l-2 border-white rounded-tl-xl" />
           <span className="absolute -top-2 -right-2 size-8 border-t-2 border-r-2 border-white rounded-tr-xl" />
           <span className="absolute -bottom-2 -left-2 size-8 border-b-2 border-l-2 border-white rounded-bl-xl" />
           <span className="absolute -bottom-2 -right-2 size-8 border-b-2 border-r-2 border-white rounded-br-xl" />
         </div>
-        {/* Centered prompt */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center px-6 gap-3">
           <span className="size-14 rounded-full bg-white/15 backdrop-blur flex items-center justify-center">
-            <Scan className="size-6" />
+            <Scan className="size-6 text-white" />
           </span>
           <div>
             <p className="text-base font-bold">Frame your PCN here</p>
@@ -98,50 +62,12 @@ export default function CapturePage() {
               shot.
             </p>
           </div>
-          <span className="rounded-full bg-snappeal-primary px-4 py-2 text-xs font-semibold mt-1 inline-flex items-center gap-1.5 shadow-lg shadow-black/30">
-            <Camera className="size-3.5" /> Open camera
-          </span>
+          <HeroCameraTrigger />
         </div>
-      </Link>
-
-      {/* 3-up shortcut grid */}
-      <div className="grid grid-cols-3 gap-2">
-        {METHODS.map(({ id, href, icon: Icon, title, body, primary }) => (
-          <Link
-            key={id}
-            href={href}
-            className={`rounded-2xl border p-3 flex flex-col items-center gap-1.5 text-center transition ${
-              primary
-                ? "bg-snappeal-primary border-snappeal-primary text-white hover:bg-snappeal-primary-600 shadow-lg shadow-snappeal-primary/30"
-                : "bg-white border-snappeal-border hover:border-snappeal-primary"
-            }`}
-          >
-            <span
-              className={`size-10 rounded-xl flex items-center justify-center ${
-                primary
-                  ? "bg-white/20 text-white"
-                  : "bg-snappeal-primary-100 text-snappeal-primary"
-              }`}
-            >
-              <Icon className="size-5" />
-            </span>
-            <p
-              className={`text-[12px] font-bold leading-tight ${
-                primary ? "text-white" : "text-snappeal-navy"
-              }`}
-            >
-              {title}
-            </p>
-            <p
-              className={`text-[10px] leading-tight ${
-                primary ? "text-white/80" : "text-snappeal-muted"
-              }`}
-            >
-              {body}
-            </p>
-          </Link>
-        ))}
       </div>
+
+      {/* 3-up shortcut grid with real native file inputs */}
+      <CaptureMethods />
 
       {/* What we read from the photo */}
       <div className="rounded-2xl bg-white border border-snappeal-border p-4">

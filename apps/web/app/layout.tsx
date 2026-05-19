@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { SnappealSplash } from "@/components/SnappealSplash";
+import { InstallBanner } from "@/components/InstallBanner";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -42,7 +44,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en-GB" className={`${inter.variable} antialiased`}>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        <SnappealSplash />
+        {children}
+        <InstallBanner variant="landing" />
+      </body>
     </html>
   );
 }

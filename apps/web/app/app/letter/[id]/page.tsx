@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, ChevronLeft, Copy, Send, Share2 } from "lucide-react";
+import { Check, ChevronLeft } from "lucide-react";
 import { getAppeal } from "@/lib/mock-data";
+import { LetterActions } from "@/components/LetterActions";
 
 export default async function LetterPage({
   params,
@@ -27,17 +28,17 @@ export default async function LetterPage({
             Your appeal letter
           </h1>
           <p className="text-xs text-snappeal-muted">
-            Step 4 of 4 · Review & submit
+            Step 4 of 4 · Review &amp; submit
           </p>
         </div>
       </header>
 
       {/* Extracted ticket card */}
       <details className="rounded-2xl bg-white border border-snappeal-border overflow-hidden">
-        <summary className="cursor-pointer px-4 py-3 flex items-center justify-between text-sm font-semibold text-snappeal-navy">
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between text-sm font-semibold text-snappeal-navy">
           What we read from your PCN
           <span className="text-xs font-normal text-snappeal-primary">
-            tap to expand
+            tap to toggle
           </span>
         </summary>
         <dl className="px-4 pb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
@@ -97,24 +98,12 @@ export default async function LetterPage({
         </section>
       )}
 
-      {/* Actions */}
-      <section className="grid grid-cols-3 gap-2">
-        <button className="rounded-xl bg-white border border-snappeal-border py-3 flex flex-col items-center gap-1 text-xs font-medium text-snappeal-navy hover:border-snappeal-primary transition">
-          <Copy className="size-4 text-snappeal-primary" />
-          Copy
-        </button>
-        <button className="rounded-xl bg-white border border-snappeal-border py-3 flex flex-col items-center gap-1 text-xs font-medium text-snappeal-navy hover:border-snappeal-primary transition">
-          <Share2 className="size-4 text-snappeal-primary" />
-          Share
-        </button>
-        <Link
-          href={`/app/tickets/${appeal.id}`}
-          className="rounded-xl bg-snappeal-primary text-white py-3 flex flex-col items-center gap-1 text-xs font-semibold hover:bg-snappeal-primary-600 transition"
-        >
-          <Send className="size-4" />
-          Track
-        </Link>
-      </section>
+      {/* Native action row — Copy / Share / Track */}
+      <LetterActions
+        appealId={appeal.id}
+        letterBody={appeal.letter.body}
+        letterSubject={appeal.letter.subject}
+      />
     </div>
   );
 }

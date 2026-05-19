@@ -130,6 +130,7 @@ nav:
   - Architecture:
     - architecture/index.md
     - System overview: architecture/system-overview.md
+    - Prototype state: architecture/prototype.md
     - Data model: architecture/data-model.md
     - AI pipeline: architecture/ai-pipeline.md
     - Submission engine: architecture/submission-engine.md

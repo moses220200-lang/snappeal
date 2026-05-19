@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./_fixtures";
 
 test.describe("In-app /app", () => {
   test("home: greeting + 5-tab bottom nav (Home / Tickets / Camera / Tips / Profile)", async ({

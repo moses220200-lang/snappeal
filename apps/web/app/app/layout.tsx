@@ -7,7 +7,11 @@ export default function AppLayout({
 }) {
   return (
     <div className="min-h-screen bg-snappeal-bg">
-      <div className="mx-auto max-w-md min-h-screen pb-24 bg-snappeal-bg">
+      {/* `safe-top` reserves space for the iOS status bar when the PWA
+       * runs in standalone mode (display: standalone in the manifest).
+       * `pb-28 + safe-bottom` reserves room for the floating Camera
+       * button + the iPhone home-indicator + the curved bottom edge. */}
+      <div className="mx-auto max-w-md min-h-screen bg-snappeal-bg safe-top pt-3 pb-28">
         {children}
       </div>
       <BottomNav />

@@ -84,10 +84,125 @@ a {
   background-size: 16px 16px;
 }
 
-/* iOS safe-area inset for the bottom tab bar */
-.safe-bottom {
-  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
-}
+/* iOS safe-area insets — `viewport-fit=cover` on the meta tag lets the
+ * PWA paint under the status bar / home indicator. These classes claw
+ * back the space those system chrome elements need.
+ *
+ * The `+` adds the env() inset on TOP of a sensible baseline so we
+ * still get padding on devices that report 0 (Android Chrome, desktop). */
 .safe-top {
-  padding-top: max(env(safe-area-inset-top), 0.5rem);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+}
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* ────────────────────────────────────────────────────────────────
+ * Snappeal splash animation
+ *   Total runtime: 3.0s. Each layer has its own keyframe schedule
+ *   on the same timeline so the splash *feels* like one continuous
+ *   motion: ticket flies in → camera flash → AI scan → wordmark.
+ * ──────────────────────────────────────────────────────────────── */
+
+@keyframes splash-stage {
+  0%, 93% { opacity: 1; pointer-events: auto; }
+  100%    { opacity: 0; pointer-events: none; visibility: hidden; }
+}
+
+@keyframes splash-ticket-in {
+  0%   { opacity: 0; transform: translateY(-40px) rotate(30deg) scale(0.6); }
+  18%  { opacity: 1; transform: translateY(8px) rotate(-12deg) scale(1.05); }
+  28%  { transform: translateY(0) rotate(-8deg) scale(1); }
+  100% { opacity: 1; transform: translateY(0) rotate(-8deg) scale(1); }
+}
+
+@keyframes splash-flash {
+  0%, 28% { opacity: 0; }
+  31%     { opacity: 1; }
+  40%     { opacity: 0; }
+  100%    { opacity: 0; }
+}
+
+@keyframes splash-brackets {
+  0%, 14%  { opacity: 0; transform: scale(1.6); }
+  22%      { opacity: 1; transform: scale(1.15); }
+  32%      { opacity: 1; transform: scale(1); }
+  55%      { opacity: 1; transform: scale(1); }
+  68%      { opacity: 0; transform: scale(0.92); }
+  100%     { opacity: 0; }
+}
+
+@keyframes splash-scan {
+  0%, 32%  { opacity: 0; transform: translateY(-100%); }
+  38%      { opacity: 1; transform: translateY(-100%); }
+  62%      { opacity: 1; transform: translateY(100%); }
+  68%      { opacity: 0; transform: translateY(100%); }
+  100%     { opacity: 0; }
+}
+
+@keyframes splash-wordmark-in {
+  0%, 58% { opacity: 0; transform: translateY(20px) scale(0.92); }
+  70%     { opacity: 1; transform: translateY(0) scale(1); }
+  100%    { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes splash-dot {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50%      { opacity: 1; transform: translateY(-3px); }
+}
+
+@keyframes splash-tick-in {
+  0%, 78% { opacity: 0; transform: scale(0); }
+  85%     { opacity: 1; transform: scale(1.25); }
+  92%     { transform: scale(1); }
+  100%    { opacity: 1; transform: scale(1); }
+}
+
+.snappeal-splash {
+  animation: splash-stage 3.05s ease-in forwards;
+}
+.snappeal-splash-ticket {
+  animation: splash-ticket-in 3.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.snappeal-splash-flash {
+  animation: splash-flash 3.05s ease-out forwards;
+}
+.snappeal-splash-brackets {
+  animation: splash-brackets 3.05s ease forwards;
+}
+.snappeal-splash-scan {
+  animation: splash-scan 3.05s ease-in-out forwards;
+}
+.snappeal-splash-wordmark {
+  animation: splash-wordmark-in 3.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.snappeal-splash-dot {
+  animation: splash-dot 1s ease-in-out infinite;
+}
+.snappeal-splash-dot:nth-child(2) { animation-delay: 0.15s; }
+.snappeal-splash-dot:nth-child(3) { animation-delay: 0.3s; }
+.snappeal-splash-tick {
+  animation: splash-tick-in 3.05s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Respect users who want reduced motion — fall back to a quick fade */
+@media (prefers-reduced-motion: reduce) {
+  .snappeal-splash {
+    animation: splash-stage 0.5s linear forwards;
+  }
+  .snappeal-splash-ticket,
+  .snappeal-splash-flash,
+  .snappeal-splash-brackets,
+  .snappeal-splash-scan,
+  .snappeal-splash-wordmark,
+  .snappeal-splash-dot,
+  .snappeal-splash-tick {
+    animation: none;
+  }
 }
