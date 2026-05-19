@@ -16,7 +16,6 @@ import {
   timestamp,
   integer,
   jsonb,
-  boolean,
   index,
 } from "drizzle-orm/pg-core";
 

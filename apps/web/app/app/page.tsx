@@ -8,7 +8,6 @@ import {
   Lightbulb,
   MapPin,
   Send,
-  Sparkles,
   Upload,
 } from "lucide-react";
 import { appeals, user } from "@/lib/mock-data";
