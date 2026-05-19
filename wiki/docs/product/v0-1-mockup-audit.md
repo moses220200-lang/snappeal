@@ -175,7 +175,7 @@ A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mo
 - App Store + Google Play badges added below "How it works" (greyed/coming-soon until v0.3 native wrappers ship).
 
 ### F2. ✅ *"Expert Appeal Writers"* — adopt safe interpretation (no "experts" framing)
-- **Conflict**: Reintroduces the "experts" framing locked out by [C1](#c1-voice-decided--we-draft-no-experts-framing). DoNotPay-style FTC exposure risk.
+- **Conflict**: Reintroduces the "experts" framing locked out by C1 (see above). DoNotPay-style FTC exposure risk.
 - **Action**: In the homepage spec we render the trust card as **"AI-Drafted Appeals"** with the body *"Snappeal drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."*
 - **Needs user confirmation** if you want to override C1.
 
@@ -190,7 +190,7 @@ A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mo
 - **Needs user confirmation** if you actually want to expand scope to private parking (a meaningfully different product — different statutory regime, different appeal body, different evidence).
 
 ### F5. ✅ *"Made for drivers in the UK"* — adopt safe interpretation ("…in London")
-- **Conflict**: Reintroduces UK scope, which was locked to London-only in [A2](#a2--geographic-scope-decided--london-only-for-v01).
+- **Conflict**: Reintroduces UK scope, which was locked to London-only in A2 (see above).
 - **Action**: Homepage spec renders the pill as **🇬🇧 Made for drivers in London**.
 - **Needs user confirmation** if you want to reverse A2.
 

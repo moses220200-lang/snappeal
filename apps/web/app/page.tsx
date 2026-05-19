@@ -55,13 +55,13 @@ function Header() {
         </nav>
         <div className="flex items-center gap-3">
           <Link
-            href="#install"
+            href="/app"
             className="hidden sm:inline text-sm font-medium text-snappeal-navy hover:text-snappeal-primary transition"
           >
             Log in
           </Link>
           <Link
-            href="#install"
+            href="/app"
             className="inline-flex items-center gap-1.5 rounded-xl bg-snappeal-primary text-white text-sm font-semibold px-4 py-2.5 hover:bg-snappeal-primary-600 transition"
           >
             Get Started
@@ -97,7 +97,7 @@ function Hero() {
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
-              href="#install"
+              href="/app"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-snappeal-primary text-white font-semibold px-6 py-3.5 hover:bg-snappeal-primary-600 transition shadow-lg shadow-snappeal-primary/25"
             >
               Start Your Appeal

@@ -64,3 +64,11 @@ a {
   background-image: radial-gradient(circle at 1px 1px, rgba(108, 92, 231, 0.18) 1px, transparent 0);
   background-size: 16px 16px;
 }
+
+/* iOS safe-area inset for the bottom tab bar */
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+.safe-top {
+  padding-top: max(env(safe-area-inset-top), 0.5rem);
+}

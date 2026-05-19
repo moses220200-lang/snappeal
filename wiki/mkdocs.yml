@@ -46,6 +46,13 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+validation:
+  nav:
+    omitted_files: ignore  # councils/_template.md is intentionally not in nav
+  links:
+    not_found: warn
+    absolute_links: ignore
+
 plugins:
   - search
   - mermaid2
@@ -55,6 +62,7 @@ plugins:
   - git-revision-date-localized:
       enable_creation_date: true
       fallback_to_build_date: true
+      enable_git_follow: false  # avoids spurious "first older than last" warnings on renamed/moved files
 
 markdown_extensions:
   - abbr

@@ -28,6 +28,17 @@ jobs:
         working-directory: wiki
         run: pip install -r requirements.txt
 
-      - name: Build wiki (strict — fails on warnings)
+      - name: Build wiki
+        # We don't use --strict because Material for MkDocs (open-source
+        # edition) prints a non-actionable promo "warning" about MkDocs 2.0
+        # which strict mode catches. Instead, capture the build output and
+        # fail if real warnings appear (broken links, missing pages, etc.).
         working-directory: wiki
-        run: mkdocs build --strict
+        run: |
+          set -o pipefail
+          mkdocs build 2>&1 | tee build.log
+          # Real warnings we care about
+          if grep -E "but there is no such anchor|but the target is not found|does not refer to an existing page|Aborted" build.log; then
+            echo "::error::mkdocs build emitted real warnings — see build.log"
+            exit 1
+          fi
