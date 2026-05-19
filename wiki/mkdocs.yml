@@ -1,5 +1,5 @@
 site_name: Snappeal
-site_description: Snappeal a London parking ticket in under five taps.
+site_description: Appeal a London parking ticket in under five taps.
 site_author: Snappeal
 copyright: Copyright &copy; 2026 Snappeal
 
@@ -14,15 +14,15 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: deep purple
+      accent: deep purple
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: deep purple
+      accent: deep purple
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
@@ -117,6 +117,7 @@ nav:
     - Brand: product/brand.md
     - Mockups: product/mockups.md
     - v0.1 mockup audit: product/v0-1-mockup-audit.md
+    - Homepage (desktop spec): product/screens/homepage.md
   - Architecture:
     - architecture/index.md
     - System overview: architecture/system-overview.md

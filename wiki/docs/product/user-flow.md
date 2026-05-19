@@ -5,7 +5,7 @@ The full appeal journey is five steps. Every step is a single screen with at mos
 ```mermaid
 flowchart TD
     Start([User receives PCN]) --> Home[Home screen]
-    Home -->|tap Snappeal it| Photos[1. Photos]
+    Home -->|tap Start Your Appeal| Photos[1. Photos]
     Photos -->|tap Continue| Notes[2. Notes]
     Notes -->|tap Generate letter| Pay[3. Pay £2.99]
     Pay -->|Apple Pay / Google Pay| Letter[4. Letter]
@@ -93,7 +93,7 @@ Total taps from app launch to "appeal sent" — target ceiling:
 
 | Step | Taps |
 |---|---|
-| Home → Snappeal it | 1 |
+| Home → Start Your Appeal | 1 |
 | Photos (PCN + 2 evidence) | 3 |
 | Photos → Continue | 1 |
 | Notes (typing not counted) | 0 |

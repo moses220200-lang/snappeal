@@ -6,7 +6,7 @@ hide:
 
 # Snappeal
 
-**Snappeal a London parking ticket in under five taps.**
+**Appeal a London parking ticket in under five taps.**
 
 This wiki is the public source of truth for the Snappeal project — what we're building, why, how, and for whom.
 

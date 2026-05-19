@@ -46,7 +46,7 @@ Comparison of the wiki as written against the [v0.1 home screen mockup](mockups.
 - **Action**: Replace `wiki/docs/assets/logo.svg`. Decide whether the shield is the brand mark or whether it appears only in-app and the wiki uses a wordmark.
 
 ### A5. 🟢 Tagline
-- **Wiki**: *"Snappeal a London parking ticket in under five taps."*
+- **Wiki**: *"Appeal a London parking ticket in under five taps."*
 - **Mockup**: *"Challenge your parking ticket in minutes."*
 - **Action**: If we commit to UK scope, drop "London". Reconcile "appeal" vs "challenge" — the mockup uses both ("Challenge your parking ticket" in the header, "Start an Appeal" in the hero). Pick one and use it consistently.
 
@@ -157,3 +157,49 @@ All five high-severity decisions are now made (A1, A2, B4, C1, C2). The remainin
 | B5 | Cases screen spec | 🟡 add to `user-flow.md` |
 | B6 | Tips library content surface | 🟡 new `product/tips-library.md` |
 | B7 | Pricing absent from home (already correct) | ✅ verify only |
+
+---
+
+## F. Homepage mockup (received 2026-05-19 evening) — new conflicts
+
+A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mockups.md) #1). It largely confirms the visual direction (purple brand, shield logo, 4-step "How it works", phone-on-PCN hero, app store badges) but introduces **five fresh conflicts** with locked decisions. Captured here to flag for user reconciliation; the [homepage spec](screens/homepage.md) renders the safe interpretation pending user confirmation.
+
+### F1. ✅ Visual direction — adopted
+- **Decision (2026-05-19 evening)**: adopt the homepage mockup's visual structure for `snappeal.ai`.
+- Purple primary `#6c5ce7` replaces the earlier blue placeholder ([brand.md](../product/brand.md) updated).
+- Navy shield with white **S** is the logo silhouette ([logo.svg](../assets/logo.svg) regenerated).
+- Hero structure: 🇬🇧 pill → headline with purple-highlighted noun → body → two CTAs → Trustpilot block.
+- 4-card trust strip + 4-step "How it works".
+- Phone-on-PCN hero visual that mirrors the in-app home screen.
+- Responsive PWA: designed-for-desktop on homepage, mobile-first inside the app.
+- App Store + Google Play badges added below "How it works" (greyed/coming-soon until v0.3 native wrappers ship).
+
+### F2. 🔴 *"Expert Appeal Writers"* / *"Our team creates strong, personalised appeals"*
+- **Conflict**: Reintroduces the "experts" framing locked out by [C1](#c1-voice-decided--we-draft-no-experts-framing). DoNotPay-style FTC exposure risk.
+- **Action**: In the homepage spec we render the trust card as **"AI-Drafted Appeals"** with the body *"Snappeal drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."*
+- **Needs user confirmation** if you want to override C1.
+
+### F3. 🔴 *"No Win, No Fee"*
+- **Conflict**: Directly contradicts the locked **£2.99 one-off non-refundable** pricing model. "No Win, No Fee" is an outcome-linked pricing model — the opposite of what we documented and the opposite of what protects us from chargeback liability (risks R9).
+- **Action**: In the homepage spec we render the card as **"Pay only £2.99 — one-off, non-refundable"** with the rationale *"You pay for the work we draft and submit, not for the outcome."*
+- **Needs user confirmation** if you want to actually pivot to No Win, No Fee — this is a significant business-model change (revenue model becomes outcome-contingent; refund-handling, escrow, KYC obligations all change).
+
+### F4. 🔴 *"We send your appeal to the landowner on your behalf"*
+- **Conflict**: "Landowner" implies **private parking operators** (ParkingEye, NCP, retail car parks) — out of scope per `features.md`. Council PCNs are sent to the issuing authority (Westminster, TfL, etc.), not a landowner.
+- **Action**: Homepage spec renders step 3 as **"We send your appeal to the issuing council's portal (or by email if their portal's down)."**
+- **Needs user confirmation** if you actually want to expand scope to private parking (a meaningfully different product — different statutory regime, different appeal body, different evidence).
+
+### F5. 🔴 *"Made for drivers in the UK"* (hero pill)
+- **Conflict**: Reintroduces UK scope, which was locked to London-only in [A2](#a2--geographic-scope-decided--london-only-for-v01).
+- **Action**: Homepage spec renders the pill as **🇬🇧 Made for drivers in London**.
+- **Needs user confirmation** if you want to reverse A2.
+
+### F6. 🟡 *"Excellent · 4.7 out of 5 on Trustpilot"* (pre-launch trust signal)
+- **Conflict**: We can't show a Trustpilot rating before users have rated us. Showing one fabricated is a regulatory + reputational risk (ASA UK rules on misleading claims).
+- **Action**: Homepage spec omits the Trustpilot block in v0.1. Re-add in v0.2+ once we have real Trustpilot reviews. *"Thousands of London drivers trust Snappeal"* badge similarly replaced with *"Built for London drivers"* until real volume justifies the claim.
+- No user reconciliation needed — this is a compliance call.
+
+### F7. 🟡 *"We Fight. You Win."* / *"We fight your parking tickets"*
+- **Conflict (minor)**: Combative "fight/win" framing conflicts with the locked honest "we draft and submit" voice in [values.md](../business/values.md) and [risks.md](../business/risks.md) (R2 SRA risk).
+- **Action**: Homepage spec softens step 4 to **"We Stay With You"** with body *"We notify you when the council responds. If your appeal succeeds, the PCN is cancelled."* Top-nav sub-tagline "We fight your parking tickets" softened to **"We draft and submit your parking-ticket appeal."**
+- **Open to user input**: the "fight" framing is more emotionally engaging and might convert better; the trade-off is regulatory exposure. Marketing-side decision.

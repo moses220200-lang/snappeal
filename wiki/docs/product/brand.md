@@ -14,11 +14,17 @@ The verb framing matters: a user can *snappeal* a ticket the same way they *goog
 
 For App Store listings and SEO landing pages we may use the longer descriptor *"Snappeal — appeal a London parking ticket"* to capture high-intent searches. In the app chrome itself and in conversation, just **Snappeal**.
 
+## Form factor
+
+Snappeal is a **responsive PWA** — installable on iOS and Android home screens, and also rendered as a desktop / tablet experience for the same domain. The product itself is mobile-first, but the public marketing surface (homepage, pricing, FAQ, success stories) is designed-for-desktop and downsizes responsively. From v0.3 the PWA is wrapped via Capacitor for App Store + Play Store.
+
+See [screens/homepage.md](screens/homepage.md) for the desktop home spec.
+
 ## Tagline
 
-**Snappeal a London parking ticket in under five taps.**
+**Appeal a London parking ticket in under five taps.**
 
-Use the full tagline on the homepage, app store listings, and the first marketing fold. Shortened forms (*"PCN appeal, in five taps."*, *"Snap. Appeal. Done."*) are permitted for ad creatives where character counts are tight, but never drop "London" — the geography is a credibility signal. (When the v0.1 scope decision moves to UK-wide, the geography token shifts but the tagline shape stays.)
+Use the full tagline on the homepage, app store listings, and the first marketing fold. Shortened forms (*"Appeal in five taps."*, *"Upload. Appeal. Win."*) are permitted for ad creatives where character counts are tight, but never drop "London" — the geography is a credibility signal. (When the v0.1 scope decision moves to UK-wide, the geography token shifts but the tagline shape stays.)
 
 ## Colour
 
@@ -26,17 +32,18 @@ Defined as CSS variables in `wiki/docs/stylesheets/extra.css` — single source 
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--appeal-blue` | `#2563eb` | `#3b82f6` | Primary action, links, focus rings |
-| `--appeal-surface` | `#ffffff` | `#0f172a` | Card backgrounds, modal sheets |
-| `--appeal-bg` | `#f8fafc` | `#020617` | Page background |
-| `--appeal-text` | `#0f172a` | `#f8fafc` | Body text |
-| `--appeal-muted` | `#64748b` | `#94a3b8` | Secondary text, captions |
-| `--appeal-border` | `#e2e8f0` | `#1e293b` | Dividers, input borders |
-| `--appeal-success` | `#16a34a` | `#16a34a` | Confirmation states |
-| `--appeal-warning` | `#d97706` | `#d97706` | Warnings (rare) |
-| `--appeal-danger` | `#dc2626` | `#dc2626` | Errors, destructive actions |
+| `--snappeal-primary` | `#6c5ce7` | `#7c6df0` | Primary CTAs, logo fill, in-progress accents |
+| `--snappeal-primary-soft` | `rgba(108,92,231,0.12)` | `rgba(124,109,240,0.16)` | Hover wash, soft fills, status pills |
+| `--snappeal-navy` | `#0b1f44` | `#f8fafc` | Headings, body text on light; surface in dark |
+| `--snappeal-surface` | `#ffffff` | `#0f172a` | Card backgrounds, modal sheets |
+| `--snappeal-bg` | `#f6f7fb` | `#020617` | Page background |
+| `--snappeal-muted` | `#64748b` | `#94a3b8` | Secondary text, captions |
+| `--snappeal-border` | `#e2e8f0` | `#1e293b` | Dividers, input borders |
+| `--snappeal-success` | `#16a34a` | `#22c55e` | Completed timeline steps, success states |
+| `--snappeal-warning` | `#d97706` | `#f59e0b` | Warnings (rare) |
+| `--snappeal-danger` | `#dc2626` | `#ef4444` | Errors, destructive actions |
 
-We never use red as a brand colour. The PCN itself is yellow-and-red; we visually distance ourselves from the council's enforcement aesthetic.
+**Primary is purple `#6c5ce7`** — decided from the homepage mockup, replacing the earlier blue placeholder. Navy `#0b1f44` is the typographic baseline. Red stays out of the brand: the PCN itself is yellow-and-red and we visually distance ourselves from the council's enforcement aesthetic. The legacy `--appeal-*` variables in `extra.css` are kept as aliases for the transition.
 
 ## Typography
 
@@ -55,10 +62,12 @@ Heading scale (MkDocs follows the same):
 
 ## Logo
 
-A blue rounded square containing a white **S** in the same Inter typeface as the wordmark. Vector source: `wiki/docs/assets/logo.svg`. Two preferred presentations:
+A **navy shield** containing a white **S** in the same Inter typeface as the wordmark. The shield (rather than a rounded square) gives the brand a "protect / defend" reading, consistent with appealing on the user's behalf. Vector source: `wiki/docs/assets/logo.svg`. Two preferred presentations:
 
 - **App icon** — 1024×1024 master, no padding; OS rounding handles the corner.
-- **Wordmark** — logo to the left of "Snappeal" set in Inter 600.
+- **Wordmark** — shield to the left of "Snappeal" set in Inter 700, navy on light backgrounds.
+
+The shield silhouette matches both mockups (originally with a "P" in the designer's working name; we render the same shield with an "S" for Snappeal).
 
 Never:
 - Stretch or skew.
@@ -80,10 +89,10 @@ Tone references: GOV.UK service writing, Monzo error copy, Apple's pre-2020 prod
 
 Reference strings — keep these consistent across surfaces:
 
-- Home CTA: **Snappeal it**
+- Home CTA: **Start Your Appeal**
 - Photos step CTA: **Continue**
 - Notes step CTA: **Generate letter**
-- Paywall CTA: **Snappeal it — £2.99**
+- Paywall CTA: **Start Your Appeal — £2.99**
 - Letter step actions: **Copy** · **Share** · **Submit**
 - Status pills: **Draft** / **Ready to send** / **Sent** / **Resolved**
 - Pricing line: **£2.99 — one-off, non-refundable.**

@@ -1,6 +1,6 @@
 # Snappeal
 
-> Snappeal a London parking ticket in under five taps.
+> Appeal a London parking ticket in under five taps.
 
 This repository hosts the **Snappeal** project — a London PCN appeal app at `snappeal.ai`. The current phase is the **documentation wiki**, which holds the business plan, product spec, architecture, and council knowledge base.
 

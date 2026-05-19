@@ -28,7 +28,7 @@ Anything that takes more than a second streams. The letter generation streams to
 
 ## 7. The empty state is the design
 
-The user's first launch — no appeals yet — is the most-seen screen in the product. It must (a) explain what Snappeal does in one sentence, (b) show the £2.99 price honestly, (c) put the "Snappeal it" CTA exactly where the thumb is.
+The user's first launch — no appeals yet — is the most-seen screen in the product. It must (a) explain what Snappeal does in one sentence, (b) show the £2.99 price honestly, (c) put the "Start Your Appeal" CTA exactly where the thumb is.
 
 ## 8. Mobile-first means mobile-only-second
 

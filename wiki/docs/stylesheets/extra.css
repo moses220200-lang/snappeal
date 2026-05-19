@@ -1,35 +1,60 @@
 /* Snappeal — brand tokens
  * Single source of truth for colour, typography and spacing.
- * Imported by MkDocs (here) and re-used by the Next.js admin in Phase B.
+ * Imported by MkDocs (here) and re-used by the Next.js admin in Phase B
+ * and the customer PWA in Phase C.
+ *
+ * Primary colour: purple (#6c5ce7), confirmed from the homepage mockup.
+ * Navy (#0b1f44) is the typographic baseline.
  */
 
 :root {
-  --appeal-blue: #2563eb;
-  --appeal-blue-soft: rgba(37, 99, 235, 0.12);
-  --appeal-surface: #ffffff;
-  --appeal-bg: #f8fafc;
-  --appeal-text: #0f172a;
-  --appeal-muted: #64748b;
-  --appeal-border: #e2e8f0;
-  --appeal-success: #16a34a;
-  --appeal-warning: #d97706;
-  --appeal-danger: #dc2626;
+  /* Snappeal tokens (canonical) */
+  --snappeal-primary: #6c5ce7;
+  --snappeal-primary-soft: rgba(108, 92, 231, 0.12);
+  --snappeal-navy: #0b1f44;
+  --snappeal-surface: #ffffff;
+  --snappeal-bg: #f6f7fb;
+  --snappeal-text: #0b1f44;
+  --snappeal-muted: #64748b;
+  --snappeal-border: #e2e8f0;
+  --snappeal-success: #16a34a;
+  --snappeal-warning: #d97706;
+  --snappeal-danger: #dc2626;
 
-  --md-primary-fg-color: var(--appeal-blue);
-  --md-primary-fg-color--light: #3b82f6;
-  --md-primary-fg-color--dark: #1d4ed8;
-  --md-accent-fg-color: var(--appeal-blue);
-  --md-typeset-a-color: var(--appeal-blue);
+  /* Legacy aliases — kept until the transition is complete */
+  --appeal-blue: var(--snappeal-primary);
+  --appeal-blue-soft: var(--snappeal-primary-soft);
+  --appeal-surface: var(--snappeal-surface);
+  --appeal-bg: var(--snappeal-bg);
+  --appeal-text: var(--snappeal-text);
+  --appeal-muted: var(--snappeal-muted);
+  --appeal-border: var(--snappeal-border);
+  --appeal-success: var(--snappeal-success);
+  --appeal-warning: var(--snappeal-warning);
+  --appeal-danger: var(--snappeal-danger);
+
+  /* Material theme overrides */
+  --md-primary-fg-color: var(--snappeal-primary);
+  --md-primary-fg-color--light: #8377ec;
+  --md-primary-fg-color--dark: #4b3fcf;
+  --md-accent-fg-color: var(--snappeal-primary);
+  --md-typeset-a-color: var(--snappeal-primary);
 }
 
 [data-md-color-scheme="slate"] {
-  --appeal-surface: #0f172a;
-  --appeal-bg: #020617;
-  --appeal-text: #f8fafc;
-  --appeal-muted: #94a3b8;
-  --appeal-border: #1e293b;
-  --md-primary-fg-color: #3b82f6;
-  --md-accent-fg-color: #3b82f6;
+  --snappeal-primary: #7c6df0;
+  --snappeal-primary-soft: rgba(124, 109, 240, 0.16);
+  --snappeal-surface: #0f172a;
+  --snappeal-bg: #020617;
+  --snappeal-text: #f8fafc;
+  --snappeal-navy: #f8fafc;
+  --snappeal-muted: #94a3b8;
+  --snappeal-border: #1e293b;
+  --snappeal-success: #22c55e;
+  --snappeal-warning: #f59e0b;
+  --snappeal-danger: #ef4444;
+  --md-primary-fg-color: var(--snappeal-primary);
+  --md-accent-fg-color: var(--snappeal-primary);
 }
 
 .md-typeset h1,
@@ -55,37 +80,37 @@
 .appeal-hero a {
   display: block;
   padding: 1.25rem;
-  border: 1px solid var(--appeal-border);
+  border: 1px solid var(--snappeal-border);
   border-radius: 12px;
-  background: var(--appeal-surface);
+  background: var(--snappeal-surface);
   text-decoration: none;
-  color: var(--appeal-text);
+  color: var(--snappeal-text);
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .appeal-hero a:hover {
-  border-color: var(--appeal-blue);
+  border-color: var(--snappeal-primary);
   transform: translateY(-1px);
 }
 
 .appeal-hero a strong {
   display: block;
   margin-bottom: 0.25rem;
-  color: var(--appeal-text);
+  color: var(--snappeal-text);
   font-size: 1.05rem;
 }
 
 .appeal-hero a span {
-  color: var(--appeal-muted);
+  color: var(--snappeal-muted);
   font-size: 0.9rem;
 }
 
-/* Stat callout pills used in business/market pages */
+/* Stat callout pills */
 .stat {
   display: inline-block;
   padding: 0.15rem 0.5rem;
-  background: var(--appeal-blue-soft);
-  color: var(--appeal-blue);
+  background: var(--snappeal-primary-soft);
+  color: var(--snappeal-primary);
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.85em;
@@ -98,5 +123,5 @@
 
 .md-typeset table:not([class]) th {
   font-weight: 600;
-  background: var(--appeal-blue-soft);
+  background: var(--snappeal-primary-soft);
 }
