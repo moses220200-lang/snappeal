@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Camera, FileText, Home, User } from "lucide-react";
+import { Camera, FileText, Home, Lightbulb, User } from "lucide-react";
 
 const TABS = [
   { href: "/app", label: "Home", icon: Home },
-  { href: "/app/cases", label: "Cases", icon: FileText },
+  { href: "/app/tickets", label: "Tickets", icon: FileText },
   { href: "/app/capture", label: "Camera", icon: Camera, primary: true },
+  { href: "/app/tips", label: "Tips", icon: Lightbulb },
   { href: "/app/profile", label: "Profile", icon: User },
 ] as const;
 
@@ -15,7 +16,7 @@ export function BottomNav() {
   const pathname = usePathname();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-snappeal-border bg-white/95 backdrop-blur safe-bottom">
-      <div className="mx-auto max-w-md flex items-center justify-around px-2 pt-1.5 pb-2">
+      <div className="mx-auto max-w-md flex items-end justify-around px-2 pt-1.5 pb-2">
         {TABS.map(({ href, label, icon: Icon, primary }) => {
           const active =
             href === "/app"
@@ -37,7 +38,7 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 ${
+              className={`flex flex-col items-center gap-0.5 px-2 py-1 ${
                 active
                   ? "text-snappeal-primary"
                   : "text-snappeal-muted hover:text-snappeal-navy"

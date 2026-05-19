@@ -189,13 +189,13 @@ function CaptureShortcuts() {
 function LatestCase({ appeal }: { appeal: (typeof appeals)[number] }) {
   return (
     <Link
-      href={`/app/cases/${appeal.id}`}
+      href={`/app/tickets/${appeal.id}`}
       className="block rounded-2xl bg-white border border-snappeal-border p-4 hover:border-snappeal-primary transition"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold text-snappeal-primary uppercase tracking-wide">
-            Latest case
+            Latest ticket
           </p>
           <p className="text-lg font-bold text-snappeal-navy truncate mt-0.5">
             PCN #{appeal.ticket.pcnRef}

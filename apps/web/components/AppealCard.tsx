@@ -19,7 +19,7 @@ export function AppealCard({ appeal }: { appeal: Appeal }) {
   const tone = statusTone[appeal.status];
   return (
     <Link
-      href={`/app/cases/${appeal.id}`}
+      href={`/app/tickets/${appeal.id}`}
       className="block rounded-2xl bg-white border border-snappeal-border p-4 hover:border-snappeal-primary transition"
     >
       <div className="flex items-start justify-between gap-3">

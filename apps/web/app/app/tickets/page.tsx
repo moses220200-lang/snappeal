@@ -3,7 +3,7 @@ import { FileText, Plus } from "lucide-react";
 import { appeals } from "@/lib/mock-data";
 import { AppealCard } from "@/components/AppealCard";
 
-export default function CasesPage() {
+export default function TicketsPage() {
   const live = appeals.filter(
     (a) => a.status !== "cancelled" && a.status !== "rejected",
   );
@@ -14,7 +14,7 @@ export default function CasesPage() {
   return (
     <div className="flex flex-col gap-5 pt-6 px-5">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-snappeal-navy">Cases</h1>
+        <h1 className="text-2xl font-bold text-snappeal-navy">Tickets</h1>
         <Link
           href="/app/capture"
           aria-label="New appeal"

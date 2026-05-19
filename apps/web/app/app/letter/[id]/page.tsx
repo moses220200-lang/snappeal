@@ -108,7 +108,7 @@ export default async function LetterPage({
           Share
         </button>
         <Link
-          href={`/app/cases/${appeal.id}`}
+          href={`/app/tickets/${appeal.id}`}
           className="rounded-xl bg-snappeal-primary text-white py-3 flex flex-col items-center gap-1 text-xs font-semibold hover:bg-snappeal-primary-600 transition"
         >
           <Send className="size-4" />

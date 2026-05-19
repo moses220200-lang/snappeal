@@ -35,7 +35,7 @@ export default async function CaseDetailPage({
     <div className="flex flex-col gap-5 pt-6 px-5">
       <header className="flex items-center gap-3">
         <Link
-          href="/app/cases"
+          href="/app/tickets"
           aria-label="Back"
           className="size-9 rounded-full border border-snappeal-border flex items-center justify-center text-snappeal-muted"
         >

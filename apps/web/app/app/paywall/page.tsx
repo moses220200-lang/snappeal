@@ -65,7 +65,7 @@ export default function PaywallPage() {
           {[
             "AI-drafted appeal citing the right ground and contravention code",
             "Submitted directly to your council's portal (or by email)",
-            "Status timeline you can track in the Cases tab",
+            "Status timeline you can track in the Tickets tab",
             "Service-failure refund if our system doesn't deliver",
           ].map((item) => (
             <li key={item} className="flex items-start gap-2.5">
