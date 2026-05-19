@@ -40,6 +40,22 @@ Three phases, eight quarters, one product.
 
 ### v0.1 — public beta *(2026 Q4)*
 
+**Status as of 2026-05-19**: prototype frontend + backend foundation shipped. Full file-by-file inventory in [architecture/prototype.md](../architecture/prototype.md).
+
+- ✅ Next.js 16 PWA at `apps/web/`, mobile-first, responsive
+- ✅ Landing page (hero + trust strip + how-it-works + download section)
+- ✅ All 9 in-app screens (Home, Capture, Notes, Paywall, Letter, Tickets list + detail, Tips, Profile)
+- ✅ 5-tab bottom nav (Home / Tickets / Camera / Tips / Profile)
+- ✅ Native PWA features: rear camera capture, photo library upload, Web Share, clipboard, install prompt, iOS safe areas
+- ✅ Branded 3-second splash animation (Westminster PCN → camera shutter → AI scan → wordmark)
+- ✅ Install banner (sticky landing footer, dismissible)
+- ✅ Backend API routes: `/api/health`, `/api/checkout` (Stripe), `/api/generate` (Claude vision), `/api/submit` (mock), `/api/stripe/webhook` (signature-verified)
+- ✅ Drizzle schema + initial migration + council seed script
+- ✅ E2E test suite — 19 Playwright tests, CI green
+- ✅ Vercel deploy config (London region, function timeouts)
+- 🟡 Frontend ↔ `/api/generate` wired end-to-end (photo → AI draft → letter screen)
+- 🟡 Per-council Playwright MCP submission recordings (Westminster first)
+
 **Scope decisions locked 2026-05-19** (see [product/v0-1-mockup-audit.md](../product/v0-1-mockup-audit.md)):
 
 - Next.js 16 PWA, mobile-first; canonical domain `snappeal.ai`
