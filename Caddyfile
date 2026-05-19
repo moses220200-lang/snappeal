@@ -1,0 +1,25 @@
+# Snappeal local reverse proxy
+# - `/` → the Next.js prototype running on the host at :3000
+# - `/wiki/*` → the MkDocs wiki container at wiki:8000 (strip prefix)
+# - `/docs` → redirect to /wiki/ for convenience
+#
+# Access locally at http://localhost:8080
+# Cloudflare tunnel can also point here for a single public URL.
+
+:80 {
+    encode gzip
+
+    # Friendly redirect
+    @docs path /docs /docs/
+    redir @docs /wiki/ permanent
+
+    # Wiki under /wiki/*
+    handle_path /wiki/* {
+        reverse_proxy wiki:8000
+    }
+
+    # Everything else → Next.js dev server on the host
+    handle {
+        reverse_proxy host.docker.internal:3000
+    }
+}

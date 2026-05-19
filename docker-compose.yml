@@ -2,10 +2,22 @@ services:
   wiki:
     build: ./wiki
     container_name: snappeal-wiki
-    ports:
-      - "8000:8000"
+    # No host port binding — the central Caddy reaches it via the
+    # caddy_default network using the `snappeal-wiki` container alias.
+    # (Map a host port via `docker compose run --service-ports wiki`
+    # if you ever need direct local access for debugging.)
+    networks:
+      default:
+      caddy_default:
+        aliases:
+          - snappeal-wiki
     volumes:
       - ./wiki/docs:/docs/docs
       - ./wiki/mkdocs.yml:/docs/mkdocs.yml
     command: ["serve", "--dev-addr=0.0.0.0:8000", "--watch-theme"]
     restart: unless-stopped
+
+networks:
+  default:
+  caddy_default:
+    external: true

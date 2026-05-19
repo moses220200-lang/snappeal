@@ -1,6 +1,13 @@
 # Homepage (desktop / tablet)
 
-The public-facing **marketing homepage** at `snappeal.ai`. What a first-time visitor sees before they install the PWA or open the app. Responsive — designed for desktop, scales down to tablet and mobile via container queries.
+The public-facing **landing page** at `snappeal.ai/`. **It is the gateway *before* the app — not the app itself.** Its job is to convince a visitor to install Snappeal, and to route them to the right install path:
+
+- **iPhone Safari** → tap *Get Started* → App Store badge (when native wrapper ships, v0.3) or PWA install prompt (v0.1/v0.2).
+- **Android Chrome** → Play Store badge or PWA install prompt.
+- **Desktop Chrome/Edge** → PWA install prompt; falls back to *"Open the web app on your phone"* with a QR code.
+- **Already-installed users** → *Open app* deep-link.
+
+Responsive — designed for desktop, scales down to tablet and mobile via container queries. The app itself (Home / Cases / Camera / Profile tabs) lives at `app.snappeal.ai` (or the installed PWA chrome).
 
 Reference: [mockup #1 in mockups.md](../mockups.md#1-marketing-homepage-received-2026-05-19-evening). Implementation copy follows the mockup; brand is rendered as **Snappeal** (the mockup's "AppealMate" wordmark is a designer working name only).
 

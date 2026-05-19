@@ -174,32 +174,32 @@ A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mo
 - Responsive PWA: designed-for-desktop on homepage, mobile-first inside the app.
 - App Store + Google Play badges added below "How it works" (greyed/coming-soon until v0.3 native wrappers ship).
 
-### F2. 🔴 *"Expert Appeal Writers"* / *"Our team creates strong, personalised appeals"*
+### F2. ✅ *"Expert Appeal Writers"* — adopt safe interpretation (no "experts" framing)
 - **Conflict**: Reintroduces the "experts" framing locked out by [C1](#c1-voice-decided--we-draft-no-experts-framing). DoNotPay-style FTC exposure risk.
 - **Action**: In the homepage spec we render the trust card as **"AI-Drafted Appeals"** with the body *"Snappeal drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."*
 - **Needs user confirmation** if you want to override C1.
 
-### F3. 🔴 *"No Win, No Fee"*
+### F3. ✅ *"No Win, No Fee"* — adopt safe interpretation (£2.99 non-refundable stays)
 - **Conflict**: Directly contradicts the locked **£2.99 one-off non-refundable** pricing model. "No Win, No Fee" is an outcome-linked pricing model — the opposite of what we documented and the opposite of what protects us from chargeback liability (risks R9).
 - **Action**: In the homepage spec we render the card as **"Pay only £2.99 — one-off, non-refundable"** with the rationale *"You pay for the work we draft and submit, not for the outcome."*
 - **Needs user confirmation** if you want to actually pivot to No Win, No Fee — this is a significant business-model change (revenue model becomes outcome-contingent; refund-handling, escrow, KYC obligations all change).
 
-### F4. 🔴 *"We send your appeal to the landowner on your behalf"*
+### F4. ✅ *"…to the landowner"* — adopt safe interpretation ("…to the issuing council")
 - **Conflict**: "Landowner" implies **private parking operators** (ParkingEye, NCP, retail car parks) — out of scope per `features.md`. Council PCNs are sent to the issuing authority (Westminster, TfL, etc.), not a landowner.
 - **Action**: Homepage spec renders step 3 as **"We send your appeal to the issuing council's portal (or by email if their portal's down)."**
 - **Needs user confirmation** if you actually want to expand scope to private parking (a meaningfully different product — different statutory regime, different appeal body, different evidence).
 
-### F5. 🔴 *"Made for drivers in the UK"* (hero pill)
+### F5. ✅ *"Made for drivers in the UK"* — adopt safe interpretation ("…in London")
 - **Conflict**: Reintroduces UK scope, which was locked to London-only in [A2](#a2--geographic-scope-decided--london-only-for-v01).
 - **Action**: Homepage spec renders the pill as **🇬🇧 Made for drivers in London**.
 - **Needs user confirmation** if you want to reverse A2.
 
-### F6. 🟡 *"Excellent · 4.7 out of 5 on Trustpilot"* (pre-launch trust signal)
+### F6. ✅ Pre-launch Trustpilot — omit in v0.1, surface real reviews from v0.2
 - **Conflict**: We can't show a Trustpilot rating before users have rated us. Showing one fabricated is a regulatory + reputational risk (ASA UK rules on misleading claims).
 - **Action**: Homepage spec omits the Trustpilot block in v0.1. Re-add in v0.2+ once we have real Trustpilot reviews. *"Thousands of London drivers trust Snappeal"* badge similarly replaced with *"Built for London drivers"* until real volume justifies the claim.
 - No user reconciliation needed — this is a compliance call.
 
-### F7. 🟡 *"We Fight. You Win."* / *"We fight your parking tickets"*
+### F7. ✅ *"We Fight. You Win."* — soften to honest voice ("We draft and submit")
 - **Conflict (minor)**: Combative "fight/win" framing conflicts with the locked honest "we draft and submit" voice in [values.md](../business/values.md) and [risks.md](../business/risks.md) (R2 SRA risk).
 - **Action**: Homepage spec softens step 4 to **"We Stay With You"** with body *"We notify you when the council responds. If your appeal succeeds, the PCN is cancelled."* Top-nav sub-tagline "We fight your parking tickets" softened to **"We draft and submit your parking-ticket appeal."**
 - **Open to user input**: the "fight" framing is more emotionally engaging and might convert better; the trade-off is regulatory exposure. Marketing-side decision.
