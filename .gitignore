@@ -1,0 +1,49 @@
+# MkDocs build output
+site/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.python-version
+
+# Node (Phase B onward)
+node_modules/
+.next/
+.turbo/
+dist/
+
+# Environments
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Docker
+.docker/
+
+# Playwright-MCP transient artefacts (browser snapshots, page YAML dumps)
+.playwright-mcp/
+
+# Ad-hoc verification screenshots
+/wiki-home.png
+/wiki-architecture.png
+/wiki-councils.png
+/wiki-mockup-page.png
+/snappeal-tunnel.png
+/snappeal-taps.png

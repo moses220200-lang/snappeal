@@ -1,0 +1,152 @@
+site_name: Snappeal
+site_description: Snappeal a London parking ticket in under five taps.
+site_author: Snappeal
+copyright: Copyright &copy; 2026 Snappeal
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  font:
+    text: Inter
+    code: IBM Plex Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mermaid2
+  - glightbox
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      fallback_to_build_date: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - Business:
+    - business/index.md
+    - Mission: business/mission.md
+    - Vision: business/vision.md
+    - Values: business/values.md
+    - Business plan: business/business-plan.md
+    - Market: business/market.md
+    - Pricing: business/pricing.md
+    - Competitive landscape: business/competitive-landscape.md
+    - Go-to-market: business/go-to-market.md
+    - Risks: business/risks.md
+    - Roadmap: business/roadmap.md
+    - Data gaps: business/data-gaps.md
+  - Product:
+    - product/index.md
+    - Overview: product/overview.md
+    - User flow: product/user-flow.md
+    - Features: product/features.md
+    - Design principles: product/design-principles.md
+    - Brand: product/brand.md
+    - Mockups: product/mockups.md
+    - v0.1 mockup audit: product/v0-1-mockup-audit.md
+  - Architecture:
+    - architecture/index.md
+    - System overview: architecture/system-overview.md
+    - Data model: architecture/data-model.md
+    - AI pipeline: architecture/ai-pipeline.md
+    - Submission engine: architecture/submission-engine.md
+    - Knowledge base: architecture/knowledge-base.md
+    - Auth: architecture/auth.md
+    - Infrastructure: architecture/infra.md
+  - Councils:
+    - councils/index.md
+    - Westminster: councils/westminster.md
+    - Kensington and Chelsea: councils/kensington-chelsea.md
+    - Camden: councils/camden.md
+    - Lambeth: councils/lambeth.md
+    - Islington: councils/islington.md
+    - City of London: councils/city-of-london.md
+    - TfL: councils/tfl.md
+  - Legal:
+    - legal/index.md
+    - TMA 2004 grounds: legal/tma-2004.md
+    - Contravention codes: legal/contravention-codes.md
+    - Representations & appeals: legal/representations-and-appeals.md
+  - Users:
+    - users/index.md
+    - How to appeal: users/how-to-appeal.md
+    - Good evidence: users/what-good-evidence-looks-like.md
+    - FAQ: users/faq.md
+  - Admin:
+    - admin/index.md
+    - Managing councils: admin/managing-councils.md
+    - Managing users: admin/managing-users.md
+    - Monitoring appeals: admin/monitoring-appeals.md

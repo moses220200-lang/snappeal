@@ -1,0 +1,11 @@
+services:
+  wiki:
+    build: ./wiki
+    container_name: snappeal-wiki
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./wiki/docs:/docs/docs
+      - ./wiki/mkdocs.yml:/docs/mkdocs.yml
+    command: ["serve", "--dev-addr=0.0.0.0:8000", "--watch-theme"]
+    restart: unless-stopped

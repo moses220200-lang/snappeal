@@ -1,0 +1,102 @@
+/* Snappeal — brand tokens
+ * Single source of truth for colour, typography and spacing.
+ * Imported by MkDocs (here) and re-used by the Next.js admin in Phase B.
+ */
+
+:root {
+  --appeal-blue: #2563eb;
+  --appeal-blue-soft: rgba(37, 99, 235, 0.12);
+  --appeal-surface: #ffffff;
+  --appeal-bg: #f8fafc;
+  --appeal-text: #0f172a;
+  --appeal-muted: #64748b;
+  --appeal-border: #e2e8f0;
+  --appeal-success: #16a34a;
+  --appeal-warning: #d97706;
+  --appeal-danger: #dc2626;
+
+  --md-primary-fg-color: var(--appeal-blue);
+  --md-primary-fg-color--light: #3b82f6;
+  --md-primary-fg-color--dark: #1d4ed8;
+  --md-accent-fg-color: var(--appeal-blue);
+  --md-typeset-a-color: var(--appeal-blue);
+}
+
+[data-md-color-scheme="slate"] {
+  --appeal-surface: #0f172a;
+  --appeal-bg: #020617;
+  --appeal-text: #f8fafc;
+  --appeal-muted: #94a3b8;
+  --appeal-border: #1e293b;
+  --md-primary-fg-color: #3b82f6;
+  --md-accent-fg-color: #3b82f6;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Hero cards on the landing page */
+.appeal-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.appeal-hero a {
+  display: block;
+  padding: 1.25rem;
+  border: 1px solid var(--appeal-border);
+  border-radius: 12px;
+  background: var(--appeal-surface);
+  text-decoration: none;
+  color: var(--appeal-text);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.appeal-hero a:hover {
+  border-color: var(--appeal-blue);
+  transform: translateY(-1px);
+}
+
+.appeal-hero a strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--appeal-text);
+  font-size: 1.05rem;
+}
+
+.appeal-hero a span {
+  color: var(--appeal-muted);
+  font-size: 0.9rem;
+}
+
+/* Stat callout pills used in business/market pages */
+.stat {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: var(--appeal-blue-soft);
+  color: var(--appeal-blue);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+/* Tighter table styling for council/contravention listings */
+.md-typeset table:not([class]) {
+  font-size: 0.85rem;
+}
+
+.md-typeset table:not([class]) th {
+  font-weight: 600;
+  background: var(--appeal-blue-soft);
+}
