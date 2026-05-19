@@ -1,36 +1,52 @@
 @import "tailwindcss";
 
 @theme {
-  /* Snappeal brand tokens — single source of truth.
+  /* Snappeal brand tokens — Apple iOS system palette.
+   *
+   * Colour psychology, in plain English:
+   *   System Blue (#007AFF)  — trust + authority + action. Used by every
+   *                            financial / legal / system surface a user
+   *                            recognises. Banks, Stripe, iOS itself.
+   *   System Green (#34C759) — positive outcome, "you'll win", money-back,
+   *                            completed steps.
+   *   Near-black navy        — typography baseline. Reads as serious
+   *   (#0a1929)                legal-adjacent without being aggressive.
+   *   System grey (#E5E5EA)  — borders, dividers, the *deference* layer.
+   *
    * Synced with wiki/docs/stylesheets/extra.css.
-   * Primary: purple #6c5ce7. Navy #0b1f44 is the typographic baseline.
    */
-  --color-snappeal-primary: #6c5ce7;
-  --color-snappeal-primary-50: #f3f1fe;
-  --color-snappeal-primary-100: #e6e2fc;
-  --color-snappeal-primary-200: #cdc5f9;
-  --color-snappeal-primary-300: #b1a7f4;
-  --color-snappeal-primary-400: #8a7bee;
-  --color-snappeal-primary-500: #6c5ce7;
-  --color-snappeal-primary-600: #5544d6;
-  --color-snappeal-primary-700: #4536b8;
-  --color-snappeal-primary-800: #382c93;
-  --color-snappeal-primary-900: #2e2475;
 
-  --color-snappeal-navy: #0b1f44;
-  --color-snappeal-navy-soft: #1e335c;
+  /* Primary — System Blue */
+  --color-snappeal-primary: #007aff;
+  --color-snappeal-primary-50: #e6f1ff;
+  --color-snappeal-primary-100: #cce4ff;
+  --color-snappeal-primary-200: #99c9ff;
+  --color-snappeal-primary-300: #66adff;
+  --color-snappeal-primary-400: #3392ff;
+  --color-snappeal-primary-500: #007aff;
+  --color-snappeal-primary-600: #0064d6;
+  --color-snappeal-primary-700: #004fae;
+  --color-snappeal-primary-800: #003d85;
+  --color-snappeal-primary-900: #002a5c;
 
-  --color-snappeal-bg: #f6f7fb;
+  /* Brand navy — typography + dark surfaces */
+  --color-snappeal-navy: #0a1929;
+  --color-snappeal-navy-soft: #1c2e44;
+
+  /* Surfaces */
+  --color-snappeal-bg: #fafafa;
   --color-snappeal-surface: #ffffff;
-  --color-snappeal-muted: #64748b;
-  --color-snappeal-border: #e2e8f0;
+  --color-snappeal-muted: #6e6e73; /* Apple system gray */
+  --color-snappeal-border: #e5e5ea; /* Apple system gray 5 */
 
-  --color-snappeal-success: #16a34a;
-  --color-snappeal-success-soft: #dcfce7;
-  --color-snappeal-warning: #d97706;
-  --color-snappeal-danger: #dc2626;
+  /* Functional */
+  --color-snappeal-success: #34c759;
+  --color-snappeal-success-soft: #e6f7eb;
+  --color-snappeal-warning: #ff9500;
+  --color-snappeal-danger: #ff3b30;
 
-  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
 }
 
 :root {
@@ -41,6 +57,9 @@
 html,
 body {
   min-height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -51,17 +70,17 @@ a {
   color: inherit;
 }
 
-/* Soft gradient backdrop for the hero */
+/* Hero backdrop — single soft radial, no purple */
 .hero-bg {
   background:
-    radial-gradient(60% 50% at 15% 30%, rgba(108, 92, 231, 0.10) 0%, transparent 60%),
-    radial-gradient(50% 40% at 90% 10%, rgba(108, 92, 231, 0.08) 0%, transparent 60%),
+    radial-gradient(60% 50% at 15% 30%, rgba(0, 122, 255, 0.06) 0%, transparent 60%),
+    radial-gradient(50% 40% at 90% 10%, rgba(0, 122, 255, 0.05) 0%, transparent 60%),
     var(--color-snappeal-bg);
 }
 
-/* Dotted-grid texture behind the phone visual */
+/* Dot pattern — for decorative use only */
 .dots-bg {
-  background-image: radial-gradient(circle at 1px 1px, rgba(108, 92, 231, 0.18) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, rgba(10, 25, 41, 0.18) 1px, transparent 0);
   background-size: 16px 16px;
 }
 

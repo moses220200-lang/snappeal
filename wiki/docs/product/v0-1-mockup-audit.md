@@ -166,7 +166,7 @@ A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mo
 
 ### F1. ✅ Visual direction — adopted
 - **Decision (2026-05-19 evening)**: adopt the homepage mockup's visual structure for `snappeal.ai`.
-- Purple primary `#6c5ce7` replaces the earlier blue placeholder ([brand.md](../product/brand.md) updated).
+- Purple primary `#007aff` replaces the earlier blue placeholder ([brand.md](../product/brand.md) updated).
 - Navy shield with white **S** is the logo silhouette ([logo.svg](../assets/logo.svg) regenerated).
 - Hero structure: 🇬🇧 pill → headline with purple-highlighted noun → body → two CTAs → Trustpilot block.
 - 4-card trust strip + 4-step "How it works".

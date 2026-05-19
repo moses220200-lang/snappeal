@@ -1,25 +1,26 @@
 /* Snappeal — brand tokens
  * Single source of truth for colour, typography and spacing.
- * Imported by MkDocs (here) and re-used by the Next.js admin in Phase B
- * and the customer PWA in Phase C.
+ * Synced with apps/web/app/globals.css.
  *
- * Primary colour: purple (#6c5ce7), confirmed from the homepage mockup.
- * Navy (#0b1f44) is the typographic baseline.
+ * Palette: Apple iOS system. Chosen for the psychology fit:
+ *   System Blue #007AFF — trust, action, financial-services credibility.
+ *   System Green #34C759 — positive outcome, completed states.
+ *   Near-black navy #0a1929 — typography baseline.
+ *   System grey #E5E5EA — borders, dividers, deference.
  */
 
 :root {
-  /* Snappeal tokens (canonical) */
-  --snappeal-primary: #6c5ce7;
-  --snappeal-primary-soft: rgba(108, 92, 231, 0.12);
-  --snappeal-navy: #0b1f44;
+  --snappeal-primary: #007aff;
+  --snappeal-primary-soft: rgba(0, 122, 255, 0.10);
+  --snappeal-navy: #0a1929;
   --snappeal-surface: #ffffff;
-  --snappeal-bg: #f6f7fb;
-  --snappeal-text: #0b1f44;
-  --snappeal-muted: #64748b;
-  --snappeal-border: #e2e8f0;
-  --snappeal-success: #16a34a;
-  --snappeal-warning: #d97706;
-  --snappeal-danger: #dc2626;
+  --snappeal-bg: #fafafa;
+  --snappeal-text: #0a1929;
+  --snappeal-muted: #6e6e73;
+  --snappeal-border: #e5e5ea;
+  --snappeal-success: #34c759;
+  --snappeal-warning: #ff9500;
+  --snappeal-danger: #ff3b30;
 
   /* Legacy aliases — kept until the transition is complete */
   --appeal-blue: var(--snappeal-primary);
@@ -35,24 +36,21 @@
 
   /* Material theme overrides */
   --md-primary-fg-color: var(--snappeal-primary);
-  --md-primary-fg-color--light: #8377ec;
-  --md-primary-fg-color--dark: #4b3fcf;
+  --md-primary-fg-color--light: #3392ff;
+  --md-primary-fg-color--dark: #0064d6;
   --md-accent-fg-color: var(--snappeal-primary);
   --md-typeset-a-color: var(--snappeal-primary);
 }
 
 [data-md-color-scheme="slate"] {
-  --snappeal-primary: #7c6df0;
-  --snappeal-primary-soft: rgba(124, 109, 240, 0.16);
+  --snappeal-primary: #3392ff;
+  --snappeal-primary-soft: rgba(51, 146, 255, 0.16);
   --snappeal-surface: #0f172a;
   --snappeal-bg: #020617;
-  --snappeal-text: #f8fafc;
-  --snappeal-navy: #f8fafc;
+  --snappeal-text: #fafafa;
+  --snappeal-navy: #fafafa;
   --snappeal-muted: #94a3b8;
   --snappeal-border: #1e293b;
-  --snappeal-success: #22c55e;
-  --snappeal-warning: #f59e0b;
-  --snappeal-danger: #ef4444;
   --md-primary-fg-color: var(--snappeal-primary);
   --md-accent-fg-color: var(--snappeal-primary);
 }

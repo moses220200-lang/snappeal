@@ -28,9 +28,9 @@ export function BottomNav() {
                 key={href}
                 href={href}
                 aria-label={label}
-                className="-mt-6 size-14 rounded-full bg-snappeal-primary text-white flex items-center justify-center shadow-lg shadow-snappeal-primary/40 ring-4 ring-white hover:bg-snappeal-primary-600 transition active:scale-95"
+                className="-mt-6 size-14 rounded-full bg-snappeal-primary flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(0,122,255,0.45)] ring-4 ring-white hover:bg-snappeal-primary-600 transition active:scale-95"
               >
-                <Icon className="size-6" />
+                <Icon className="size-6 text-white" strokeWidth={2.25} />
               </Link>
             );
           }

@@ -18,7 +18,7 @@ export function HorizontalTimeline({ steps }: { steps: TimelineStep[] }) {
         >
           <span className="relative z-10 mb-2">
             {s.state === "completed" && (
-              <span className="block size-6 rounded-full bg-snappeal-primary text-white flex items-center justify-center shadow-sm">
+              <span className="block size-6 rounded-full bg-snappeal-success text-white flex items-center justify-center shadow-sm">
                 <Check className="size-3.5" strokeWidth={3} />
               </span>
             )}

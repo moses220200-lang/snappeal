@@ -2,9 +2,10 @@ import Link from "next/link";
 import {
   Camera,
   ChevronLeft,
-  FileText,
   Image as ImageIcon,
   Keyboard,
+  Scan,
+  ShieldCheck,
 } from "lucide-react";
 
 const METHODS = [
@@ -13,7 +14,7 @@ const METHODS = [
     href: "/app/notes?from=scan",
     icon: Camera,
     title: "Scan Ticket",
-    body: "Use your camera to scan the PCN. Fastest path.",
+    body: "Use your camera",
     primary: true,
   },
   {
@@ -21,15 +22,25 @@ const METHODS = [
     href: "/app/notes?from=upload",
     icon: ImageIcon,
     title: "Upload Photos",
-    body: "Pick a photo of the PCN from your library.",
+    body: "From your library",
   },
   {
     id: "manual",
     href: "/app/notes?from=manual",
     icon: Keyboard,
     title: "Enter PCN",
-    body: "Type the PCN reference and details by hand.",
+    body: "Type it in",
   },
+];
+
+const FIELDS = [
+  "Issuer",
+  "PCN reference",
+  "Vehicle reg",
+  "Contravention code",
+  "Location",
+  "Date & time",
+  "Amount",
 ];
 
 export default function CapturePage() {
@@ -43,66 +54,120 @@ export default function CapturePage() {
         >
           <ChevronLeft className="size-5" />
         </Link>
-        <h1 className="text-xl font-bold text-snappeal-navy">
-          Add your parking ticket
-        </h1>
+        <div>
+          <h1 className="text-xl font-bold text-snappeal-navy">
+            Add your parking ticket
+          </h1>
+          <p className="text-xs text-snappeal-muted mt-0.5">
+            Step 1 of 4 · Photos
+          </p>
+        </div>
       </header>
 
-      <p className="text-sm text-snappeal-muted">
-        Pick the way that&apos;s easiest. We&apos;ll guide you from here.
-      </p>
+      {/* Viewfinder hero */}
+      <Link
+        href="/app/notes?from=scan"
+        className="block relative rounded-3xl overflow-hidden bg-snappeal-navy aspect-[4/3] hover:opacity-95 transition active:scale-[0.99]"
+      >
+        {/* Faint grid */}
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.18) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
+        {/* Corner brackets — viewfinder reticle */}
+        <div className="absolute inset-8 pointer-events-none">
+          <span className="absolute -top-2 -left-2 size-8 border-t-2 border-l-2 border-white rounded-tl-xl" />
+          <span className="absolute -top-2 -right-2 size-8 border-t-2 border-r-2 border-white rounded-tr-xl" />
+          <span className="absolute -bottom-2 -left-2 size-8 border-b-2 border-l-2 border-white rounded-bl-xl" />
+          <span className="absolute -bottom-2 -right-2 size-8 border-b-2 border-r-2 border-white rounded-br-xl" />
+        </div>
+        {/* Centered prompt */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center px-6 gap-3">
+          <span className="size-14 rounded-full bg-white/15 backdrop-blur flex items-center justify-center">
+            <Scan className="size-6" />
+          </span>
+          <div>
+            <p className="text-base font-bold">Frame your PCN here</p>
+            <p className="text-xs text-white/75 mt-1 max-w-[220px]">
+              Make sure the reference, vehicle reg, code and amount are all in
+              shot.
+            </p>
+          </div>
+          <span className="rounded-full bg-snappeal-primary px-4 py-2 text-xs font-semibold mt-1 inline-flex items-center gap-1.5 shadow-lg shadow-black/30">
+            <Camera className="size-3.5" /> Open camera
+          </span>
+        </div>
+      </Link>
 
-      <div className="flex flex-col gap-3">
+      {/* 3-up shortcut grid */}
+      <div className="grid grid-cols-3 gap-2">
         {METHODS.map(({ id, href, icon: Icon, title, body, primary }) => (
           <Link
             key={id}
             href={href}
-            className={`rounded-2xl border p-4 flex items-start gap-4 transition ${
+            className={`rounded-2xl border p-3 flex flex-col items-center gap-1.5 text-center transition ${
               primary
-                ? "bg-snappeal-primary border-snappeal-primary text-white hover:bg-snappeal-primary-600"
+                ? "bg-snappeal-primary border-snappeal-primary text-white hover:bg-snappeal-primary-600 shadow-lg shadow-snappeal-primary/30"
                 : "bg-white border-snappeal-border hover:border-snappeal-primary"
             }`}
           >
             <span
-              className={`size-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+              className={`size-10 rounded-xl flex items-center justify-center ${
                 primary
                   ? "bg-white/20 text-white"
                   : "bg-snappeal-primary-100 text-snappeal-primary"
               }`}
             >
-              <Icon className="size-6" />
+              <Icon className="size-5" />
             </span>
-            <div className="flex-1">
-              <p
-                className={`text-base font-bold ${primary ? "text-white" : "text-snappeal-navy"}`}
-              >
-                {title}
-              </p>
-              <p
-                className={`text-xs mt-0.5 leading-relaxed ${
-                  primary ? "text-white/85" : "text-snappeal-muted"
-                }`}
-              >
-                {body}
-              </p>
-            </div>
+            <p
+              className={`text-[12px] font-bold leading-tight ${
+                primary ? "text-white" : "text-snappeal-navy"
+              }`}
+            >
+              {title}
+            </p>
+            <p
+              className={`text-[10px] leading-tight ${
+                primary ? "text-white/80" : "text-snappeal-muted"
+              }`}
+            >
+              {body}
+            </p>
           </Link>
         ))}
       </div>
 
-      <div className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-start gap-3">
-        <span className="size-9 rounded-full bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">
-          <FileText className="size-[1.125rem]" />
-        </span>
-        <div>
-          <p className="text-sm font-semibold text-snappeal-navy">
-            What we read from the photo
-          </p>
-          <p className="text-xs text-snappeal-muted mt-0.5 leading-relaxed">
-            Issuer · PCN reference · vehicle reg · contravention code ·
-            location · date · amount. You&apos;ll review everything before we
-            draft your letter.
-          </p>
+      {/* What we read from the photo */}
+      <div className="rounded-2xl bg-white border border-snappeal-border p-4">
+        <div className="flex items-start gap-3 mb-3">
+          <span className="size-9 rounded-full bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">
+            <ShieldCheck className="size-[1.125rem]" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-snappeal-navy">
+              What we read from your PCN
+            </p>
+            <p className="text-xs text-snappeal-muted mt-0.5 leading-relaxed">
+              You&apos;ll review everything before we draft your letter — and
+              you can edit any field by hand.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {FIELDS.map((f) => (
+            <span
+              key={f}
+              className="text-[11px] font-medium rounded-full bg-snappeal-primary-50 text-snappeal-primary-700 px-2.5 py-1"
+            >
+              {f}
+            </span>
+          ))}
         </div>
       </div>
     </div>

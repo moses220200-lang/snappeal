@@ -104,7 +104,7 @@ function StartAppealHero() {
           <g transform="translate(120 100)">
             <path
               d="M0 0 L 32 9 V 36 C 32 50 22 60 16 64 C 10 60 0 50 0 36 Z"
-              fill="#6c5ce7"
+              fill="#007aff"
             />
             <path
               d="M8 36 L 14 42 L 24 30"

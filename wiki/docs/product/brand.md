@@ -32,18 +32,26 @@ Defined as CSS variables in `wiki/docs/stylesheets/extra.css` — single source 
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--snappeal-primary` | `#6c5ce7` | `#7c6df0` | Primary CTAs, logo fill, in-progress accents |
-| `--snappeal-primary-soft` | `rgba(108,92,231,0.12)` | `rgba(124,109,240,0.16)` | Hover wash, soft fills, status pills |
-| `--snappeal-navy` | `#0b1f44` | `#f8fafc` | Headings, body text on light; surface in dark |
-| `--snappeal-surface` | `#ffffff` | `#0f172a` | Card backgrounds, modal sheets |
-| `--snappeal-bg` | `#f6f7fb` | `#020617` | Page background |
-| `--snappeal-muted` | `#64748b` | `#94a3b8` | Secondary text, captions |
-| `--snappeal-border` | `#e2e8f0` | `#1e293b` | Dividers, input borders |
-| `--snappeal-success` | `#16a34a` | `#22c55e` | Completed timeline steps, success states |
-| `--snappeal-warning` | `#d97706` | `#f59e0b` | Warnings (rare) |
-| `--snappeal-danger` | `#dc2626` | `#ef4444` | Errors, destructive actions |
+| `--snappeal-primary` | `#007AFF` | `#3392FF` | Primary CTAs, logo fill, links, in-progress accents (iOS System Blue) |
+| `--snappeal-primary-soft` | `rgba(0,122,255,0.10)` | `rgba(51,146,255,0.16)` | Hover wash, soft fills, status pills |
+| `--snappeal-navy` | `#0A1929` | `#FAFAFA` | Headings + body text on light; primary surface in dark |
+| `--snappeal-surface` | `#FFFFFF` | `#0F172A` | Card backgrounds, modal sheets |
+| `--snappeal-bg` | `#FAFAFA` | `#020617` | Page background (Apple off-white) |
+| `--snappeal-muted` | `#6E6E73` | `#94A3B8` | Secondary text (Apple system gray) |
+| `--snappeal-border` | `#E5E5EA` | `#1E293B` | Dividers, input borders (Apple system gray 5) |
+| `--snappeal-success` | `#34C759` | `#34C759` | Completed states, positive outcomes (iOS Green) |
+| `--snappeal-warning` | `#FF9500` | `#FF9500` | Warnings (iOS Orange — rare in product UI) |
+| `--snappeal-danger` | `#FF3B30` | `#FF3B30` | Errors, destructive actions (iOS Red) |
 
-**Primary is purple `#6c5ce7`** — decided from the homepage mockup, replacing the earlier blue placeholder. Navy `#0b1f44` is the typographic baseline. Red stays out of the brand: the PCN itself is yellow-and-red and we visually distance ourselves from the council's enforcement aesthetic. The legacy `--appeal-*` variables in `extra.css` are kept as aliases for the transition.
+**Primary is iOS System Blue `#007AFF`** — decided after a colour-psychology review of the earlier purple. The reasoning, in plain English:
+
+- **Trust + authority + action.** System Blue is the colour the user already reads as financial-services + legal-system competence on their phone (Apple iOS), in their wallet (Stripe, Chase, Monzo), and on every gov.uk page that matters. For a stressed PCN recipient, that recognition equity beats any clever brand-blue we could mint ourselves.
+- **Not purple.** Purple reads as luxury / subscription / creativity (Twitch, Yahoo, Asana). Wrong vibe for "I have £160 to lose if this doesn't work".
+- **Not the PCN's red+yellow.** We visually distance ourselves from the council's enforcement aesthetic.
+
+System Green `#34C759` is the secondary accent, used for completed states and positive outcomes. Near-black navy `#0a1929` is the typography baseline. Surfaces are pure white on a `#FAFAFA` off-white page; borders are Apple's system grey `#E5E5EA` — the "deference" layer in Steve Jobs's *content over chrome* design principle.
+
+The legacy `--appeal-*` variables in `extra.css` are kept as aliases for the transition.
 
 ## Typography
 
@@ -62,7 +70,7 @@ Heading scale (MkDocs follows the same):
 
 ## Logo
 
-A **navy shield** containing a white **S** in the same Inter typeface as the wordmark. The shield (rather than a rounded square) gives the brand a "protect / defend" reading, consistent with appealing on the user's behalf. Vector source: `wiki/docs/assets/logo.svg`. Two preferred presentations:
+A **System Blue shield** containing a white **S** in the same Inter typeface as the wordmark. The shield (rather than a rounded square) gives the brand a "protect / defend" reading, consistent with appealing on the user's behalf. Vector source: `wiki/docs/assets/logo.svg`. Two preferred presentations:
 
 - **App icon** — 1024×1024 master, no padding; OS rounding handles the corner.
 - **Wordmark** — shield to the left of "Snappeal" set in Inter 700, navy on light backgrounds.

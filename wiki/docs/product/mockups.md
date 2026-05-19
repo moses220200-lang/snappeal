@@ -31,7 +31,7 @@ The public-facing **homepage** at `snappeal.ai` (or chosen domain). What a first
 
 ### Visual style
 
-- **Primary**: purple/violet (≈ `#6c5ce7` — exact swatch TBC from designer)
+- **Primary**: purple/violet (≈ `#007aff` — exact swatch TBC from designer)
 - **Secondary**: navy (logo, body text)
 - **Backgrounds**: very light grey (`~#f6f7fb`) panels, white cards
 - **Status accents**: green (completed), purple (in progress), grey (pending)
