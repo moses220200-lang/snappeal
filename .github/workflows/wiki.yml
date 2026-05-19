@@ -1,0 +1,33 @@
+name: Wiki build check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+      - '.github/workflows/wiki.yml'
+  pull_request:
+    paths:
+      - 'wiki/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: mkdocs build --strict
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install mkdocs + plugins
+        working-directory: wiki
+        run: pip install -r requirements.txt
+
+      - name: Build wiki (strict — fails on warnings)
+        working-directory: wiki
+        run: mkdocs build --strict
