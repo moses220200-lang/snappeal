@@ -10,8 +10,11 @@ let stripeClient: Stripe | null = null;
  */
 export function stripe(): Stripe {
   if (!stripeClient) {
+    // We don't pin `apiVersion` — letting the SDK use its compiled-in
+    // default avoids breakage when the version string is removed from
+    // @types/stripe between releases. Stripe accepts an undefined
+    // value and falls back to the account's default API version.
     stripeClient = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
-      apiVersion: "2025-09-30.clover" as Stripe.LatestApiVersion,
       typescript: true,
       appInfo: { name: "Snappeal", version: "0.1.0" },
     });

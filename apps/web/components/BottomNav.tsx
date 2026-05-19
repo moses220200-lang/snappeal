@@ -4,13 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Camera, FileText, Home, Lightbulb, User } from "lucide-react";
 
-const TABS = [
+type Tab = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  primary?: boolean;
+};
+
+const TABS: readonly Tab[] = [
   { href: "/app", label: "Home", icon: Home },
   { href: "/app/tickets", label: "Tickets", icon: FileText },
   { href: "/app/capture", label: "Camera", icon: Camera, primary: true },
   { href: "/app/tips", label: "Tips", icon: Lightbulb },
   { href: "/app/profile", label: "Profile", icon: User },
-] as const;
+];
 
 export function BottomNav() {
   const pathname = usePathname();
