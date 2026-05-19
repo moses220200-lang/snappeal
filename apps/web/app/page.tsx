@@ -15,6 +15,7 @@ import {
 import { Wordmark } from "@/components/Logo";
 import { PhoneMockup } from "@/components/PhoneMockup";
 import { AppStoreBadge, GooglePlayBadge } from "@/components/StoreBadges";
+import { WindscreenBackdrop } from "@/components/WindscreenBackdrop";
 
 export default function Home() {
   return (
@@ -36,7 +37,7 @@ function Header() {
     <header className="sticky top-0 z-50 border-b border-snappeal-border bg-snappeal-bg/85 backdrop-blur">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
         <Wordmark />
-        <nav className="hidden lg:flex items-center gap-7 text-sm font-medium text-snappeal-navy">
+        <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-snappeal-navy">
           <Link href="#how" className="hover:text-snappeal-primary transition">
             How it works
           </Link>
@@ -75,7 +76,7 @@ function Header() {
 function Hero() {
   return (
     <section className="hero-bg relative overflow-hidden">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 lg:py-20 grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 md:py-20 grid md:grid-cols-2 gap-12 md:gap-8 items-center">
         <div className="max-w-xl">
           <div className="inline-flex items-center gap-2 rounded-full bg-white border border-snappeal-border px-3.5 py-1.5 text-xs font-semibold text-snappeal-navy shadow-sm">
             <span aria-hidden>🇬🇧</span>
@@ -131,9 +132,42 @@ function Hero() {
           </div>
         </div>
 
-        <div className="relative">
-          <div className="absolute inset-0 -z-10 dots-bg opacity-60" />
-          <PhoneMockup />
+        <div className="relative isolate min-h-[600px] sm:min-h-[640px] flex items-center justify-center">
+          <WindscreenBackdrop />
+          <div className="relative">
+            <PhoneMockup />
+            {/* Floating trust badge with curly arrow — positioned outside the phone */}
+            <div className="hidden sm:flex absolute -bottom-2 -right-14 lg:-right-20 w-44 rounded-2xl bg-white border border-snappeal-border shadow-2xl shadow-black/10 p-3 items-start gap-2 z-20">
+              <div className="size-9 rounded-full bg-snappeal-primary-100 flex items-center justify-center flex-shrink-0">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="size-5 text-snappeal-primary"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M12 2 21 5v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V5l9-3z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-snappeal-navy leading-tight">
+                  Thousands of London drivers trust Snappeal
+                </p>
+              </div>
+              {/* Curly arrow pointing back to phone */}
+              <svg
+                viewBox="0 0 60 60"
+                aria-hidden
+                className="absolute -left-12 -top-2 size-14 text-snappeal-primary/70 -rotate-12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              >
+                <path d="M52 12 C 40 18, 28 28, 22 42" />
+                <path d="M22 42 l 6 -3 M 22 42 l 4 6" />
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -169,7 +203,7 @@ function TrustStrip() {
       id="why"
       className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 -mt-6 relative z-10"
     >
-      <div className="rounded-3xl bg-white border border-snappeal-border shadow-xl shadow-snappeal-primary/5 p-6 sm:p-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+      <div className="rounded-3xl bg-white border border-snappeal-border shadow-xl shadow-snappeal-primary/5 p-6 sm:p-8 grid sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
         {items.map(({ icon: Icon, title, body }) => (
           <div key={title} className="flex items-start gap-4">
             <span className="flex-shrink-0 size-11 rounded-full bg-snappeal-primary-100 flex items-center justify-center">
@@ -219,37 +253,54 @@ function HowItWorks() {
   ];
 
   return (
-    <section id="how" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
-      <h2 className="text-3xl sm:text-4xl font-bold text-snappeal-navy text-center tracking-tight">
-        How it works
-      </h2>
-      <p className="mt-3 text-snappeal-muted text-center max-w-2xl mx-auto">
-        Five taps. £2.99. Your London parking ticket appealed — drafted by AI,
-        submitted to the council, tracked end to end.
-      </p>
+    <section
+      id="how"
+      className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-10 lg:mt-16"
+    >
+      <div className="rounded-3xl bg-snappeal-primary-50/50 border border-snappeal-border/60 p-6 sm:p-10 lg:p-14">
+        <h2 className="text-3xl sm:text-4xl font-bold text-snappeal-navy text-center tracking-tight">
+          How it works
+        </h2>
+        <p className="mt-3 text-snappeal-muted text-center max-w-2xl mx-auto">
+          Five taps. £2.99. Your London parking ticket appealed — drafted by
+          AI, submitted to the council, tracked end to end.
+        </p>
 
-      <ol className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
-        {steps.map((step, i) => (
-          <li
-            key={step.n}
-            className="relative rounded-2xl bg-white border border-snappeal-border p-6"
-          >
-            <div className="absolute -top-3 left-6 size-7 rounded-full bg-snappeal-primary text-white text-xs font-bold flex items-center justify-center shadow-md">
-              {step.n}
-            </div>
-            <span className="block size-10 rounded-xl bg-snappeal-primary-100 flex items-center justify-center mb-4">
-              <step.icon className="size-5 text-snappeal-primary" />
-            </span>
-            <h3 className="font-bold text-snappeal-navy">{step.title}</h3>
-            <p className="text-sm text-snappeal-muted mt-1.5 leading-relaxed">
-              {step.body}
-            </p>
-            {i < steps.length - 1 && (
-              <ArrowRight className="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 size-5 text-snappeal-border" />
-            )}
-          </li>
-        ))}
-      </ol>
+        <ol className="mt-10 lg:mt-14 grid sm:grid-cols-2 md:grid-cols-4 gap-5 md:gap-6 relative">
+          {steps.map((step, i) => (
+            <li key={step.n} className="relative">
+              {/* Card */}
+              <div className="relative rounded-2xl bg-white border border-snappeal-border p-6 h-full">
+                {/* Big blue rounded-square step number — top-left */}
+                <div className="absolute -top-3.5 -left-3.5 size-9 rounded-xl bg-snappeal-primary text-white text-sm font-extrabold flex items-center justify-center shadow-lg shadow-snappeal-primary/40 ring-4 ring-snappeal-primary-50/60">
+                  {step.n}
+                </div>
+                {/* Icon */}
+                <span className="block size-12 rounded-2xl bg-snappeal-primary-100 flex items-center justify-center mb-4 ml-1">
+                  <step.icon className="size-6 text-snappeal-primary" />
+                </span>
+                <h3 className="text-lg font-bold text-snappeal-navy">
+                  {step.title}
+                </h3>
+                <p className="text-sm text-snappeal-muted mt-1.5 leading-relaxed">
+                  {step.body}
+                </p>
+              </div>
+
+              {/* Dashed connector arrow to next step (desktop only) */}
+              {i < steps.length - 1 && (
+                <span
+                  aria-hidden
+                  className="hidden md:flex absolute top-1/2 -right-4 -translate-y-1/2 z-10 items-center gap-0.5 text-snappeal-primary/55"
+                >
+                  <span className="block w-5 border-t-2 border-dashed border-current" />
+                  <ArrowRight className="size-3.5" strokeWidth={2.5} />
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
     </section>
   );
 }
@@ -260,7 +311,7 @@ function DownloadSection() {
       id="install"
       className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16 lg:pb-24"
     >
-      <div className="rounded-3xl bg-snappeal-navy text-white p-8 sm:p-12 lg:p-16 grid lg:grid-cols-2 gap-8 items-center">
+      <div className="rounded-3xl bg-snappeal-navy text-white p-8 sm:p-12 lg:p-16 grid md:grid-cols-2 gap-8 items-center">
         <div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
             Get Snappeal on your phone

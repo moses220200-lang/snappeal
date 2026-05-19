@@ -131,26 +131,6 @@ export function PhoneMockup() {
         </div>
       </div>
 
-      {/* Floating trust badge */}
-      <div className="absolute -bottom-3 -right-6 sm:-right-10 w-44 rounded-2xl bg-white border border-snappeal-border shadow-xl p-3 flex items-start gap-2">
-        <div className="size-9 rounded-full bg-snappeal-primary-100 flex items-center justify-center flex-shrink-0">
-          <svg
-            viewBox="0 0 24 24"
-            className="size-5 text-snappeal-primary"
-            fill="currentColor"
-          >
-            <path d="M12 2 21 5v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V5l9-3z" />
-          </svg>
-        </div>
-        <div>
-          <p className="text-[11px] font-bold text-snappeal-navy leading-tight">
-            Built for London drivers
-          </p>
-          <p className="text-[10px] text-snappeal-muted mt-0.5">
-            33 boroughs + TfL
-          </p>
-        </div>
-      </div>
     </div>
   );
 }
