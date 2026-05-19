@@ -1,7 +1,29 @@
-import Link from "next/link";
-import { Apple, CheckCircle2, ChevronLeft, CreditCard, Lock } from "lucide-react";
+"use client";
 
+import { useMemo } from "react";
+import Link from "next/link";
+import { CheckCircle2, ChevronLeft } from "lucide-react";
+import { StripePaymentForm } from "@/components/StripePaymentForm";
+
+/**
+ * v0.1 paywall — £2.99 one-off, non-refundable.
+ * Stripe Payment Element handles Apple Pay / Google Pay / card automatically
+ * (controlled by `automatic_payment_methods` on the PaymentIntent).
+ */
 export default function PaywallPage() {
+  // Anonymous session id — persists in localStorage so we can correlate
+  // the PaymentIntent metadata back to the local appeal record.
+  const sessionId = useMemo(() => {
+    if (typeof window === "undefined") return "ssr";
+    const KEY = "snappeal.sessionId";
+    let id = window.localStorage.getItem(KEY);
+    if (!id) {
+      id = `snap_${crypto.randomUUID()}`;
+      window.localStorage.setItem(KEY, id);
+    }
+    return id;
+  }, []);
+
   return (
     <div className="flex flex-col gap-5 pt-6 px-5 pb-6">
       <header className="flex items-center gap-3">
@@ -37,7 +59,7 @@ export default function PaywallPage() {
       {/* What you get */}
       <section className="rounded-2xl bg-white border border-snappeal-border p-5">
         <p className="text-sm font-bold text-snappeal-navy mb-3">
-          What &apos;s included
+          What&apos;s included
         </p>
         <ul className="space-y-2.5">
           {[
@@ -56,33 +78,11 @@ export default function PaywallPage() {
         </ul>
       </section>
 
-      {/* Payment methods */}
-      <section className="flex flex-col gap-2.5">
-        <button className="rounded-2xl bg-black text-white font-semibold py-4 flex items-center justify-center gap-2 hover:opacity-90 transition">
-          <Apple className="size-5" fill="currentColor" />
-          Pay
-        </button>
-        <button className="rounded-2xl bg-white border-2 border-snappeal-navy text-snappeal-navy font-semibold py-4 flex items-center justify-center gap-2 hover:bg-slate-50 transition">
-          <span className="font-bold">G</span> Pay
-        </button>
-        <button className="rounded-2xl bg-white border border-snappeal-border text-snappeal-navy font-semibold py-3.5 flex items-center justify-center gap-2 hover:border-snappeal-primary transition">
-          <CreditCard className="size-4" />
-          Pay with card
-        </button>
-      </section>
-
-      <div className="flex items-center justify-center gap-2 text-[11px] text-snappeal-muted">
-        <Lock className="size-3.5" />
-        Payments are processed securely by Stripe.
-      </div>
-
-      <div className="mt-auto pt-2 text-[11px] text-snappeal-muted text-center leading-relaxed">
-        <strong className="text-snappeal-navy">Mock data prototype.</strong> No
-        payment is taken. In production this triggers a Stripe PaymentIntent.{" "}
-        <Link href="/app/letter/appeal-001" className="text-snappeal-primary font-semibold">
-          Continue to letter (demo)
-        </Link>
-      </div>
+      {/* Stripe Payment Element */}
+      <StripePaymentForm
+        sessionId={sessionId}
+        returnUrl="/app/letter/appeal-001"
+      />
     </div>
   );
 }

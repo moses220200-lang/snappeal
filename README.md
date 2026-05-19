@@ -23,8 +23,30 @@ docker compose up -d
 # Next.js prototype on http://localhost:3001
 cd apps/web
 npm install
+cp .env.example .env.local   # then fill in keys — see "Backend env" below
 npm run dev
 ```
+
+## Backend env
+
+The Next.js app exposes four API routes:
+
+- **`POST /api/checkout`** — Stripe PaymentIntent (£2.99 GBP). Returns `clientSecret` for the Payment Element. Anonymous — no Stripe Customer record in v0.1.
+- **`POST /api/generate`** — single Claude vision call via Vercel AI Gateway. Takes PCN photo + evidence photos + notes, returns extracted ticket fields + grounds + drafted letter (zod-typed).
+- **`POST /api/submit`** — v0.1 stub returning a mock confirmation. v0.2 enqueues a Vercel Workflow that runs Playwright MCP in a Vercel Sandbox.
+- **`POST /api/stripe/webhook`** — Stripe webhook receiver; verifies the signature and dispatches `payment_intent.succeeded` / `payment_failed` / `charge.refunded`.
+
+Required env (set in `apps/web/.env.local`):
+
+| Var | Used by | Get it from |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | `/api/checkout`, webhook | Stripe Dashboard → test mode |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | client (Payment Element) | same |
+| `STRIPE_WEBHOOK_SECRET` | `/api/stripe/webhook` | `stripe listen --forward-to localhost:3001/api/stripe/webhook` |
+| `AI_GATEWAY_API_KEY` | `/api/generate` | Vercel AI Gateway dashboard |
+| `DATABASE_URL` *(optional)* | Drizzle / Postgres | Neon (via Vercel Marketplace). Unset = mock-data mode. |
+
+Until the env is wired, the API routes return helpful 500s explaining exactly which key is missing — the Stripe Payment Element falls back to a "configure Stripe" placeholder. Nothing else breaks.
 
 Then:
 
