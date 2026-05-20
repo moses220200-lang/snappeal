@@ -14,9 +14,8 @@ const NAV = [
   { href: "/admin/jobs", label: "Job queue" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/health", label: "System health" },
+  { href: "/admin/wiki", label: "Wiki" },
 ];
-
-const WIKI_URL = process.env.NEXT_PUBLIC_WIKI_URL ?? "http://localhost:8800";
 
 /**
  * Mobile-only hamburger + drawer for the admin nav. The desktop sidebar
@@ -77,16 +76,6 @@ export function AdminMobileNav({ email }: { email: string }) {
                   </Link>
                 );
               })}
-              <a
-                href={WIKI_URL}
-                target="_blank"
-                rel="noopener"
-                onClick={() => setOpen(false)}
-                className="rounded-xl px-3 py-2.5 text-sm text-white/85 hover:bg-white/10 hover:text-white transition flex items-center justify-between"
-              >
-                <span>Wiki</span>
-                <span className="text-[10px] text-white/40">↗</span>
-              </a>
             </nav>
             <div className="px-5 py-4 border-t border-white/10 text-xs">
               <Link href="/app" className="text-white/60 hover:text-white">

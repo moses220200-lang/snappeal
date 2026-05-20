@@ -2,6 +2,11 @@ import Link from "next/link";
 import { requireAdminPage } from "@/lib/server/admin";
 import { AdminMobileNav } from "@/components/AdminMobileNav";
 
+/**
+ * Wiki page rendered inside the admin shell at /admin/wiki. The page
+ * itself embeds the MkDocs build via iframe so admins never leave the
+ * admin layout — full-bleed content with the same sidebar nav.
+ */
 const NAV = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/appeals", label: "Appeals" },
@@ -11,13 +16,8 @@ const NAV = [
   { href: "/admin/jobs", label: "Job queue" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/health", label: "System health" },
+  { href: "/admin/wiki", label: "Wiki" },
 ];
-
-/**
- * Public wiki URL — host Caddy serves the MkDocs build. Override via
- * NEXT_PUBLIC_WIKI_URL when the prod domain lands.
- */
-const WIKI_URL = process.env.NEXT_PUBLIC_WIKI_URL ?? "https://snappeal.theailab.dev";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdminPage();
@@ -43,15 +43,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               {n.label}
             </Link>
           ))}
-          <a
-            href={WIKI_URL}
-            target="_blank"
-            rel="noopener"
-            className="rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10 hover:text-white transition flex items-center justify-between"
-          >
-            <span>Wiki</span>
-            <span className="text-[10px] text-white/40">↗</span>
-          </a>
         </nav>
         <div className="px-6 py-4 border-t border-white/10 text-[11px] text-white/40">
           <Link href="/app" className="hover:text-white">
@@ -59,7 +50,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </Link>
         </div>
       </aside>
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 flex flex-col">
         <header className="md:hidden bg-snappeal-navy text-white px-5 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
             <AdminMobileNav email={user.email} />
@@ -69,7 +60,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             ← App
           </Link>
         </header>
-        <div className="max-w-5xl mx-auto p-6 md:p-10">{children}</div>
+        {children}
       </main>
     </div>
   );
