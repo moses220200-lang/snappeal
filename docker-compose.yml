@@ -24,8 +24,11 @@ services:
   wiki:
     build: ./wiki
     container_name: snappeal-wiki
-    # No host port binding — the central Caddy reaches it via the
-    # caddy_default network using the `snappeal-wiki` container alias.
+    # Loopback host-port binding so the admin UI's "Wiki" link works in
+    # local dev. Central Caddy still reaches it via the caddy_default
+    # network using the `snappeal-wiki` container alias.
+    ports:
+      - "127.0.0.1:8800:8000"
     networks:
       default:
       caddy_default:

@@ -16,7 +16,7 @@ const NAV = [
   { href: "/admin/health", label: "System health" },
 ];
 
-const WIKI_URL = process.env.NEXT_PUBLIC_WIKI_URL ?? "https://snappeal.theailab.dev";
+const WIKI_URL = process.env.NEXT_PUBLIC_WIKI_URL ?? "http://localhost:8800";
 
 /**
  * Mobile-only hamburger + drawer for the admin nav. The desktop sidebar
