@@ -27,6 +27,7 @@ import { z } from "zod";
 import { runAgentic } from "../claude-cli";
 import type { AppealRecord } from "../appeals";
 import type { schema } from "../db/client";
+import { getAutomation } from "./automation";
 
 type CouncilRow = typeof schema.councils.$inferSelect;
 
@@ -46,7 +47,13 @@ const ResultSchema = z.object({
   errorMessage: z.string().nullable().optional(),
 });
 
-const SYSTEM_PROMPT = `You are Snappeal's council-portal submission agent.
+/**
+ * Generic fallback system prompt — used when a council has no row in the
+ * `council_automation` table. The Westminster + future per-council prompts
+ * are stored in the DB and edited via /admin/councils/<slug>/automation,
+ * which is the source of truth.
+ */
+const FALLBACK_SYSTEM_PROMPT = `You are Snappeal's council-portal submission agent.
 
 Your job:
 - Use the Playwright MCP tools to open the council's PCN challenge portal
@@ -108,10 +115,16 @@ When you finish (success or abort), call your screenshot tool and save the
 result to ${workDir}/confirmation.png. Then return a single JSON object as
 specified in the system prompt — no commentary.`;
 
+  // Load the per-council agent prompt from `council_automation` (edited via
+  // /admin/councils/<slug>/automation). Falls back to the generic prompt
+  // when no row exists yet — defends against forgetting to seed.
+  const automation = await getAutomation(council.slug);
+  const systemPrompt = automation?.agentPrompt ?? FALLBACK_SYSTEM_PROMPT;
+
   const events: string[] = [];
   const result = await runAgentic({
     prompt: userPrompt,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt,
     mcpServers: {
       playwright: {
         command: process.platform === "win32" ? "npx.cmd" : "npx",

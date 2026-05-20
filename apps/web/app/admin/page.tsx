@@ -67,7 +67,9 @@ async function loadStats(): Promise<Stats> {
       inboundToday: 0,
     };
   }
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // postgres-js can't bind a raw JS Date through drizzle's sql template —
+  // serialize to ISO 8601 so it lands as a `timestamptz` literal.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [
     [{ count: users }],
     [{ count: appeals }],

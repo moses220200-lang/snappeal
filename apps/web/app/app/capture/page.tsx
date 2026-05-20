@@ -261,7 +261,7 @@ export default function CapturePage() {
               icon={Keyboard}
               title="Enter PCN"
               sub="Type it in"
-              onClick={() => router.push("/app/notes?from=manual")}
+              onClick={() => router.push("/app/manual-entry")}
             />
           </div>
         </>

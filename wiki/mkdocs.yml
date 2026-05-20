@@ -103,6 +103,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Context handoff: handoff.md
   - TODO: todo.md
   - Business:
     - business/index.md
@@ -137,7 +138,10 @@ nav:
     - Job queue: architecture/job-queue.md
     - Knowledge base: architecture/knowledge-base.md
     - Auth: architecture/auth.md
+    - Admin backend: architecture/admin.md
+    - Notifications: architecture/notifications.md
     - Infrastructure: architecture/infra.md
+    - Deployment: architecture/deployment.md
   - Councils:
     - councils/index.md
     - Westminster: councils/westminster.md

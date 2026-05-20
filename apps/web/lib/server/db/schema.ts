@@ -76,6 +76,22 @@ export const councils = pgTable("councils", {
     .defaultNow(),
 });
 
+/* ───── council_automation — per-council MCP recipe ───── */
+export const councilAutomation = pgTable("council_automation", {
+  councilSlug: text("council_slug").primaryKey(),
+  /** Markdown prompt fed to the Claude+Playwright MCP agent. */
+  agentPrompt: text("agent_prompt").notNull(),
+  /** Last known good selectors / hints (jsonb so it can evolve). */
+  fieldHints: jsonb("field_hints"),
+  /** Last dry-run's step trace (event log + final JSON). */
+  lastDryRun: jsonb("last_dry_run"),
+  lastDryRunAt: timestamp("last_dry_run_at", { withTimezone: true }),
+  lastDryRunOk: text("last_dry_run_ok"), // 'true' | 'false' | null
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /* ───── users (email/password auth) ───── */
 
 export const users = pgTable("users", {

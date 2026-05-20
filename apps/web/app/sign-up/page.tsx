@@ -52,7 +52,13 @@ function SignUpInner() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error?.message ?? `Sign-up failed (${res.status})`);
-      router.replace(next);
+      const target =
+        params?.get("next")
+          ? next
+          : json?.user?.role === "admin"
+            ? "/admin"
+            : "/app/profile";
+      router.replace(target);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-up failed");

@@ -37,9 +37,12 @@ Implemented in `lib/server/submission/portal.ts`. When the council's online port
 
 1. `/api/submit` enqueues a `submit_appeal` job in the [Postgres queue](./job-queue.md) — durable, retry-safe.
 2. A worker (booted by `instrumentation.ts`) claims the job with `FOR UPDATE SKIP LOCKED`.
-3. The worker calls `runPortalAutomation()`, which spawns the headless `claude` CLI with `@playwright/mcp@latest` attached via `--mcp-config` and `--allowedTools 'mcp__playwright__* Read Write'`.
-4. A purpose-built **system prompt** tells the agent: open the portal URL, find the "challenge a PCN" form, fill it from the appeal payload (PCN reference, vehicle reg, contravention code, location, issued-at, reply-to email), paste the drafted letter into the representation field verbatim, submit, capture the confirmation reference + screenshot, and return a single `{success, councilReference, errorMessage}` JSON.
-5. The screenshot is saved to a temp dir; the JSON is parsed; the result is recorded in the `submissions` table and the appeal status flips.
+3. The worker calls `runPortalAutomation()`. It **loads the per-council agent prompt** from the `council_automation` table (the same prompt the admin edits at `/admin/councils/[slug]/automation`) and falls back to a generic prompt if no row exists for this slug.
+4. The worker spawns the headless `claude` CLI with `@playwright/mcp@latest` attached via `--mcp-config` and `--allowedTools 'mcp__playwright__* Read Write'`. The per-council prompt is injected as the system prompt.
+5. The agent opens the portal URL, fills the form from the appeal payload (PCN reference, vehicle reg, contravention code, location, issued-at, reply-to email), pastes the drafted letter into the representation field verbatim, submits, captures the confirmation reference + screenshot, returns a single `{success, councilReference, errorMessage}` JSON.
+6. The screenshot is saved to a temp dir; the JSON is parsed; the result is recorded in the `submissions` table and the appeal status flips.
+
+**Editing the prompt mid-flight.** Because the worker reads from `council_automation` on every job claim, an admin who saves an updated prompt in `/admin/councils/<slug>/automation` sees that prompt take effect on the very next claimed job. No restart needed.
 
 A **5-minute wall-clock cap** and an **agent-side "stop after 30 steps" instruction** prevent runaway loops. Captcha / login-wall / payment-page signals trigger an abort with success=false — never a silent submit.
 

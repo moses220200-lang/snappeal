@@ -14,6 +14,7 @@ import {
   LogOut,
   Lock,
   ScrollText,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   User as UserIcon,
@@ -110,6 +111,24 @@ export default function ProfilePage() {
           <SignedInCard user={me} />
         ) : (
           <GuestCard />
+        )}
+
+        {me?.role === "admin" && (
+          <Link
+            href="/admin"
+            className="rounded-2xl bg-snappeal-navy text-white p-4 flex items-center gap-3 hover:bg-snappeal-navy-soft transition shadow-lg shadow-snappeal-navy/30"
+          >
+            <span className="size-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+              <ShieldAlert className="size-5 text-white" />
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-bold">Open admin dashboard</p>
+              <p className="text-xs text-white/70 mt-0.5">
+                Appeals · Councils · Submissions · MCP automation · Jobs · Users
+              </p>
+            </div>
+            <ChevronRight className="size-5 text-white/80" />
+          </Link>
         )}
 
         <Section title="Account">

@@ -47,7 +47,14 @@ function SignInInner() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error?.message ?? `Sign-in failed (${res.status})`);
-      router.replace(next);
+      // Admins land in the backend by default; ?next= still wins if explicitly set.
+      const target =
+        params?.get("next")
+          ? next
+          : json?.user?.role === "admin"
+            ? "/admin"
+            : "/app/profile";
+      router.replace(target);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");

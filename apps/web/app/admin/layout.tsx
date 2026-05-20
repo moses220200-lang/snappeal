@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/server/admin";
+import { AdminMobileNav } from "@/components/AdminMobileNav";
 
 const NAV = [
   { href: "/admin", label: "Overview" },
@@ -11,6 +12,12 @@ const NAV = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/health", label: "System health" },
 ];
+
+/**
+ * Public wiki URL — host Caddy serves the MkDocs build. Override via
+ * NEXT_PUBLIC_WIKI_URL when the prod domain lands.
+ */
+const WIKI_URL = process.env.NEXT_PUBLIC_WIKI_URL ?? "https://snappeal.theailab.dev";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdminPage();
@@ -36,6 +43,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               {n.label}
             </Link>
           ))}
+          <a
+            href={WIKI_URL}
+            target="_blank"
+            rel="noopener"
+            className="rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10 hover:text-white transition flex items-center justify-between"
+          >
+            <span>Wiki</span>
+            <span className="text-[10px] text-white/40">↗</span>
+          </a>
         </nav>
         <div className="px-6 py-4 border-t border-white/10 text-[11px] text-white/40">
           <Link href="/app" className="hover:text-white">
@@ -44,8 +60,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
       </aside>
       <main className="flex-1 min-w-0">
-        <header className="md:hidden bg-snappeal-navy text-white px-5 py-4 flex items-center justify-between">
-          <p className="text-base font-bold">Snappeal Admin</p>
+        <header className="md:hidden bg-snappeal-navy text-white px-5 py-4 flex items-center justify-between sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <AdminMobileNav email={user.email} />
+            <p className="text-base font-bold">Snappeal Admin</p>
+          </div>
           <Link href="/app" className="text-xs text-white/70">
             ← App
           </Link>

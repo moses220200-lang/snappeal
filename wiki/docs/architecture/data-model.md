@@ -1,6 +1,6 @@
 # Data model
 
-Postgres 16 in dev (Docker Compose) → Neon Postgres in production. Drizzle ORM. Migrations under `apps/web/drizzle/`. As of 2026-05-20 the live schema has **10 tables**.
+Postgres 16 in dev (Docker Compose) → Neon Postgres in production. Drizzle ORM. Migrations under `apps/web/drizzle/`. As of 2026-05-20 the live schema has **11 tables**.
 
 ## Entities
 
@@ -22,7 +22,8 @@ erDiagram
 | Table | Purpose | Row identifier |
 |---|---|---|
 | **`users`** | Email/password accounts. Holds `role` (user/admin), `service_tier`, `notification_prefs` jsonb. | `id` text (ulid-style `u_<hex>`) |
-| **`councils`** | KB row per London authority — portal URL, email, postal address, automation status, identifier hints, PCN ref pattern. Seeded from `lib/mock-data.ts`. | `slug` text (e.g. `westminster`) |
+| **`councils`** | KB row per London authority — portal URL, email, postal address, automation status, identifier hints, PCN ref pattern. Seeded from `lib/mock-data.ts`. Editable via `/admin/councils`. | `slug` text (e.g. `westminster`) |
+| **`council_automation`** | Per-council Claude+Playwright MCP recipe — `agent_prompt`, `field_hints` jsonb, `last_dry_run`, `last_dry_run_at`, `last_dry_run_ok`. Edited via `/admin/councils/[slug]/automation`; read by `runPortalAutomation()` on every submission. | `council_slug` (PK; soft FK) |
 | **`appeals`** | The case. Holds `session_id` (always) + `user_id` (null until claim), `ticket` jsonb (the extracted PCN fields), `grounds[]`, `notes`, letter fields, timeline jsonb, `service_tier`, `model_used`, `cost_pence_millis`. | `id` text (`ap_<hex>`) |
 | **`appeal_photos`** | PCN + evidence photos. `kind: 'pcn' \| 'evidence'`, `blob_url`. | `id` text |
 | **`payments`** | One row per Stripe PaymentIntent. | `stripe_payment_intent_id` PK |
@@ -44,6 +45,7 @@ The full schema lives in [`apps/web/lib/server/db/schema.ts`](https://github.com
 | `0003_motionless_thor_girl.sql` | `jobs` table — queue + indexes on (status, run_after) and (appeal_id) |
 | `0004_illegal_exiles.sql` | `appeals.service_tier`, `users.service_tier`, `users.notification_prefs`, `care_plan_waitlist` |
 | `0005_mysterious_peter_parker.sql` | `subscriptions` table |
+| `0006_glossy_morgan_stark.sql` | `council_automation` table — per-council MCP recipes |
 
 ## Field-by-field gotchas
 
