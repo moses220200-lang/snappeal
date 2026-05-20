@@ -2,8 +2,30 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MapPin } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { SnappealMark } from "@/components/Logo";
+
+function UkFlag({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 60 30" className={className} aria-hidden>
+      <clipPath id="snappeal-uk-clip">
+        <rect width="60" height="30" rx="15" />
+      </clipPath>
+      <g clipPath="url(#snappeal-uk-clip)">
+        <rect width="60" height="30" fill="#012169" />
+        <path d="M0,0 L60,30 M60,0 L0,30" stroke="#ffffff" strokeWidth="6" />
+        <path
+          d="M0,0 L60,30 M60,0 L0,30"
+          stroke="#C8102E"
+          strokeWidth="4"
+          clipPath="polygon(0 0, 50% 50%, 100% 0, 0 0)"
+        />
+        <path d="M30,0 v30 M0,15 h60" stroke="#ffffff" strokeWidth="10" />
+        <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" strokeWidth="6" />
+      </g>
+    </svg>
+  );
+}
 
 /**
  * Standard in-app page header — sticky at the top with a frosted-glass
@@ -43,22 +65,26 @@ export function AppHeader({
       className="snappeal-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
       data-scrolled={scrolled}
     >
-      <div className="flex items-center justify-between gap-3">
-        <Link href="/app" className="flex items-center gap-3 min-w-0">
-          <SnappealMark size={38} variant="dark" className="drop-shadow-sm" />
+      <div className="flex items-center justify-between gap-2">
+        <Link href="/app" className="flex items-center gap-2.5 min-w-0 flex-1">
+          <SnappealMark size={34} variant="dark" className="drop-shadow-sm shrink-0" />
           <div className="flex flex-col leading-tight min-w-0">
-            <span className="text-lg font-bold text-snappeal-navy tracking-tight">
+            <span className="text-[17px] font-bold text-snappeal-navy tracking-tight leading-none">
               Snappeal
             </span>
-            <span className="text-[11px] text-snappeal-muted mt-0.5 truncate">
+            <span className="text-[10.5px] text-snappeal-muted mt-1 leading-tight">
               Challenge your parking ticket in minutes
             </span>
           </div>
         </Link>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-snappeal-border px-3 py-1.5 text-[11px] font-semibold text-snappeal-navy shadow-sm shrink-0">
-          <MapPin className="size-3.5 text-snappeal-primary" strokeWidth={2.25} />
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-full bg-white border border-snappeal-border pl-0.5 pr-1.5 py-0.5 text-[11px] font-semibold text-snappeal-navy shadow-sm shrink-0 hover:bg-snappeal-bg transition"
+        >
+          <UkFlag className="size-[18px] rounded-full" />
           UK
-        </span>
+          <ChevronDown className="size-3 text-snappeal-muted" strokeWidth={2.5} />
+        </button>
       </div>
       {(title || subtitle) && (
         <div className="mt-4">

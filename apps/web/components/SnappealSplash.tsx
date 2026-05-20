@@ -163,7 +163,7 @@ function WestminsterPCN() {
  * text and the WARNING legend. Drawn as SVG so it scales without an image
  * asset and animates cleanly inside the scan brackets.
  */
-function RealisticPcnInWallet() {
+export function RealisticPcnInWallet() {
   return (
     <svg
       viewBox="0 0 220 300"

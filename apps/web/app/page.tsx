@@ -282,7 +282,7 @@ function HeroHeadlineSvg() {
         Appealing a
       </text>
 
-      <g transform="translate(0, 138)">
+      <g transform="translate(0, 143)">
         <path d={ticketPath} fill="#FACC15" />
         <line
           x1="34"
