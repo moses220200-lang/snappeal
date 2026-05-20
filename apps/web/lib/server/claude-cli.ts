@@ -250,6 +250,10 @@ export async function runAgentic(opts: AgenticOptions): Promise<AgenticResult> {
       "--no-session-persistence",
       "--output-format",
       "stream-json",
+      // `--print` + `--output-format=stream-json` requires `--verbose`
+      // (CLI hard requirement). We discard the verbose preamble in the
+      // line-parse loop.
+      "--verbose",
       "--include-partial-messages",
       "--mcp-config",
       mcpConfigPath,
