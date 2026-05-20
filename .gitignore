@@ -49,6 +49,9 @@ pnpm-debug.log*
 /app-home.png
 /app-home-*.png
 /audit-*.png
+/admin-audit-*.png
+/admin-councils-*.png
+/admit-audit-*.png
 /home-*.png
 /profile-*.png
 /profile.png
