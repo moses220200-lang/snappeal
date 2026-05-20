@@ -90,16 +90,20 @@ export default function PaywallPage() {
         await consumeSSE(res, (ev) => {
           switch (ev.event) {
             case "appeal": {
+              // Fires immediately on connect — the appeal row was just inserted
+              // but Claude hasn't been called yet. Stay on "read" so the
+              // milestone ladder pulses honestly during the ~30s draft call,
+              // instead of jumping to "ground" and looking frozen there.
               const d = ev.data as { appealId: string };
               appealId = d.appealId;
-              setPhase("ground");
               break;
             }
             case "ticket":
+              // Claude returned with the extracted PCN — moving on to grounds.
               setPhase("ground");
               break;
             case "ground":
-              // First ground event = we're about to start drafting.
+              // First ground id arrived — grounds picked, drafting next.
               setPhase("draft");
               break;
             case "chunk": {

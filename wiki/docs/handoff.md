@@ -55,7 +55,7 @@ Not deployed anywhere yet. Architecture is "Vercel for web tier + dedicated work
 - **Care Plan real Stripe subscription** — UI live + endpoint live + dev stub returns success. Real path needs `STRIPE_CARE_PLAN_PRICE_ID` + the Stripe Subscription product created in the dashboard.
 - **Web Push delivery** — service worker + subscribe endpoint live. The sending side (worker reads inbound classification, fires `web-push.send` to stored subscriptions) is not yet wired. Needs `web-push` npm package + `VAPID_PRIVATE_KEY`.
 - **Inbound mail DNS/MX** — `/api/inbound` webhook handler is ready. DNS/MX for `appeals.snappeal.ai` + Postmark/Resend pick is open.
-- **Streaming letter UI** — `/api/generate-stream` SSE endpoint exists. The Letter page still consumes the non-streaming `/api/generate`. Switching is a 1-hour task.
+- ~~**Streaming letter UI**~~ — done. Paywall consumes `/api/generate-stream` and the Letter page now polls `/api/appeals/[id]` until `letterBody` lands (2 s interval, ~3 min cap). See "Streaming letter hang fix" in today's update log.
 - **`public/submissions/<jobId>/` cleanup** — live-submission PNGs accumulate forever. Add a daily cron that wipes anything older than 7 days. Low priority until disk pressure shows.
 - **UA rotation for headless Chromium** — deferred. No evidence Westminster blocks on UA (the `WE66452241 / S99SNN` dry-run sailed through). Revisit if/when a portal trips Bot Manager.
 
@@ -129,6 +129,19 @@ This is the most differentiating thing in the codebase. Read it once.
 6. Iterate until dry-run is reliably green. From `/admin/jobs` or `/admin/submissions`, click **Dry-run** on a failed `submit_appeal` row to replay the agent against that appeal's real PCN/reg without resubmitting.
 7. **Live customer submit** is on by default (`SNAPPEAL_SUBMISSION_LIVE` flag defaults to LIVE — set `=0` to opt-out and use the mock). `/api/submit` enqueues `submit_appeal` → worker (`instrumentation.ts` boot) claims via `FOR UPDATE SKIP LOCKED` → `runPortalAutomation({jobId, …})` → loads per-council prompt, plumbs `jobId` for live progress emission, watches `process.cwd()` + workDir for PNGs (`@playwright/mcp` ignores `--output-dir` on Windows) → SSE delivers events to `/app/submitting/<jobId>` → ticket card shows the **navy "AI is filing your appeal" strip** linking through `/app/watch/<appealId>`.
 8. Admin can flip **MCP browser visibility** (headless ↔ headed) at `/admin/health` to watch Chromium drive the portal in a visible window during the next dry-run or live submission.
+
+## Update log — 2026-05-20 (streaming letter hang fix)
+
+The drafting flow felt hung on the paywall and could dead-end on the letter page. Four small fixes, no schema change.
+
+- **Restored `confirmedTicket` forwarding in `/api/generate-stream` (`app/api/generate-stream/route.ts`)** — the streaming-letter cutover dropped two pieces from the older `/api/generate` route's call to `generateDraft`: the user's already-confirmed ticket fields (`body.confirmedTicket`), and the `generateSemaphore` concurrency wrap. Without `confirmedTicket`, Claude re-OCRed the PCN from scratch on every request even though the user had already extracted+confirmed the fields on `/app/capture` — on real photos that re-OCR pushed the call past the 120 s CLI timeout, the row landed at `step = "generation_failed"`, and admin saw silent dead drafts. **This was the actual root cause of the "drafting hangs / admin drafts silently failing" report.** The route now mirrors `/api/generate` exactly — forwards `confirmedTicket` and acquires the same semaphore so a burst of concurrent SSE requests can't fork unbounded `claude` subprocesses.
+- **Paywall phase ladder honest (`app/app/paywall/page.tsx`)** — the SSE `appeal` event used to advance the milestone ladder straight to "ground", which then sat pulsing for the entire ~30 s `generateDraft` call (no further events flow during that window). The ladder now stays on "Reading your PCN photo" until the `ticket` event arrives, then "Identifying the strongest grounds", then "Drafting…" when the `ground` event lands. Matches the canonical event order in `architecture/ai-pipeline.md`.
+- **Letter page polls instead of one-shot fetch (`app/app/letter/[id]/page.tsx`)** — was a single `useEffect` fetch; any visit that arrived before `attachDraftToAppeal` committed was stuck on "Refresh in a moment" forever (tickets list → in-flight appeal, direct URL, refresh during chunk stream). Now polls `/api/appeals/<id>` every 2 s with a 90-poll cap (~3 min) until `letterBody` lands or `step === "generation_failed"`. Fallback UI is a spinner ("Snappeal AI is still drafting…") not a refresh nag.
+- **Generation failures no longer leave zombie rows (`app/api/generate-stream/route.ts` + `lib/server/appeals.ts`)** — the route's catch block now calls a new `markAppealFailed(appealId)` that flips `step` to `"generation_failed"`. The letter page surfaces a red "We couldn't draft this appeal — Retry drafting" card linking back to `/app/paywall`. The next successful `attachDraftToAppeal` resets `step` to `"ready"`, so the marker self-clears on recovery.
+
+Files touched: `apps/web/app/app/paywall/page.tsx`, `apps/web/app/app/letter/[id]/page.tsx`, `apps/web/app/api/generate-stream/route.ts`, `apps/web/lib/server/appeals.ts`.
+
+Verified via DB inspection: pre-fix the two most recent failed rows (`ap_pwlrtp8fhqzz48lx`, `ap_rn5bej6thyzr6b78`) both terminated at exactly 120.05 s — matching the `generateDraft` CLI `timeoutMs: 120_000`. Older stuck rows from before the `markAppealFailed` catch-handler patch are still at `step = "photos"` (zombie) — they pre-date this fix and are not the streaming route's fault going forward.
 
 ## Update log — 2026-05-20 (v0.1.5 — audit + UX bundle)
 
@@ -307,7 +320,6 @@ These are real footguns I tripped over. Listing them here so the next person doe
 
 - **Provider for transactional + inbound mail.** Postmark Inbound is the front-runner. Decision needed before live launch.
 - **Worker hosting** — Fly.io vs Railway vs Vercel Sandbox. All work; Fly is cheapest for one always-on machine.
-- **Streaming letter UX cutover** — flip Letter page to use `/api/generate-stream` when?
 - **POPLA / private parking** — defer past v0.1, or pull forward to capture the bigger TAM?
 - **OAuth — Clerk vs hand-rolled.** Hand-rolled is committed; Clerk would be a drop-in replacement and unlock Apple+Google instantly.
 

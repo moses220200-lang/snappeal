@@ -24,7 +24,14 @@ export default function LetterPage({
 
   useEffect(() => {
     let alive = true;
-    void (async () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let polls = 0;
+    // ~3 min ceiling at 2s — generous vs the ~30s draft call (ai-pipeline.md).
+    // Past this we assume something is genuinely wrong and stop hammering.
+    const MAX_POLLS = 90;
+
+    const tick = async () => {
+      polls += 1;
       const res = await fetch(`/api/appeals/${id}`, {
         cache: "no-store",
         headers: { "x-snappeal-session": getOrCreateSessionId() },
@@ -37,9 +44,17 @@ export default function LetterPage({
       }
       const json = (await res.json()) as { appeal: AppealView };
       setAppeal(json.appeal);
-    })();
+      const stillGenerating =
+        !json.appeal.letterBody && json.appeal.step !== "generation_failed";
+      if (stillGenerating && polls < MAX_POLLS && alive) {
+        timer = setTimeout(tick, 2000);
+      }
+    };
+
+    void tick();
     return () => {
       alive = false;
+      if (timer) clearTimeout(timer);
     };
   }, [id]);
 
@@ -152,10 +167,29 @@ export default function LetterPage({
             {appeal.letterBody}
           </pre>
         </section>
+      ) : appeal.step === "generation_failed" ? (
+        <section className="rounded-2xl bg-red-50 border border-red-200 p-5 flex flex-col gap-3">
+          <p className="text-sm font-semibold text-red-900">
+            We couldn&apos;t draft this appeal
+          </p>
+          <p className="text-xs text-red-900/80 leading-relaxed">
+            Something went wrong while Snappeal was reading your PCN. Your card
+            was not charged. You can retry from the paywall — your photos and
+            notes are still saved.
+          </p>
+          <Link
+            href="/app/paywall"
+            className="self-start rounded-xl bg-red-900 text-white text-xs font-semibold px-4 py-2 hover:bg-red-800 transition"
+          >
+            Retry drafting
+          </Link>
+        </section>
       ) : (
-        <p className="text-sm text-snappeal-muted">
-          The draft is still being generated. Refresh in a moment.
-        </p>
+        <section className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-center gap-3 text-sm text-snappeal-muted">
+          <Loader2 className="size-4 animate-spin text-snappeal-primary" />
+          Snappeal AI is still drafting your appeal — this usually takes about
+          30 seconds.
+        </section>
       )}
 
       {submitted ? (

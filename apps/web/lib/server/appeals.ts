@@ -221,6 +221,21 @@ export async function markAppealNotes(appealId: string, notes: string | null): P
 }
 
 /**
+ * Flag an appeal whose draft generation threw so the Letter page can stop
+ * polling and show a Retry button instead of looping forever. Uses `step` as
+ * the state marker — `attachDraftToAppeal` resets step back to "ready" on
+ * the next successful retry, so this self-clears.
+ */
+export const GENERATION_FAILED_STEP = "generation_failed";
+
+export async function markAppealFailed(appealId: string): Promise<void> {
+  await db()
+    .update(schema.appeals)
+    .set({ step: GENERATION_FAILED_STEP, updatedAt: new Date() })
+    .where(eq(schema.appeals.id, appealId));
+}
+
+/**
  * Partial update used by the capture/notes flow to keep DB authoritative for
  * everything the user types — ticket fields from the confirm UI, service
  * tier from the wizard, notes from /app/notes.

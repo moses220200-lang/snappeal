@@ -17,9 +17,15 @@
  * GET + EventSource because GET URLs can't carry the image payload.
  */
 import { generateDraft } from "@/lib/server/ai";
-import { createAppeal, getAppealById, attachDraftToAppeal } from "@/lib/server/appeals";
+import {
+  createAppeal,
+  getAppealById,
+  attachDraftToAppeal,
+  markAppealFailed,
+} from "@/lib/server/appeals";
 import { getViewer } from "@/lib/server/viewer";
 import { GenerateRequest } from "@/lib/server/contracts";
+import { generateSemaphore } from "@/lib/server/concurrency";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -49,9 +55,10 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(sseFrame(event, data)));
       };
 
+      // Hoisted so the catch can flag the row if generation throws mid-flight.
+      let appealId: string | undefined = body.appealId;
+
       try {
-        // Ensure we have an appealId to attach the draft to.
-        let appealId = body.appealId;
         if (!appealId) {
           const viewer = await getViewer();
           const created = await createAppeal({
@@ -74,11 +81,25 @@ export async function POST(request: Request) {
         // across the final letter body so the UI feels live even when the
         // underlying CLI call is one-shot. (Full token-stream pass-through
         // is a follow-up: switch to runAgentic with stream-json forwarding.)
-        const draft = await generateDraft({
-          pcnPhotoDataUrl: body.pcnPhoto,
-          evidencePhotoDataUrls: body.evidencePhotos,
-          notes: body.notes,
-        });
+        //
+        // `confirmedTicket` MUST be forwarded — without it the drafter has
+        // to re-OCR the PCN from scratch, which on real photos blows the
+        // 120s CLI timeout (the streaming cutover originally dropped this
+        // and silently failed every real-photo request).
+        // The semaphore matches `/api/generate` so a burst of concurrent
+        // SSE requests doesn't fork unbounded `claude` subprocesses.
+        const release = await generateSemaphore.acquire();
+        let draft;
+        try {
+          draft = await generateDraft({
+            pcnPhotoDataUrl: body.pcnPhoto,
+            evidencePhotoDataUrls: body.evidencePhotos,
+            notes: body.notes,
+            confirmedTicket: body.confirmedTicket,
+          });
+        } finally {
+          release();
+        }
         send("ticket", { ticket: draft.ticket });
         for (const g of draft.groundIds) send("ground", { groundId: g });
 
@@ -105,7 +126,13 @@ export async function POST(request: Request) {
           modelUsed: draft.modelUsed,
         });
       } catch (err) {
-        send("error", { message: err instanceof Error ? err.message : "stream failed" });
+        const message = err instanceof Error ? err.message : "stream failed";
+        // Flag the row so a later visit to /app/letter/<id> can offer Retry
+        // instead of polling forever on a null letterBody.
+        if (appealId) {
+          await markAppealFailed(appealId).catch(() => {});
+        }
+        send("error", { message });
       } finally {
         controller.close();
       }
