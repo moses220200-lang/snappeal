@@ -112,40 +112,72 @@ parkingappeal/                                    # working dir (rename to snapp
         └── package.json                          # scripts: dev / build / lint / db:* / test:claude / test:e2e:backend / test:e2e
 ```
 
-## Routes (30 total — all build green)
+## Routes (38 total — all build green)
+
+### Customer / marketing
 
 | Route | Static / Dynamic | Notes |
 |---|---|---|
-| `/` | static | Desktop landing (hero + trust strip + how-it-works + download) |
+| `/` | static | Landing — hero with yellow PARKING TICKET SVG, store badges, trust strip, how-it-works, dark download tile |
 | `/privacy` | static | Draft privacy policy |
 | `/terms` | static | Draft terms of service |
 | `/sign-in` | static | Email/password sign-in |
 | `/sign-up` | static | Email/password sign-up |
-| `/app` | static | Home (Snappeal header + Start hero + PricingTiers + capture + latest ticket + how it works + tips) |
-| `/app/capture` | static | PCN photo + auto-extract+confirm metadata + 6-slot evidence grid |
-| `/app/notes` | static | Notes textarea (tier-aware CTA) |
-| `/app/paywall` | static | Free for `buy_time`; £2.99 fake-pay or real Stripe for `grounds` |
-| `/app/letter/[id]` | dynamic | Real drafted letter; submit triggers async job + UI polls |
-| `/app/tickets` | static | Filter tabs + most-recent badge + horizontal timeline cards |
-| `/app/tickets/[id]` | dynamic | Detail + timeline |
-| `/app/inbox` | static | Chat-style sent + received per appeal |
-| `/app/tips` | static | Tips library |
-| `/app/profile` | static | Signed-in (avatar + email + Sign Out) or guest (Sign in + Create account) |
-| `/api/health` | dynamic | Reports claudeCli / db / stripe / submissionEngine / aiModel |
-| `/api/auth/sign-up` | dynamic | Email + password, claims guest appeals on `sessionId` |
-| `/api/auth/sign-in` | dynamic | Email + password, claims guest appeals |
-| `/api/auth/sign-out` | dynamic | Clears JWT cookie |
-| `/api/auth/me` | dynamic | Current viewer from JWT |
-| `/api/appeals` | dynamic | POST create / GET list (viewer-scoped) |
-| `/api/appeals/[id]` | dynamic | GET / PATCH |
-| `/api/extract` | dynamic | Cheap pre-payment OCR via Claude CLI |
-| `/api/generate` | dynamic | Full draft via Claude CLI (semaphore-capped) |
-| `/api/submit` | dynamic | Enqueues `submit_appeal` job |
-| `/api/inbox` | dynamic | Thread aggregator |
-| `/api/inbound` | dynamic | Mail webhook → classify + store |
-| `/api/jobs/[id]` | dynamic | Job status polling |
-| `/api/checkout` | dynamic | Stripe PaymentIntent (real path, when enabled) |
-| `/api/stripe/webhook` | dynamic | Signature-verified |
+| `/icon.svg` | static | Favicon (white tile + blue shield) |
+| `/apple-icon` | dynamic | 180×180 ImageResponse for iOS home-screen |
+| `/opengraph-image` | dynamic | 1200×630 social-share card |
+| `/twitter-image` | dynamic | Same image, twitter-card meta |
+
+### In-app (mobile-first, bottom-nav shell)
+
+| Route | Notes |
+|---|---|
+| `/app` | Home — hero + pricing tiers + capture + latest ticket + tips |
+| `/app/capture` | **Unified Step 1.** Either PCN photo OR manual-entry data triggers the field grid + 6-slot evidence upload. Banner shown when arriving from manual flow. |
+| `/app/manual-entry` | Council → PCN → reg → review → routes back to `/app/capture?from=manual` |
+| `/app/notes` | **Step 2** — card-quiz of UK PCN appeal grounds (6 categories × ~25 cards from `lib/grounds-catalog.ts`) + optional collapsible notes textarea |
+| `/app/paywall` | **Step 3** — free for `buy_time`; £2.99 fake-pay or Stripe for `grounds` |
+| `/app/letter/[id]` | **Step 4** — drafted letter; Submit redirects to `/app/submitting/[jobId]` |
+| `/app/submitting/[id]` | Live gamified view — slideshow of agent screenshots, milestone ladder, activity log, queue position, terminal "Submission complete" badge |
+| `/app/watch/[appealId]` | Server-side redirect to the latest job's `/app/submitting/[id]` |
+| `/app/tickets` | Filter tabs + cards with persistent **"Snappeal AI — Watch the AI submission"** CTA strip |
+| `/app/tickets/[id]` | Detail + timeline + same AI CTA |
+| `/app/inbox` | Chat-style sent + received per appeal |
+| `/app/tips` | Tips library (now with `BackHeader`) |
+| `/app/profile` | Signed-in/guest cards + 6 sub-pages (care-plan, help, notifications, payment-methods, personal-details, vehicles); Sign-in/up moved to top |
+| `/app/profile/care-plan` | Care Plan upsell + waitlist signup |
+| `/app/profile/help` | Help & support |
+| `/app/profile/notifications` | Notification prefs |
+| `/app/profile/payment-methods` | Saved cards (Stripe-stub) |
+| `/app/profile/personal-details` | Name + email **(postal address columns exist in DB but not yet captured here)** |
+| `/app/profile/vehicles` | Saved vehicles |
+
+### API
+
+| Route | Notes |
+|---|---|
+| `/api/health` | Reports claudeCli / db / stripe / submissionEngine / aiModel |
+| `/api/auth/{sign-up,sign-in,sign-out,me}` | pbkdf2 + HS256 JWT |
+| `/api/appeals` + `/api/appeals/[id]` | CRUD |
+| `/api/extract` | Pre-payment OCR (Claude CLI) |
+| `/api/generate` | Full draft (semaphore-capped) — accepts `preferredGroundCardIds[]` from the step-2 quiz |
+| `/api/generate-stream` | SSE variant of /api/generate (scaffolded — Letter page still uses /api/generate) |
+| `/api/submit` | Enqueues `submit_appeal` job |
+| `/api/submissions/[id]/progress` | SSE — streams `progress` events from the job row (queue position, agent steps, screenshots) |
+| `/api/inbox` | Thread aggregator |
+| `/api/inbound` | Mail webhook → classify + store |
+| `/api/jobs/[id]` | Job status polling + retry/cancel actions |
+| `/api/improve-notes` | "Strengthen my notes" rewrite |
+| `/api/transcribe` | Voice note → text (Whisper-compatible) |
+| `/api/checkout` | Stripe PaymentIntent (real path, when enabled) |
+| `/api/stripe/webhook` | Signature-verified |
+| `/api/care-plan/waitlist` | Care plan signup |
+| `/api/subscriptions/care-plan` | Care plan checkout endpoint |
+| `/api/admin/councils` + `/[slug]` | Council CRUD |
+| `/api/admin/council-automation/[slug]` | GET/PUT prompt; POST `{action: "dry-run" \| "reset-to-canonical"}` |
+| `/api/admin/jobs/[id]` | POST `{action: "retry" \| "cancel"}` |
+| `/api/admin/settings/mcp` | GET/PUT `{mcpHeaded, stopAtReview}` runtime toggles |
+| `/api/admin/inbound/classify` | Sandbox classifier |
 
 ## Components (16)
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SnappealMark } from "@/components/Logo";
 
 const SESSION_KEY = "snappeal.splashShown";
 
@@ -105,31 +106,12 @@ export function SnappealSplash() {
       {/* Wordmark + loading dots — bottom of the screen */}
       <div className="snappeal-splash-wordmark absolute bottom-[18%] inset-x-0 flex flex-col items-center gap-4 px-6 text-center">
         <div className="relative">
-          {/* Shield logo */}
-          <svg
-            width="64"
-            height="72"
-            viewBox="0 0 64 72"
-            aria-hidden
-            className="drop-shadow-[0_4px_12px_rgba(0,122,255,0.5)]"
-          >
-            <path
-              d="M32 2 L60 10 V36 C60 52 49 64 32 70 C15 64 4 52 4 36 V10 Z"
-              fill="#007aff"
-            />
-            <text
-              x="32"
-              y="46"
-              fontFamily="Inter, system-ui, sans-serif"
-              fontSize="32"
-              fontWeight={700}
-              textAnchor="middle"
-              fill="#ffffff"
-              letterSpacing={-1}
-            >
-              S
-            </text>
-          </svg>
+          {/* Canonical Snappeal shield — same mark used everywhere else. */}
+          <SnappealMark
+            size={72}
+            variant="light"
+            className="drop-shadow-[0_4px_12px_rgba(255,255,255,0.35)]"
+          />
           {/* Success tick that pops in over the shield in the final beat */}
           <span className="snappeal-splash-tick absolute -bottom-2 -right-2 size-7 rounded-full bg-snappeal-success flex items-center justify-center ring-4 ring-snappeal-navy">
             <svg
@@ -171,6 +153,17 @@ export function SnappealSplash() {
  * reference codes) without copying the official typography.
  */
 function WestminsterPCN() {
+  return <RealisticPcnInWallet />;
+}
+
+/**
+ * The iconic UK Penalty Charge Notice warning — a yellow square card sealed
+ * inside a clear adhesive plastic wallet, slapped onto a vehicle windshield.
+ * Diamond-hatched black/white border around bold "PENALTY CHARGE NOTICE"
+ * text and the WARNING legend. Drawn as SVG so it scales without an image
+ * asset and animates cleanly inside the scan brackets.
+ */
+function RealisticPcnInWallet() {
   return (
     <svg
       viewBox="0 0 220 300"
@@ -178,127 +171,160 @@ function WestminsterPCN() {
       className="w-full h-auto"
     >
       <defs>
-        <linearGradient id="ticketBody" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fde047" />
-          <stop offset="60%" stopColor="#f5d142" />
-          <stop offset="100%" stopColor="#e6bf30" />
+        {/* Diamond-hatch pattern that forms the iconic frame around the
+         * yellow notice. Two black tiles rotated 45° meet at the corners
+         * to create the alternating diamond look. */}
+        <pattern
+          id="pcnDiamondHatch"
+          patternUnits="userSpaceOnUse"
+          width="7"
+          height="7"
+          patternTransform="rotate(45)"
+        >
+          <rect width="7" height="7" fill="#0a0a0a" />
+          <rect x="0.9" y="0.9" width="5.2" height="5.2" fill="#ffffff" />
+        </pattern>
+        {/* Clear plastic wallet body — barely tinted, slight sheen. */}
+        <linearGradient id="pcnWallet" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f4f4f5" />
+          <stop offset="40%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#e7e7ea" />
+        </linearGradient>
+        {/* Subtle diagonal sheen across the plastic. */}
+        <linearGradient id="pcnSheen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.6" />
+          <stop offset="55%" stopColor="#ffffff" stopOpacity="0.0" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
         </linearGradient>
       </defs>
 
-      {/* Ticket body */}
-      <rect width="220" height="300" rx="6" fill="url(#ticketBody)" />
-
-      {/* Red header */}
-      <rect width="220" height="62" fill="#dc2626" />
-      <text
-        x="110"
-        y="26"
-        textAnchor="middle"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontSize="10"
-        fontWeight={700}
-        fill="#ffffff"
-        letterSpacing={1.4}
-      >
-        WESTMINSTER CITY COUNCIL
-      </text>
-      <text
-        x="110"
-        y="48"
-        textAnchor="middle"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontSize="15"
-        fontWeight={800}
-        fill="#ffffff"
-        letterSpacing={1.5}
-      >
-        PENALTY CHARGE NOTICE
-      </text>
-
-      {/* Warning band */}
-      <rect y="68" width="220" height="14" fill="#0a1929" />
-      <text
-        x="110"
-        y="79"
-        textAnchor="middle"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontSize="8"
-        fontWeight={700}
-        fill="#fde047"
-        letterSpacing={1.2}
-      >
-        DO NOT REMOVE — DRIVER OR KEEPER ONLY
-      </text>
-
-      {/* Body content — flat labels + monospace data */}
-      {[
-        ["PCN REF", "WC12345678"],
-        ["VEHICLE", "AB12 CDE"],
-        ["CODE", "12"],
-        ["LOCATION", "Marylebone High St, W1U"],
-        ["ISSUED", "12 May 2026 · 09:14"],
-        ["AMOUNT", "£160"],
-      ].map(([label, value], i) => {
-        const y = 100 + i * 30;
-        return (
-          <g key={label}>
-            <text
-              x="14"
-              y={y}
-              fontFamily="Inter, system-ui, sans-serif"
-              fontSize="7"
-              fontWeight={700}
-              fill="#0a1929"
-              letterSpacing={1.1}
-            >
-              {label}
-            </text>
-            <text
-              x="14"
-              y={y + 12}
-              fontFamily="IBM Plex Mono, Menlo, monospace"
-              fontSize="11"
-              fontWeight={700}
-              fill="#0a1929"
-            >
-              {value}
-            </text>
-            {i < 5 && (
-              <line
-                x1="14"
-                y1={y + 18}
-                x2="206"
-                y2={y + 18}
-                stroke="#0a1929"
-                strokeOpacity={0.15}
-                strokeWidth="1"
-                strokeDasharray="2 3"
-              />
-            )}
-          </g>
-        );
-      })}
-
-      {/* Discount footnote */}
+      {/* Plastic wallet outer body + thin border */}
       <rect
-        y="282"
         width="220"
-        height="18"
-        fill="#0a1929"
-        fillOpacity={0.85}
+        height="300"
+        rx="8"
+        fill="url(#pcnWallet)"
+        stroke="#cfcfd4"
+        strokeWidth="0.6"
       />
+
+      {/* Adhesive zip-seal strip at the top (the part that sticks to glass) */}
+      <rect width="220" height="22" fill="#e6e6ea" />
+      <line
+        x1="6"
+        y1="11"
+        x2="214"
+        y2="11"
+        stroke="#bcbcc2"
+        strokeWidth="0.7"
+        strokeDasharray="3 2"
+      />
+      <line
+        x1="6"
+        y1="18"
+        x2="214"
+        y2="18"
+        stroke="#cfcfd4"
+        strokeWidth="0.5"
+        strokeDasharray="1 3"
+      />
+
+      {/* Diagonal plastic sheen highlight (top-left → middle) */}
+      <rect width="220" height="300" rx="8" fill="url(#pcnSheen)" />
+
+      {/* Diamond-hatched border frame */}
+      <rect x="22" y="42" width="176" height="240" fill="url(#pcnDiamondHatch)" />
+
+      {/* Yellow inner notice */}
+      <rect x="36" y="56" width="148" height="212" fill="#fdd420" />
+
+      {/* PENALTY CHARGE NOTICE — three stacked lines, bold black */}
       <text
         x="110"
-        y="294"
+        y="98"
         textAnchor="middle"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontSize="7"
-        fontWeight={700}
-        fill="#ffffff"
-        letterSpacing={0.9}
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="20"
+        fontWeight={900}
+        fill="#0a0a0a"
+        letterSpacing={-0.4}
       >
-        £80 IF PAID WITHIN 14 DAYS · OR APPEAL
+        PENALTY
+      </text>
+      <text
+        x="110"
+        y="120"
+        textAnchor="middle"
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="20"
+        fontWeight={900}
+        fill="#0a0a0a"
+        letterSpacing={-0.4}
+      >
+        CHARGE
+      </text>
+      <text
+        x="110"
+        y="142"
+        textAnchor="middle"
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="20"
+        fontWeight={900}
+        fill="#0a0a0a"
+        letterSpacing={-0.4}
+      >
+        NOTICE
+      </text>
+
+      {/* WARNING heading */}
+      <text
+        x="110"
+        y="178"
+        textAnchor="middle"
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="13"
+        fontWeight={800}
+        fill="#0a0a0a"
+        letterSpacing={0.6}
+      >
+        WARNING
+      </text>
+
+      {/* Legend — three flow lines of the offence text */}
+      <text
+        x="110"
+        y="206"
+        textAnchor="middle"
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="6.4"
+        fontWeight={700}
+        fill="#0a0a0a"
+      >
+        IT IS AN OFFENCE FOR ANY
+      </text>
+      <text
+        x="110"
+        y="220"
+        textAnchor="middle"
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="6.4"
+        fontWeight={700}
+        fill="#0a0a0a"
+      >
+        PERSON OTHER THAN THE
+      </text>
+      <text
+        x="110"
+        y="234"
+        textAnchor="middle"
+        fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="6.4"
+        fontWeight={700}
+        fill="#0a0a0a"
+      >
+        DRIVER TO REMOVE THIS NOTICE
       </text>
     </svg>
   );
 }
+

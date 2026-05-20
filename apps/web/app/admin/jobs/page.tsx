@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/server/db/client";
+import { JobRowActions } from "@/components/JobRowActions";
+import { DryRunButton } from "@/components/DryRunButton";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +15,24 @@ const STATUS_TONE: Record<string, string> = {
 
 export default async function AdminJobsPage() {
   const db = getDb();
-  const rows = db ? await db.select().from(schema.jobs).orderBy(desc(schema.jobs.createdAt)).limit(100) : [];
+  const rows = db
+    ? await db
+        .select({
+          id: schema.jobs.id,
+          kind: schema.jobs.kind,
+          status: schema.jobs.status,
+          attempts: schema.jobs.attempts,
+          maxAttempts: schema.jobs.maxAttempts,
+          appealId: schema.jobs.appealId,
+          updatedAt: schema.jobs.updatedAt,
+          lastError: schema.jobs.lastError,
+          councilSlug: schema.appeals.councilSlug,
+        })
+        .from(schema.jobs)
+        .leftJoin(schema.appeals, eq(schema.appeals.id, schema.jobs.appealId))
+        .orderBy(desc(schema.jobs.createdAt))
+        .limit(100)
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -21,6 +40,8 @@ export default async function AdminJobsPage() {
         <h1 className="text-3xl font-bold text-snappeal-navy">Job queue</h1>
         <p className="text-sm text-snappeal-muted mt-1">
           {rows.length} most recent jobs. Failed jobs back off and retry until <code className="font-mono text-[11px]">maxAttempts</code>.
+          For failed <code className="font-mono text-[11px]">submit_appeal</code> jobs, use <span className="font-semibold text-snappeal-navy">Dry-run</span>
+          {" "}to reproduce the portal flow against the real ticket data without resubmitting.
         </p>
       </div>
 
@@ -33,8 +54,10 @@ export default async function AdminJobsPage() {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Attempts</th>
               <th className="px-4 py-3">Appeal</th>
+              <th className="px-4 py-3">Council</th>
               <th className="px-4 py-3">Updated</th>
               <th className="px-4 py-3">Last error</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-snappeal-border">
@@ -57,10 +80,21 @@ export default async function AdminJobsPage() {
                     "—"
                   )}
                 </td>
+                <td className="px-4 py-3 text-[11px] capitalize text-snappeal-navy">
+                  {j.councilSlug ? j.councilSlug.replace(/-/g, " ") : <span className="text-snappeal-muted">—</span>}
+                </td>
                 <td className="px-4 py-3 text-[11px] text-snappeal-muted">
                   {new Date(j.updatedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </td>
-                <td className="px-4 py-3 text-[11px] text-red-700 truncate max-w-[260px]">{j.lastError ?? ""}</td>
+                <td className="px-4 py-3 text-[11px] text-red-700 truncate max-w-[220px]">{j.lastError ?? ""}</td>
+                <td className="px-4 py-3 text-right">
+                  <div className="inline-flex items-center gap-3 justify-end">
+                    {j.kind === "submit_appeal" && j.councilSlug && (
+                      <DryRunButton councilSlug={j.councilSlug} appealId={j.appealId} />
+                    )}
+                    <JobRowActions id={j.id} status={j.status} />
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

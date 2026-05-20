@@ -39,12 +39,21 @@ export async function POST(request: Request) {
   if (!db) return NextResponse.json(jsonError("DATABASE_NOT_CONFIGURED", "DB missing"), { status: 503 });
 
   // Store the subscription on the user's notificationPrefs jsonb until we
-  // add a dedicated push_subscriptions table.
+  // add a dedicated push_subscriptions table. Merge against existing prefs
+  // so the user's email/push toggles aren't wiped each time the service
+  // worker re-subscribes.
+  const existingRow = await db
+    .select({ notificationPrefs: schema.users.notificationPrefs })
+    .from(schema.users)
+    .where(eq(schema.users.id, user.id))
+    .limit(1);
+  const existing = (existingRow[0]?.notificationPrefs ?? {}) as Record<string, unknown>;
+
   await db
     .update(schema.users)
     .set({
       notificationPrefs: {
-        ...(typeof body === "object" ? {} : {}),
+        ...existing,
         push: { endpoint: body.endpoint, keys: body.keys, subscribedAt: new Date().toISOString() },
       },
     })

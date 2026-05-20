@@ -103,6 +103,14 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("user"), // 'user' | 'admin'
   /** Default pricing tier ('buy_time' | 'grounds' | 'care_plan'). Persisted server-side; client mirror in localStorage is convenience-only. */
   serviceTier: text("service_tier").notNull().default("grounds"),
+  /** UK postal address fields used by the portal-automation agent when the
+   *  council form requires a registered-keeper address. Captured at sign-up
+   *  and editable from /app/profile/personal-details. */
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  addressCity: text("address_city"),
+  addressPostcode: text("address_postcode"),
+  phone: text("phone"),
   /** Transactional notification prefs ({ emailOnCouncilReply, emailOnSubmission, pushOnCouncilReply }). */
   notificationPrefs: jsonb("notification_prefs"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
@@ -204,6 +212,9 @@ export const jobs = pgTable(
     lockedBy: text("locked_by"),
     lastError: text("last_error"),
     result: jsonb("result"),
+    /** Append-only event log streamed to the customer while a submission is mid-flight.
+     * Shape: `[{ ts, kind: 'step' | 'thought' | 'screenshot' | 'status', message?, url?, step? }]`. */
+    progress: jsonb("progress").$type<JobProgressEvent[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -212,6 +223,12 @@ export const jobs = pgTable(
     index("jobs_appeal_idx").on(t.appealId),
   ],
 );
+
+export type JobProgressEvent =
+  | { ts: string; kind: "status"; message: string }
+  | { ts: string; kind: "step"; message: string }
+  | { ts: string; kind: "thought"; message: string }
+  | { ts: string; kind: "screenshot"; step: number; url: string; caption?: string };
 
 /**
  * Inbound mail from councils. Per-appeal alias is `<appeal-id>@appeals.snappeal.ai`;

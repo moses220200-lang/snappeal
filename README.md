@@ -1,12 +1,14 @@
 # Snappeal
 
-> Snappeal a London parking ticket in under five taps.
+> Snappeal a London parking ticket in under five taps. **`apps/web` v0.1.5**.
 
 This repository hosts the **Snappeal** project — a London PCN appeal app at `snappeal.ai`.
 
-- **Phase A** — the documentation wiki under `wiki/`. Business plan, product spec, architecture, council KB, legal/user guides.
-- **Phase C v0.1 prototype** — the customer-facing PWA under `apps/web/`. Next.js 16 + Tailwind v4, mock-data driven (fixtures in `fixtures/mock-data.json`).
-- **Phase B** — admin backend, scaffolded later (Next.js + Material UI).
+**Source of truth for "what's shipped vs in-flight":** [`wiki/docs/handoff.md`](./wiki/docs/handoff.md). Read that first if you're picking this up cold.
+
+- **`wiki/`** — MkDocs Material documentation. Business plan, product spec, architecture, council KB, legal/user guides.
+- **`apps/web/`** — Next.js 16 + Tailwind v4 PWA with the **full real backend**: Postgres + Drizzle (11 tables, 9 migrations), email/password auth + JWT, Postgres-backed job queue, Claude+Playwright MCP portal-submission engine, inbound mail webhook, three-tier pricing, and a 13-page admin backend. (Earlier versions of this README framed it as a mock-data prototype — that hasn't been true since mid-May 2026.)
+- **`fixtures/mock-data.json`** — kept around for typed fixture parity in tests; the live app reads from Postgres.
 
 ## Prerequisites
 
@@ -64,24 +66,11 @@ vercel deploy --prod             # promote to production
 
 ## Backend env
 
-The Next.js app exposes four API routes:
+`apps/web` exposes 25+ API routes (`/api/auth/*`, `/api/oauth/*`, `/api/generate`, `/api/submit`, `/api/submissions/[id]/progress`, `/api/inbound`, `/api/stripe/webhook`, `/api/admin/*`, plus more). See [`apps/web/.env.example`](./apps/web/.env.example) for the canonical annotated list of every env var the code reads, and [`wiki/docs/architecture/auth.md`](./wiki/docs/architecture/auth.md) + [`wiki/docs/architecture/submission-engine.md`](./wiki/docs/architecture/submission-engine.md) for the wiring details.
 
-- **`POST /api/checkout`** — Stripe PaymentIntent (£2.99 GBP). Returns `clientSecret` for the Payment Element. Anonymous — no Stripe Customer record in v0.1.
-- **`POST /api/generate`** — single Claude vision call via Vercel AI Gateway. Takes PCN photo + evidence photos + notes, returns extracted ticket fields + grounds + drafted letter (zod-typed).
-- **`POST /api/submit`** — v0.1 stub returning a mock confirmation. v0.2 enqueues a Vercel Workflow that runs Playwright MCP in a Vercel Sandbox.
-- **`POST /api/stripe/webhook`** — Stripe webhook receiver; verifies the signature and dispatches `payment_intent.succeeded` / `payment_failed` / `charge.refunded`.
+Minimum to boot in real mode: `AUTH_SECRET` (32+ chars), `DATABASE_URL`, `ANTHROPIC_API_KEY`. Stripe + Resend + VAPID + OAuth are optional — the UI degrades gracefully ("Stripe not configured" / "OAuth coming soon") when keys are absent.
 
-Required env (set in `apps/web/.env.local`):
-
-| Var | Used by | Get it from |
-|---|---|---|
-| `STRIPE_SECRET_KEY` | `/api/checkout`, webhook | Stripe Dashboard → test mode |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | client (Payment Element) | same |
-| `STRIPE_WEBHOOK_SECRET` | `/api/stripe/webhook` | `stripe listen --forward-to localhost:3001/api/stripe/webhook` |
-| `AI_GATEWAY_API_KEY` | `/api/generate` | Vercel AI Gateway dashboard |
-| `DATABASE_URL` *(optional)* | Drizzle / Postgres | Neon (via Vercel Marketplace). Unset = mock-data mode. |
-
-Until the env is wired, the API routes return helpful 500s explaining exactly which key is missing — the Stripe Payment Element falls back to a "configure Stripe" placeholder. Nothing else breaks.
+The Claude CLI is the live path for all AI reasoning (extract + draft + inbound classify + portal automation). `AI_GATEWAY_API_KEY` is kept as a fallback for the streaming letter path; the AI Gateway is not on the critical path.
 
 Then:
 
@@ -105,30 +94,31 @@ The Compose project name is **`snappeal`** (set via `name: snappeal` in `docker-
 ```
 parkingappeal/                    # working dir (rename to snappeal/ — see below)
 ├── apps/
-│   └── web/                      # Next.js 16 PWA — landing + /app routes
+│   └── web/                      # Next.js 16 PWA — landing + /app + /admin
 │       ├── app/
 │       │   ├── page.tsx          # public landing
-│       │   └── app/              # in-app routes (mobile-first)
-│       │       ├── page.tsx          (Home)
-│       │       ├── capture/page.tsx
-│       │       ├── notes/page.tsx
-│       │       ├── paywall/page.tsx
-│       │       ├── letter/[id]/page.tsx
-│       │       ├── cases/
-│       │       │   ├── page.tsx
-│       │       │   └── [id]/page.tsx
-│       │       └── profile/page.tsx
-│       ├── components/           # Logo, PhoneMockup, StoreBadges,
-│       │                         # BottomNav, AppealCard, Timeline
-│       └── lib/mock-data.ts      # typed fixture (mirrors fixtures/mock-data.json)
+│       │   ├── app/              # customer in-app shell (Home, Tickets, Capture,
+│       │   │                     #   Notes, Paywall, Letter, Submitting, Watch,
+│       │   │                     #   Inbox, Profile + 6 sub-pages, Tips)
+│       │   ├── admin/            # 13-page admin backend (Appeals, Councils
+│       │   │                     #   + MCP automation editor, Submissions,
+│       │   │                     #   Inbound, Jobs, Users, Health, Wiki)
+│       │   ├── api/              # 25+ route handlers
+│       │   ├── sign-in/, sign-up/, privacy/, terms/
+│       │   └── icon.svg, apple-icon.tsx, opengraph-image.tsx, twitter-image.tsx
+│       ├── components/           # 31 client components (Logo, AppHeader,
+│       │                         #   BackHeader, AddressAutocomplete, OAuthButtons,
+│       │                         #   WizardOnboarding, BottomNav, GroundsCardQuiz, …)
+│       ├── drizzle/              # 9 migrations (0000–0008)
+│       └── lib/server/           # auth, ai, appeals, jobs, submission, viewer, …
 ├── fixtures/
-│   └── mock-data.json            # canonical mock-data contract (single source of truth)
+│   └── mock-data.json            # typed fixture parity for tests
 ├── wiki/                         # MkDocs Material documentation site
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── mkdocs.yml
-│   └── docs/                     # business / product / architecture / councils / legal / users / admin
-├── docker-compose.yml            # name: snappeal → wiki + tunnel
+│   └── docs/                     # business / product / architecture / councils / legal / users / admin / handoff.md
+├── docker-compose.yml            # name: snappeal → db + wiki + tunnel
 └── README.md
 ```
 

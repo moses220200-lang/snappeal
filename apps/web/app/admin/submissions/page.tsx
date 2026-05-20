@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/server/db/client";
+import { DryRunButton } from "@/components/DryRunButton";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +14,31 @@ const STATUS_TONE: Record<string, string> = {
 
 export default async function AdminSubmissionsPage() {
   const db = getDb();
-  const rows = db ? await db.select().from(schema.submissions).orderBy(desc(schema.submissions.createdAt)).limit(100) : [];
+  const rows = db
+    ? await db
+        .select({
+          id: schema.submissions.id,
+          appealId: schema.submissions.appealId,
+          status: schema.submissions.status,
+          method: schema.submissions.method,
+          councilReference: schema.submissions.councilReference,
+          createdAt: schema.submissions.createdAt,
+          lastError: schema.submissions.lastError,
+          councilSlug: schema.appeals.councilSlug,
+        })
+        .from(schema.submissions)
+        .leftJoin(schema.appeals, eq(schema.appeals.id, schema.submissions.appealId))
+        .orderBy(desc(schema.submissions.createdAt))
+        .limit(100)
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-3xl font-bold text-snappeal-navy">Submissions</h1>
         <p className="text-sm text-snappeal-muted mt-1">
-          {rows.length} most recent submission attempts.
+          {rows.length} most recent submission attempts. Use <span className="font-semibold text-snappeal-navy">Dry-run</span> on
+          a failed row to replay the council&apos;s portal automation against the real ticket data without resubmitting.
         </p>
       </div>
 
@@ -30,10 +48,12 @@ export default async function AdminSubmissionsPage() {
             <tr className="text-left text-[11px] uppercase tracking-wide text-snappeal-muted">
               <th className="px-4 py-3">ID</th>
               <th className="px-4 py-3">Appeal</th>
+              <th className="px-4 py-3">Council</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Method</th>
               <th className="px-4 py-3">Ref</th>
               <th className="px-4 py-3">Created</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-snappeal-border">
@@ -45,6 +65,9 @@ export default async function AdminSubmissionsPage() {
                     {s.appealId}
                   </Link>
                 </td>
+                <td className="px-4 py-3 text-[11px] capitalize text-snappeal-navy">
+                  {s.councilSlug ? s.councilSlug.replace(/-/g, " ") : <span className="text-snappeal-muted">—</span>}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${STATUS_TONE[s.status] ?? STATUS_TONE.queued}`}>
                     {s.status}
@@ -54,6 +77,13 @@ export default async function AdminSubmissionsPage() {
                 <td className="px-4 py-3 font-mono text-[11px] text-snappeal-navy">{s.councilReference ?? "—"}</td>
                 <td className="px-4 py-3 text-[11px] text-snappeal-muted">
                   {new Date(s.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {s.method === "portal" && s.councilSlug ? (
+                    <DryRunButton councilSlug={s.councilSlug} appealId={s.appealId} />
+                  ) : (
+                    <span className="text-[11px] text-snappeal-muted">—</span>
+                  )}
                 </td>
               </tr>
             ))}

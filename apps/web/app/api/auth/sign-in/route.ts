@@ -4,6 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { authenticateUser, setSessionCookie, signJwt } from "@/lib/server/auth";
 import { getDb, schema } from "@/lib/server/db/client";
 import { jsonError } from "@/lib/server/contracts";
+import { getRequestSessionId } from "@/lib/server/viewer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,13 +34,21 @@ export async function POST(request: Request) {
     }
     await setSessionCookie(signJwt(user));
 
-    if (body.sessionId) {
+    // Same defence as sign-up: only claim guest appeals when the body's
+    // sessionId matches the `x-snappeal-session` header set from the
+    // browser's own localStorage.
+    const headerSession = getRequestSessionId(request);
+    const claimSession =
+      body.sessionId && headerSession && body.sessionId === headerSession
+        ? body.sessionId
+        : null;
+    if (claimSession) {
       const db = getDb();
       if (db) {
         await db
           .update(schema.appeals)
           .set({ userId: user.id })
-          .where(and(eq(schema.appeals.sessionId, body.sessionId), isNull(schema.appeals.userId)));
+          .where(and(eq(schema.appeals.sessionId, claimSession), isNull(schema.appeals.userId)));
       }
     }
 

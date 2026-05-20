@@ -35,7 +35,9 @@ export async function GET() {
   const claudeBin = findClaudeBin();
   const anthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const dbWired = hasDatabase();
-  const submissionLive = process.env.SNAPPEAL_SUBMISSION_LIVE === "1";
+  // Matches lib/server/submission/index.ts: LIVE unless explicitly set to "0".
+  // Unset = live in dev/prod; only `=0` opts into the deterministic mock.
+  const submissionLive = process.env.SNAPPEAL_SUBMISSION_LIVE !== "0";
 
   const aiReady = Boolean(claudeBin); // CLI present is enough — OAuth or key auths internally
   const allReady = stripeWired && stripeWebhookWired && aiReady && dbWired;

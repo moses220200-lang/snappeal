@@ -51,6 +51,25 @@ Each council reply (received via `/api/inbound`) is classified into one of `canc
 Submission agentic runs go through the [job queue](./job-queue.md) instead, with a tighter cap (2 concurrent Playwright browsers).
 
 Observed cost on a real PCN photo with cache-warm system prompt: **~$0.04 / draft**, 26–31 seconds wall-clock.
+Observed cost on a Westminster portal dry-run (real PCN ref, 11 navigation steps, 5 screenshots): **~$0.33–0.42**, 90–180 s wall-clock.
+
+## Live submission UX
+
+Every `submit_appeal` job streams its progress to the customer in real time:
+
+- `lib/server/jobs/progress.ts` — `appendProgress`, `watchScreenshots`, `queuePosition`.
+- `runPortalAutomation({jobId, …})` translates each MCP `tool_use` into a customer-friendly step (`Opening the council portal`, `Typing into Vehicle reg`, `Capturing what you'd see`), appends to `jobs.progress` jsonb.
+- A directory watcher polls both the agent's workDir AND `process.cwd()` (because `@playwright/mcp` ignores `--output-dir` on Windows) and forwards new PNGs to `public/submissions/<jobId>/`, emitting `screenshot` events.
+- `/api/submissions/[id]/progress` (SSE) streams events to the client every ~750 ms. Closes on terminal status.
+- `/app/submitting/[id]` renders the live UI — light glass header, milestone ladder (6 outlined-icon steps), latest screenshot pane with caption + URL chip, activity log.
+- Ticket card shows a navy "Snappeal AI is filing your appeal" strip when `status=submitting`; tapping routes to `/app/watch/<appealId>` which redirects to the latest job's page.
+
+## Headed-mode toggle
+
+Admins can flip `@playwright/mcp` between headless and headed at `/admin/health` (gear toggle: **MCP browser visibility**). When ON, Chromium pops up on the dev server during every subsequent dry-run / live submission so you can watch the agent click through.
+
+- In-memory store: `lib/server/settings.ts` (resets to the `SNAPPEAL_MCP_HEADED` env on restart).
+- Spread into the MCP args by `mcpHeadlessFlag()` so the toggle takes effect on the next run.
 
 ## File map
 
@@ -86,3 +105,5 @@ lib/server/
 - Golden-set regression: a fixture of ~30 hand-labelled PCN photos + expected ticket + valid grounds, run as part of CI.
 - Per-council prompt overrides for the boroughs whose PCN template confuses the default reader.
 - Move to `--bare` + `ANTHROPIC_API_KEY` in prod to shave the cache-creation overhead.
+- 7-day cleanup cron for `public/submissions/<jobId>/` PNG accumulation.
+- UA rotation for the headless browser — only if/when a portal trips Bot Manager. Westminster doesn't (verified 2026-05-20 with `WE66452241 / S99SNN`).

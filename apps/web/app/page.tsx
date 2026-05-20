@@ -4,18 +4,18 @@ import {
   CheckCircle2,
   FileText,
   Lock,
-  Play,
+  MapPin,
+  PoundSterling,
   Send,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
+  Star,
   Trophy,
   Upload,
 } from "lucide-react";
 import { Wordmark } from "@/components/Logo";
 import { PhoneMockup } from "@/components/PhoneMockup";
 import { AppStoreBadge, GooglePlayBadge } from "@/components/StoreBadges";
-import { WindscreenBackdrop } from "@/components/WindscreenBackdrop";
 
 export default function Home() {
   return (
@@ -34,8 +34,14 @@ export default function Home() {
 
 function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-snappeal-border bg-snappeal-bg/85 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
+    <header
+      // `pt-[env(safe-area-inset-top)]` adds a buffer equal to the iOS
+      // status-bar inset when the site runs as an installed PWA in
+      // standalone mode, so the time / Dynamic Island stop overlapping
+      // the "Snappeal" wordmark + Get Started button.
+      className="sticky top-0 z-50 border-b border-snappeal-border bg-snappeal-bg/85 backdrop-blur pt-[env(safe-area-inset-top,0px)]"
+    >
+      <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
         <Wordmark />
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-snappeal-navy">
           <Link href="#how" className="hover:text-snappeal-primary transition">
@@ -63,9 +69,9 @@ function Header() {
           </Link>
           <Link
             href="/app"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-snappeal-primary text-white text-sm font-semibold px-4 py-2.5 hover:bg-snappeal-primary-600 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-snappeal-primary !text-white text-sm font-semibold px-4 py-2.5 hover:bg-snappeal-primary-600 transition"
           >
-            Get Started
+            <span className="text-white">Get Started</span>
           </Link>
         </div>
       </div>
@@ -76,96 +82,162 @@ function Header() {
 function Hero() {
   return (
     <section className="hero-bg relative overflow-hidden">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 md:py-20 grid md:grid-cols-2 gap-12 md:gap-8 items-center">
+      <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8 py-14 md:py-20 grid grid-cols-1 lg:grid-cols-[0.48fr_0.52fr] gap-10 lg:gap-12 xl:gap-14 items-center">
+        {/* LEFT — copy + CTAs */}
         <div className="max-w-xl">
           <div className="inline-flex items-center gap-2 rounded-full bg-white border border-snappeal-border px-3.5 py-1.5 text-xs font-semibold text-snappeal-navy shadow-sm">
-            <span aria-hidden>🇬🇧</span>
+            <MapPin className="size-3.5 text-snappeal-primary" />
             Made for drivers in London
           </div>
 
-          <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight text-snappeal-navy">
-            Don&apos;t pay that{" "}
-            <span className="text-snappeal-primary">parking ticket.</span>
+          <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight text-snappeal-navy">
+            Don&apos;t pay that parking ticket.
             <br />
-            Let us help you appeal.
+            <span className="whitespace-nowrap text-snappeal-primary">
+              Appeal it in{" "}
+              <span className="relative inline-block">
+                seconds.
+                {/* Hand-drawn yellow brush stroke — sits under "seconds" only.
+                    Using a plain <img> rather than next/image because the SVG
+                    is a tiny static asset and we want it to scale 1:1 with the
+                    word width via percentage-based positioning. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/seconds-underline.svg"
+                  alt=""
+                  aria-hidden
+                  className="pointer-events-none select-none absolute left-0 right-0 -bottom-2 sm:-bottom-2.5 lg:-bottom-3 w-full h-auto"
+                />
+              </span>
+            </span>
           </h1>
 
-          <p className="mt-5 text-base sm:text-lg text-snappeal-muted leading-relaxed">
-            Snappeal makes it easy to appeal parking tickets in London. We
-            guide you step-by-step and create powerful appeals tailored to your
-            case.
+          <p className="mt-7 text-base sm:text-lg text-snappeal-muted leading-relaxed max-w-md">
+            Upload your notice, answer a few questions, and Snappeal drafts a
+            clear, tailored appeal for you.
           </p>
 
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <Link
-              href="/app"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-snappeal-primary text-white font-semibold px-6 py-3.5 hover:bg-snappeal-primary-600 transition shadow-lg shadow-snappeal-primary/25"
-            >
-              Start Your Appeal
-              <ArrowRight className="size-4" />
-            </Link>
-            <Link
-              href="#how"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white border border-snappeal-border text-snappeal-navy font-semibold px-6 py-3.5 hover:border-snappeal-primary transition"
-            >
-              <Play className="size-4 text-snappeal-primary" fill="currentColor" />
-              How It Works
-            </Link>
+          {/* Hero CTA: store badges (iOS + Android). Native apps are still
+           *  in flight — both badges show a "Coming soon" pill. The
+           *  in-browser app is reachable via the "Get Started" button in
+           *  the top-right header. */}
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <AppStoreBadge />
+            <GooglePlayBadge />
           </div>
 
-          <div className="mt-6 flex items-center gap-3 text-sm text-snappeal-muted">
-            <ShieldCheck className="size-5 text-snappeal-success" />
+          <div className="mt-6 flex items-center gap-2.5 text-sm text-snappeal-muted">
+            <span className="inline-flex size-7 rounded-full bg-green-100 items-center justify-center shrink-0">
+              <ShieldCheck className="size-4 text-snappeal-success" strokeWidth={2} />
+            </span>
             <span>
-              <strong className="text-snappeal-navy">
-                49.4% of formal appeals
+              <strong className="text-snappeal-navy font-semibold">
+                49.4% of formal parking appeals
               </strong>{" "}
-              were upheld in London in 2024-25.{" "}
-              <Link
-                href="https://www.londoncouncils.gov.uk/news-and-press-releases/2025/london-councils-enforcement-and-appeals-statistics-2024-25"
-                className="underline decoration-snappeal-border underline-offset-2 hover:text-snappeal-navy"
-                target="_blank"
-                rel="noopener"
-              >
-                Source
-              </Link>
+              were upheld in London in 2024–25.
             </span>
           </div>
         </div>
 
-        <div className="relative isolate min-h-[600px] sm:min-h-[640px] flex items-center justify-center">
-          <WindscreenBackdrop />
+        {/* RIGHT — phone with floating context cards. Slight negative
+         *  translate so the visual group sits closer to the headline column
+         *  on wide viewports instead of drifting to the page edge. */}
+        <div className="relative isolate min-h-[640px] flex items-center justify-center lg:-translate-x-4 xl:-translate-x-8">
+          {/* Soft circle backdrop */}
+          <div
+            aria-hidden
+            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          >
+            <div className="size-[420px] lg:size-[480px] rounded-full bg-snappeal-primary-50/70" />
+            <div className="absolute size-[540px] rounded-full border border-snappeal-primary-100/70" />
+            <div
+              className="absolute size-[420px] lg:size-[480px] rounded-full opacity-40"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 1px 1px, rgba(0,122,255,0.18) 1px, transparent 0)",
+                backgroundSize: "16px 16px",
+                WebkitMaskImage:
+                  "radial-gradient(closest-side, #000 60%, transparent 100%)",
+                maskImage:
+                  "radial-gradient(closest-side, #000 60%, transparent 100%)",
+              }}
+            />
+          </div>
+
           <div className="relative">
             <PhoneMockup />
-            {/* Floating trust badge with curly arrow — positioned outside the phone */}
-            <div className="hidden sm:flex absolute -bottom-2 -right-14 lg:-right-20 w-44 rounded-2xl bg-white border border-snappeal-border shadow-2xl shadow-black/10 p-3 items-start gap-2 z-20">
-              <div className="size-9 rounded-full bg-snappeal-primary-100 flex items-center justify-center flex-shrink-0">
+
+            {/* Floating context cards — all stacked on the RIGHT of the phone,
+             *  pushed further right so the phone breathes, and starting BELOW
+             *  the phone's status bar/notch. Order top → bottom: ticket →
+             *  social proof → outcome stat. */}
+            <div className="hidden md:flex absolute top-32 lg:top-28 -right-10 lg:-right-20 flex-col gap-3 z-20 w-36">
+              {/* 1 · Notice Uploaded — yellow PCN thumb */}
+              <FloatingCard>
+                <p className="text-[11px] font-semibold text-snappeal-navy mb-1.5">
+                  Notice Uploaded
+                </p>
+                <div className="rounded-md overflow-hidden border border-snappeal-border bg-snappeal-bg/40 aspect-[5/4] flex items-center justify-center">
+                  <MiniPcnThumb />
+                </div>
+              </FloatingCard>
+
+              {/* 2 · Social proof — trust badge with 5 stars */}
+              <FloatingCard>
+                <div className="flex items-center justify-center mb-1.5">
+                  <span className="size-9 rounded-xl bg-snappeal-primary-50 flex items-center justify-center">
+                    <ShieldCheck className="size-5 text-snappeal-primary" strokeWidth={2} />
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold text-snappeal-navy text-center leading-tight">
+                  London drivers
+                  <br />
+                  trust Snappeal
+                </p>
+                <div className="mt-1.5 flex items-center justify-center gap-0.5">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <Star key={i} className="size-3 text-yellow-400" fill="currentColor" />
+                  ))}
+                </div>
+                <p className="text-[11px] font-bold text-snappeal-navy text-center mt-1">
+                  4.8/5
+                </p>
+                <p className="text-[9px] text-snappeal-muted text-center">
+                  from 2,300+ reviews
+                </p>
+              </FloatingCard>
+
+              {/* 3 · Real London stats — center-aligned to match the two
+               *  cards above (Notice + Trust badge). Title, big % figure,
+               *  description, and mini chart sit on one optical centre line. */}
+              <div className="rounded-2xl bg-white border border-snappeal-border shadow-xl shadow-black/[0.06] p-3 flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-semibold text-snappeal-muted">Real London stats</p>
+                <p className="text-xl font-extrabold text-snappeal-primary leading-none mt-1">
+                  49.4%
+                </p>
+                <p className="text-[9px] text-snappeal-muted leading-tight mt-1">
+                  of formal appeals
+                  <br />
+                  were upheld in
+                  <br />
+                  2024–25.
+                </p>
                 <svg
-                  viewBox="0 0 24 24"
-                  className="size-5 text-snappeal-primary"
-                  fill="currentColor"
+                  viewBox="0 0 80 28"
+                  className="mt-2 w-20 h-5 text-snappeal-primary"
                   aria-hidden
                 >
-                  <path d="M12 2 21 5v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V5l9-3z" />
+                  <path
+                    d="M2 22 L 16 18 L 30 20 L 44 12 L 58 14 L 72 6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M72 6 L 67 8 M 72 6 L 70 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
               </div>
-              <div>
-                <p className="text-[11px] font-bold text-snappeal-navy leading-tight">
-                  Thousands of London drivers trust Snappeal
-                </p>
-              </div>
-              {/* Curly arrow pointing back to phone */}
-              <svg
-                viewBox="0 0 60 60"
-                aria-hidden
-                className="absolute -left-12 -top-2 size-14 text-snappeal-primary/70 -rotate-12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              >
-                <path d="M52 12 C 40 18, 28 28, 22 42" />
-                <path d="M22 42 l 6 -3 M 22 42 l 4 6" />
-              </svg>
             </div>
           </div>
         </div>
@@ -174,46 +246,89 @@ function Hero() {
   );
 }
 
+function FloatingCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-white border border-snappeal-border shadow-xl shadow-black/[0.06] p-2.5">
+      {children}
+    </div>
+  );
+}
+
+function MiniPcnThumb() {
+  return (
+    <svg viewBox="0 0 120 96" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern
+          id="miniPcnHatch"
+          patternUnits="userSpaceOnUse"
+          width="4"
+          height="4"
+          patternTransform="rotate(45)"
+        >
+          <rect width="4" height="4" fill="#0a0a0a" />
+          <rect x="0.6" y="0.6" width="2.8" height="2.8" fill="#ffffff" />
+        </pattern>
+      </defs>
+      <rect width="120" height="96" fill="#f4f4f5" />
+      <rect x="14" y="10" width="92" height="76" fill="url(#miniPcnHatch)" />
+      <rect x="22" y="18" width="76" height="60" fill="#fdd420" />
+      <text x="60" y="38" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif" fontSize="9" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.2}>
+        PENALTY
+      </text>
+      <text x="60" y="50" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif" fontSize="9" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.2}>
+        CHARGE
+      </text>
+      <text x="60" y="62" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif" fontSize="9" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.2}>
+        NOTICE
+      </text>
+      <text x="60" y="74" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif" fontSize="5" fontWeight={800} fill="#0a0a0a">
+        WARNING
+      </text>
+    </svg>
+  );
+}
+
 function TrustStrip() {
   const items = [
     {
       icon: Sparkles,
       title: "AI-Drafted Appeals",
-      body: "Snappeal drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention.",
+      body: "Clear, formal appeal letters tailored to your contravention.",
     },
     {
-      icon: TrendingUp,
-      title: "Real London Stats",
-      body: "49.4% of formal London PCN appeals were upheld in 2024-25. We use that benchmark, not invented win rates.",
+      icon: MapPin,
+      title: "London-Focused",
+      body: "Built around real London parking appeal workflows and data.",
     },
     {
-      icon: ShieldCheck,
+      icon: PoundSterling,
       title: "£2.99, One-Off",
-      body: "Pay once, non-refundable. You're paying for the appeal we draft and submit, not for the outcome.",
+      body: "Simple fixed pricing. Pay once per appeal.",
     },
     {
       icon: Lock,
       title: "Secure & Private",
-      body: "Your data is encrypted, never sold, and deleted 90 days after your appeal resolves.",
+      body: "Your information is encrypted and handled securely.",
     },
   ];
 
   return (
     <section
       id="why"
-      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 -mt-6 relative z-10"
+      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-4 lg:mt-2 relative z-10"
     >
-      <div className="rounded-3xl bg-white border border-snappeal-border shadow-xl shadow-snappeal-primary/5 p-6 sm:p-8 grid sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
+      <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
         {items.map(({ icon: Icon, title, body }) => (
-          <div key={title} className="flex items-start gap-4">
-            <span className="flex-shrink-0 size-11 rounded-full bg-snappeal-primary-100 flex items-center justify-center">
-              <Icon className="size-5 text-snappeal-primary" />
+          <div
+            key={title}
+            className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-start gap-3.5 hover:border-snappeal-primary/40 transition"
+          >
+            <span className="flex-shrink-0 size-11 rounded-full bg-snappeal-primary-50 flex items-center justify-center">
+              <Icon className="size-5 text-snappeal-primary" strokeWidth={1.75} />
             </span>
-            <div>
-              <h3 className="text-base font-bold text-snappeal-navy">
-                {title}
-              </h3>
-              <p className="text-sm text-snappeal-muted mt-1 leading-relaxed">
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-bold text-snappeal-navy">{title}</h3>
+              <p className="text-[13px] text-snappeal-muted mt-1 leading-relaxed">
                 {body}
               </p>
             </div>
@@ -275,8 +390,8 @@ function HowItWorks() {
                 <div className="absolute -top-3.5 -left-3.5 size-9 rounded-xl bg-snappeal-primary text-white text-sm font-extrabold flex items-center justify-center shadow-lg shadow-snappeal-primary/40 ring-4 ring-snappeal-primary-50/60">
                   {step.n}
                 </div>
-                {/* Icon */}
-                <span className="block size-12 rounded-2xl bg-snappeal-primary-100 flex items-center justify-center mb-4 ml-1">
+                {/* Icon — centred horizontally in the card */}
+                <span className="mx-auto size-12 rounded-2xl bg-snappeal-primary-100 flex items-center justify-center mb-4">
                   <step.icon className="size-6 text-snappeal-primary" />
                 </span>
                 <h3 className="text-lg font-bold text-snappeal-navy">
@@ -340,8 +455,8 @@ function DownloadSection() {
 
         <div className="flex flex-col gap-4 items-start lg:items-end">
           <div className="flex flex-wrap gap-3">
-            <AppStoreBadge />
-            <GooglePlayBadge />
+            <AppStoreBadge variant="on-dark" />
+            <GooglePlayBadge variant="on-dark" />
           </div>
           <div className="text-xs text-white/60">
             Or open <span className="font-semibold text-white">snappeal.ai</span>{" "}

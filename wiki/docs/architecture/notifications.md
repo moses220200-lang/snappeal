@@ -56,9 +56,8 @@ Inbound mail webhook (`/api/inbound`) classifies the council reply, updates `app
 |---|---|
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser-side application server key for `pushManager.subscribe` |
 | `VAPID_PRIVATE_KEY` | Server-side, used by `web-push` (TBD) to sign outbound notifications |
-| `VAPID_SUBJECT` | `mailto:` URL for the VAPID identity |
 
-Generate a key pair with `npx web-push generate-vapid-keys`.
+Generate a key pair with `npx web-push generate-vapid-keys`. (Previous versions of this doc listed `VAPID_SUBJECT` — it isn't referenced in the codebase and was removed in v0.1.5.)
 
 ## Transactional email — pending provider pick
 

@@ -28,6 +28,15 @@ const Body = z.object({
 
 export async function POST(request: Request) {
   const expected = process.env.INBOUND_WEBHOOK_SECRET;
+  // In production we require the shared secret outright — anyone with the
+  // webhook URL could otherwise flip appeals to cancelled/rejected. In dev
+  // we keep the soft-optional behaviour so local testing isn't blocked.
+  if (process.env.NODE_ENV === "production" && !expected) {
+    return NextResponse.json(
+      jsonError("MISCONFIGURED", "INBOUND_WEBHOOK_SECRET must be set in production"),
+      { status: 503 },
+    );
+  }
   if (expected) {
     const supplied = request.headers.get("x-snappeal-webhook-secret");
     if (supplied !== expected) {

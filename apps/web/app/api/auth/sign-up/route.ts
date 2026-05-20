@@ -4,6 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { createUser, setSessionCookie, signJwt } from "@/lib/server/auth";
 import { getDb, schema } from "@/lib/server/db/client";
 import { jsonError } from "@/lib/server/contracts";
+import { getRequestSessionId } from "@/lib/server/viewer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,17 @@ const Body = z.object({
   email: z.string().min(3).max(254),
   password: z.string().min(8).max(200),
   displayName: z.string().max(80).optional().nullable(),
-  /** Optional: anonymous session id whose guest appeals should be claimed onto the new user. */
+  /** Optional postal-address fields captured at sign-up so the portal-
+   *  automation agent has them when it needs to fill council forms. */
+  phone: z.string().max(40).optional().nullable(),
+  addressLine1: z.string().max(120).optional().nullable(),
+  addressLine2: z.string().max(120).optional().nullable(),
+  addressCity: z.string().max(80).optional().nullable(),
+  addressPostcode: z.string().max(20).optional().nullable(),
+  /** Optional: anonymous session id whose guest appeals should be claimed
+   *  onto the new user. Only honoured if it matches the `x-snappeal-session`
+   *  header — otherwise an attacker could inherit someone else's appeals
+   *  by guessing their sessionId. */
   sessionId: z.string().max(128).optional(),
 });
 
@@ -30,17 +41,30 @@ export async function POST(request: Request) {
       email: body.email,
       password: body.password,
       displayName: body.displayName ?? null,
+      phone: body.phone ?? null,
+      addressLine1: body.addressLine1 ?? null,
+      addressLine2: body.addressLine2 ?? null,
+      addressCity: body.addressCity ?? null,
+      addressPostcode: body.addressPostcode ?? null,
     });
     await setSessionCookie(signJwt(user));
 
-    // Claim any guest appeals for this anonymous session onto the new userId.
-    if (body.sessionId) {
+    // Claim guest appeals for this anonymous session — only if the body's
+    // sessionId matches the `x-snappeal-session` header the browser itself
+    // sends from localStorage. The header is the source of truth; the body
+    // field is a UX leftover that we no longer trust on its own.
+    const headerSession = getRequestSessionId(request);
+    const claimSession =
+      body.sessionId && headerSession && body.sessionId === headerSession
+        ? body.sessionId
+        : null;
+    if (claimSession) {
       const db = getDb();
       if (db) {
         await db
           .update(schema.appeals)
           .set({ userId: user.id })
-          .where(and(eq(schema.appeals.sessionId, body.sessionId), isNull(schema.appeals.userId)));
+          .where(and(eq(schema.appeals.sessionId, claimSession), isNull(schema.appeals.userId)));
       }
     }
 

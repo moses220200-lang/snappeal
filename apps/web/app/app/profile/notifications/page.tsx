@@ -32,7 +32,7 @@ export default function NotificationsPage() {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
       try {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         setPrefs({ ...DEFAULT, ...(JSON.parse(raw) as Partial<Prefs>) });
       } catch {
         /* ignore */

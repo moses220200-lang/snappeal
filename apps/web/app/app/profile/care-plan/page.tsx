@@ -60,12 +60,12 @@ export default function CarePlanPage() {
       if (!alive) return;
       if (meRes.ok) {
         const j = (await meRes.json()) as { user: unknown };
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         setSignedIn(Boolean(j.user));
       }
       if (subRes.ok) {
         const j = (await subRes.json()) as { subscription: CarePlanSub | null };
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         setSub(j.subscription);
       }
     })();

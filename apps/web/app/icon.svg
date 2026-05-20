@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="Snappeal">
+  <!-- Rounded white tile so the favicon reads crisply on both light + dark
+       browser themes. -->
+  <rect width="80" height="80" rx="16" ry="16" fill="#ffffff" />
+  <!-- Canonical Snappeal shield + hollow check. Matches components/Logo.tsx
+       so the favicon and the in-app mark are pixel-identical. -->
+  <path d="M40 4 C 24 4, 14 6, 10 10 C 8 12, 8 16, 8 24 V 44 C 8 58, 18 68, 40 76 C 62 68, 72 58, 72 44 V 24 C 72 16, 72 12, 70 10 C 66 6, 56 4, 40 4 Z" fill="#0b1f44" />
+  <path d="M24 42 L 35 53 L 56 30" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

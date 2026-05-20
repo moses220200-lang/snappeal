@@ -47,14 +47,64 @@ export function WizardOnboarding() {
     alreadyPaid: null,
   });
 
-  // Skip wizard entirely if it's already been completed.
+  // Decide whether the wizard should ever appear:
+  //   1. If the user is signed in → skip immediately and never show.
+  //   2. If localStorage flag is set → skip.
+  //   3. Otherwise → show the wizard from the welcome step.
+  // We start in `"done"` and only flip back to `"welcome"` when both checks
+  // confirm it's a fresh guest. That way logged-in users (and returning
+  // guests who finished onboarding) never see a flash of the wizard.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(STORAGE_KEY) === "1") {
-      // Hydrate skip-state from localStorage on mount.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    let alive = true;
+
+    const reveal = () => {
+      if (!alive) return;
+       
+      setStep("welcome");
+    };
+    const hide = () => {
+      if (!alive) return;
+       
       setStep("done");
+    };
+
+    hide();
+
+    // Local skip-state takes priority — no network round-trip needed.
+    if (window.localStorage.getItem(STORAGE_KEY) === "1") {
+      hide();
+      return () => {
+        alive = false;
+      };
     }
+
+    // Otherwise probe /api/auth/me. Signed-in users skip the wizard and we
+    // stamp localStorage so the network call doesn't happen again next
+    // mount.
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!alive) return;
+        if (res.ok) {
+          const body = (await res.json()) as { user?: { id?: string } | null };
+          if (body.user?.id) {
+            window.localStorage.setItem(STORAGE_KEY, "1");
+            hide();
+            return;
+          }
+        }
+        reveal();
+      } catch {
+        // Network failed — fall back to showing the wizard since we can't
+        // confirm sign-in. localStorage flag still gates returning guests.
+        reveal();
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const finish = () => {
@@ -199,50 +249,80 @@ function WelcomeAnimation() {
   );
 }
 
+/**
+ * Real-world UK PCN warning notice in its iconic adhesive plastic wallet —
+ * the yellow square with diamond-hatched border that gets slapped on a
+ * windshield. Bold "PENALTY CHARGE NOTICE / WARNING" copy matches the
+ * actual physical ticket so the scan-line animation lines up with what
+ * users actually see in real life.
+ */
 function MiniWestminsterPCN() {
   return (
-    <svg viewBox="0 0 220 300" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+    <svg
+      viewBox="0 0 220 300"
+      xmlns="http://www.w3.org/2000/svg"
+      className="w-full h-auto"
+    >
       <defs>
-        <linearGradient id="wizardTicketBody" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fde047" />
-          <stop offset="100%" stopColor="#e6bf30" />
+        <pattern
+          id="wizardPcnDiamondHatch"
+          patternUnits="userSpaceOnUse"
+          width="7"
+          height="7"
+          patternTransform="rotate(45)"
+        >
+          <rect width="7" height="7" fill="#0a0a0a" />
+          <rect x="0.9" y="0.9" width="5.2" height="5.2" fill="#ffffff" />
+        </pattern>
+        <linearGradient id="wizardPcnWallet" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f4f4f5" />
+          <stop offset="40%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#e7e7ea" />
+        </linearGradient>
+        <linearGradient id="wizardPcnSheen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.6" />
+          <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <rect width="220" height="300" rx="6" fill="url(#wizardTicketBody)" />
-      <rect width="220" height="58" fill="#dc2626" />
-      <text x="110" y="24" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="9" fontWeight={700} fill="#fff" letterSpacing={1.4}>
-        WESTMINSTER CITY COUNCIL
+
+      <rect
+        width="220"
+        height="300"
+        rx="8"
+        fill="url(#wizardPcnWallet)"
+        stroke="#cfcfd4"
+        strokeWidth="0.6"
+      />
+
+      <rect width="220" height="22" fill="#e6e6ea" />
+      <line x1="6" y1="11" x2="214" y2="11" stroke="#bcbcc2" strokeWidth="0.7" strokeDasharray="3 2" />
+      <line x1="6" y1="18" x2="214" y2="18" stroke="#cfcfd4" strokeWidth="0.5" strokeDasharray="1 3" />
+
+      <rect width="220" height="300" rx="8" fill="url(#wizardPcnSheen)" />
+
+      <rect x="22" y="42" width="176" height="240" fill="url(#wizardPcnDiamondHatch)" />
+      <rect x="36" y="56" width="148" height="212" fill="#fdd420" />
+
+      <text x="110" y="98" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="20" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.4}>
+        PENALTY
       </text>
-      <text x="110" y="44" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="14" fontWeight={800} fill="#fff" letterSpacing={1.5}>
-        PENALTY CHARGE NOTICE
+      <text x="110" y="120" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="20" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.4}>
+        CHARGE
       </text>
-      <rect y="64" width="220" height="12" fill="#0a1929" />
-      <text x="110" y="73" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="7" fontWeight={700} fill="#fde047" letterSpacing={1.2}>
-        DO NOT REMOVE — DRIVER OR KEEPER ONLY
+      <text x="110" y="142" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="20" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.4}>
+        NOTICE
       </text>
-      {[
-        ["PCN REF", "WC12345678"],
-        ["VEHICLE", "AB12 CDE"],
-        ["CODE", "12"],
-        ["LOCATION", "Marylebone High St"],
-        ["ISSUED", "12 May · 09:14"],
-        ["AMOUNT", "£160"],
-      ].map(([label, value], i) => {
-        const y = 96 + i * 30;
-        return (
-          <g key={label}>
-            <text x="14" y={y} fontFamily="Inter, system-ui, sans-serif" fontSize="7" fontWeight={700} fill="#0a1929" letterSpacing={1.1}>
-              {label}
-            </text>
-            <text x="14" y={y + 12} fontFamily="IBM Plex Mono, Menlo, monospace" fontSize="10" fontWeight={700} fill="#0a1929">
-              {value}
-            </text>
-          </g>
-        );
-      })}
-      <rect y="280" width="220" height="20" fill="#0a1929" fillOpacity={0.85} />
-      <text x="110" y="293" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="7" fontWeight={700} fill="#fff" letterSpacing={0.9}>
-        £80 IF PAID WITHIN 14 DAYS · OR APPEAL
+      <text x="110" y="178" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="13" fontWeight={800} fill="#0a0a0a" letterSpacing={0.6}>
+        WARNING
+      </text>
+      <text x="110" y="206" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="6.4" fontWeight={700} fill="#0a0a0a">
+        IT IS AN OFFENCE FOR ANY
+      </text>
+      <text x="110" y="220" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="6.4" fontWeight={700} fill="#0a0a0a">
+        PERSON OTHER THAN THE
+      </text>
+      <text x="110" y="234" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="6.4" fontWeight={700} fill="#0a0a0a">
+        DRIVER TO REMOVE THIS NOTICE
       </text>
     </svg>
   );
@@ -557,12 +637,17 @@ function PermissionRow({
 
 function AuthStep({ onFinish }: { onFinish: () => void }) {
   const router = useRouter();
-  const goToSignUp = () => {
-    // Mark wizard complete before navigating so it doesn't replay on return.
+  const markDoneAnd = (fn: () => void) => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("snappeal.wizardDone", "1");
     }
-    router.push("/sign-up");
+    fn();
+  };
+  const goToSignUp = () => markDoneAnd(() => router.push("/sign-up"));
+  const startOAuth = (provider: "apple" | "google") => {
+    markDoneAnd(() => {
+      window.location.href = `/api/auth/oauth/${provider}?next=${encodeURIComponent("/app/profile")}`;
+    });
   };
   return (
     <StepShell
@@ -587,19 +672,19 @@ function AuthStep({ onFinish }: { onFinish: () => void }) {
       <OAuthButton
         kind="apple"
         title="Continue with Apple"
-        subtitle="OAuth coming soon — sign in with email for now."
-        onClick={goToSignUp}
+        subtitle="Sign in instantly with your Apple ID."
+        onClick={() => startOAuth("apple")}
       />
       <OAuthButton
         kind="google"
         title="Continue with Google"
-        subtitle="OAuth coming soon — sign in with email for now."
-        onClick={goToSignUp}
+        subtitle="Sign in instantly with your Google account."
+        onClick={() => startOAuth("google")}
       />
       <OAuthButton
         kind="email"
         title="Continue with email"
-        subtitle="Create an account or sign in with a password."
+        subtitle="Create an account with name, address & phone."
         onClick={goToSignUp}
       />
     </StepShell>

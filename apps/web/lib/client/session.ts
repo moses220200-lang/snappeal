@@ -99,6 +99,29 @@ export function clearNotes() {
   window.sessionStorage.removeItem(KEY_NOTES);
 }
 
+/* Selected ground-card IDs from the step-2 quiz. Stored as a JSON array
+ * so the cards can be hydrated on back-navigation and so /api/generate
+ * can be informed of the customer's chosen grounds before drafting. */
+const KEY_GROUNDS = "snappeal.selectedGrounds";
+export function setSelectedGrounds(cardIds: string[]) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(KEY_GROUNDS, JSON.stringify(cardIds));
+}
+export function getSelectedGrounds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(KEY_GROUNDS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+export function clearSelectedGrounds() {
+  window.sessionStorage.removeItem(KEY_GROUNDS);
+}
+
 export function setCurrentAppealId(id: string) {
   window.localStorage.setItem(KEY_APPEAL, id);
 }

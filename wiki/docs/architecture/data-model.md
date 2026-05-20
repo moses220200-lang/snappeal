@@ -1,6 +1,6 @@
 # Data model
 
-Postgres 16 in dev (Docker Compose) → Neon Postgres in production. Drizzle ORM. Migrations under `apps/web/drizzle/`. As of 2026-05-20 the live schema has **11 tables**.
+Postgres 16 in dev (Docker Compose) → Neon Postgres in production. Drizzle ORM. Migrations under `apps/web/drizzle/`. As of 2026-05-20 the live schema has **11 tables** and **9 migrations applied** (`0000`–`0008`).
 
 ## Entities
 
@@ -33,7 +33,7 @@ erDiagram
 | **`subscriptions`** | Care Plan (£9.99/mo) records — mirrors Stripe `Subscription` state. | `id` text |
 | **`care_plan_waitlist`** | Pre-launch waitlist signups. Idempotent on email. | `id` text |
 
-## DDL (live as of migration 0005)
+## DDL (live as of migration 0008)
 
 The full schema lives in [`apps/web/lib/server/db/schema.ts`](https://github.com) and the applied migrations in `apps/web/drizzle/`:
 
@@ -46,6 +46,8 @@ The full schema lives in [`apps/web/lib/server/db/schema.ts`](https://github.com
 | `0004_illegal_exiles.sql` | `appeals.service_tier`, `users.service_tier`, `users.notification_prefs`, `care_plan_waitlist` |
 | `0005_mysterious_peter_parker.sql` | `subscriptions` table |
 | `0006_glossy_morgan_stark.sql` | `council_automation` table — per-council MCP recipes |
+| `0007_live_submission_progress.sql` | `jobs.progress jsonb NOT NULL DEFAULT '[]'` — append-only event log for live SSE streaming of `submit_appeal` jobs |
+| `0008_user_postal_address.sql` | `users.address_line1`, `address_line2`, `address_city`, `address_postcode`, `phone` — read by `loadCustomerProfile()` and injected into the portal-automation agent prompt. **UI form to capture these is still pending** (personal-details page currently shows displayName + email only). |
 
 ## Field-by-field gotchas
 

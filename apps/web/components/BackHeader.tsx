@@ -54,7 +54,10 @@ export function BackHeader({
 
   return (
     <div
-      className="snappeal-glass sticky top-0 z-30 -mt-[env(safe-area-inset-top,0px)] pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
+      // Sticky in normal flow (no negative top-margin). Reserves its own
+      // height — including the iOS safe-area inset — so the first content
+      // card below can never slide under it during overscroll bounce.
+      className="snappeal-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
       data-scrolled={scrolled}
     >
       <div className="flex items-center gap-3">

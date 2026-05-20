@@ -8,6 +8,7 @@ import {
   Lightbulb,
   ShieldAlert,
 } from "lucide-react";
+import { BackHeader } from "@/components/BackHeader";
 
 type Tip = {
   icon: typeof Lightbulb;
@@ -122,13 +123,13 @@ const SECTIONS: { heading: string; tips: Tip[] }[] = [
 export default function TipsPage() {
   const featuredTone = TONE[FEATURED.tone];
   return (
-    <div className="flex flex-col gap-5 pt-6 px-5">
-      <header>
-        <h1 className="text-2xl font-bold text-snappeal-navy">Tips</h1>
-        <p className="text-sm text-snappeal-muted mt-0.5">
-          Plain-English advice to make your appeal stronger.
-        </p>
-      </header>
+    <>
+      <BackHeader
+        title="Tips"
+        subtitle="Plain-English advice to make your appeal stronger"
+        back="/app"
+      />
+      <div className="flex flex-col gap-5 px-5 pt-4 pb-6 snappeal-content-top">
 
       {/* Featured tip — the 14-day rule */}
       <Link
@@ -203,6 +204,7 @@ export default function TipsPage() {
         </Link>{" "}
         — keep it open for the deep-dive.
       </div>
-    </div>
+      </div>
+    </>
   );
 }

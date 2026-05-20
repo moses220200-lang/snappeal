@@ -16,6 +16,7 @@ const NAV = [
   { href: "/admin/jobs", label: "Job queue" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/health", label: "System health" },
+  { href: "/admin/settings", label: "Settings" },
   { href: "/admin/wiki", label: "Wiki" },
 ];
 
@@ -60,7 +61,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             ← App
           </Link>
         </header>
-        {children}
+        {/* Inner content padding — gives every admin page consistent gutters
+         *  against the sidebar (desktop) and viewport (mobile) so cards never
+         *  press against the edge. */}
+        <div className="flex-1 px-5 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-[1400px] w-full">
+          {children}
+        </div>
       </main>
     </div>
   );

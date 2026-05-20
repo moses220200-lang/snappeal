@@ -45,3 +45,16 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Stray dry-run / MCP screenshots that escape tempdir cleanup
+/confirmation.png
+/admin-audit/
+/admin-councils/
+/dryrun-screenshots/
+*.dryrun.png
+# Numbered milestone screenshots that get rescued from process.cwd() by the
+# submission engine — they're intentionally written to apps/web/ during dev runs.
+/0[0-9]-*.png
+
+# Live-submission screenshots written by watchScreenshots()
+/public/submissions/

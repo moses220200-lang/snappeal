@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MapPin } from "lucide-react";
+import { SnappealMark } from "@/components/Logo";
 
 /**
  * Standard in-app page header — sticky at the top with a frosted-glass
@@ -10,9 +11,11 @@ import { MapPin } from "lucide-react";
  * past its threshold. Matches the iOS 17+ "Liquid Glass" pattern so the
  * status bar never collides with content underneath.
  *
- * Pages with their own back-arrow header (capture, notes, paywall, letter,
- * ticket detail, /sign-in, /sign-up, profile sub-pages) skip this in
- * favour of the slim back-arrow pattern.
+ * Brand block: a blue Snappeal "S" shield (same identity as the marketing
+ * site) followed by the wordmark + tagline, then a small UK pill on the
+ * right. Pages with their own back-arrow header (capture, notes, paywall,
+ * letter, ticket detail, sign-in, sign-up, profile sub-pages) use the
+ * slim back-arrow pattern instead.
  */
 export function AppHeader({
   title,
@@ -32,21 +35,28 @@ export function AppHeader({
 
   return (
     <div
-      className="snappeal-glass sticky top-0 z-30 -mt-[env(safe-area-inset-top,0px)] pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
+      // Sticky in normal flow (no negative margin). Reserves its own space
+      // at the top of the page so the hero card below never slides under
+      // it during overscroll bounce on iOS PWA. Safe-area buffer is added
+      // INSIDE the element so the iOS time/Dynamic Island can never collide
+      // with the wordmark.
+      className="snappeal-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
       data-scrolled={scrolled}
     >
-      <div className="flex items-center justify-between">
-        <Link href="/app" className="flex items-center gap-2.5">
-          <ShieldP />
-          <div className="flex flex-col">
-            <span className="text-lg font-bold text-snappeal-navy leading-none">Snappeal</span>
-            <span className="text-[11px] text-snappeal-muted mt-0.5">
+      <div className="flex items-center justify-between gap-3">
+        <Link href="/app" className="flex items-center gap-3 min-w-0">
+          <SnappealMark size={38} variant="dark" className="drop-shadow-sm" />
+          <div className="flex flex-col leading-tight min-w-0">
+            <span className="text-lg font-bold text-snappeal-navy tracking-tight">
+              Snappeal
+            </span>
+            <span className="text-[11px] text-snappeal-muted mt-0.5 truncate">
               Challenge your parking ticket in minutes
             </span>
           </div>
         </Link>
-        <span className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-snappeal-border px-2.5 py-1 text-[11px] font-semibold text-snappeal-navy backdrop-blur">
-          <MapPin className="size-3 text-snappeal-primary" />
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-snappeal-border px-3 py-1.5 text-[11px] font-semibold text-snappeal-navy shadow-sm shrink-0">
+          <MapPin className="size-3.5 text-snappeal-primary" strokeWidth={2.25} />
           UK
         </span>
       </div>
@@ -62,25 +72,3 @@ export function AppHeader({
   );
 }
 
-function ShieldP() {
-  return (
-    <svg width="34" height="38" viewBox="0 0 34 38" className="flex-shrink-0" aria-hidden>
-      <path
-        d="M17 1.5 L31.5 6.5 V21 C31.5 29 25 35 17 36.5 C9 35 2.5 29 2.5 21 V6.5 Z"
-        fill="#0a1929"
-      />
-      <text
-        x="17"
-        y="24"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontSize="18"
-        fontWeight={800}
-        textAnchor="middle"
-        fill="#ffffff"
-        letterSpacing={-0.5}
-      >
-        P
-      </text>
-    </svg>
-  );
-}

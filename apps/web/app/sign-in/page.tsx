@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ArrowRight, Loader2, Mail, Lock } from "lucide-react";
 import { getOrCreateSessionId } from "@/lib/client/session";
+import { SnappealMark } from "@/components/Logo";
+import { OAuthButtons } from "@/components/OAuthButtons";
 
 function safeNext(raw: string | null): string {
   if (!raw) return "/app/profile";
@@ -40,10 +42,14 @@ function SignInInner() {
     setSubmitting(true);
     setError(null);
     try {
+      const sessionId = getOrCreateSessionId();
       const res = await fetch("/api/auth/sign-in", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, sessionId: getOrCreateSessionId() }),
+        headers: {
+          "content-type": "application/json",
+          "x-snappeal-session": sessionId,
+        },
+        body: JSON.stringify({ email, password, sessionId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error?.message ?? `Sign-in failed (${res.status})`);
@@ -64,6 +70,14 @@ function SignInInner() {
 
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to Snappeal to sync your tickets across devices.">
+      <OAuthButtons next={next} />
+      <div className="flex items-center gap-3 my-5">
+        <span className="flex-1 h-px bg-snappeal-border" />
+        <span className="text-[11px] uppercase tracking-wider text-snappeal-muted">
+          or with email
+        </span>
+        <span className="flex-1 h-px bg-snappeal-border" />
+      </div>
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
         <Field icon={Mail} type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={setEmail} required />
         <Field icon={Lock} type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={setPassword} required />
@@ -112,7 +126,7 @@ function AuthShell({ title, subtitle, children }: { title: string; subtitle: str
     <div className="min-h-screen bg-snappeal-bg flex flex-col items-center justify-center px-5 py-12">
       <div className="w-full max-w-sm">
         <Link href="/app" className="flex items-center gap-2.5 mb-6 justify-center">
-          <ShieldGlyph />
+          <SnappealMark size={36} variant="dark" />
           <span className="text-xl font-bold text-snappeal-navy tracking-tight">Snappeal</span>
         </Link>
         <div className="rounded-3xl bg-white border border-snappeal-border p-6">
@@ -158,11 +172,3 @@ function Field({
   );
 }
 
-function ShieldGlyph() {
-  return (
-    <svg width="32" height="36" viewBox="0 0 34 38" aria-hidden>
-      <path d="M17 1.5 L31.5 6.5 V21 C31.5 29 25 35 17 36.5 C9 35 2.5 29 2.5 21 V6.5 Z" fill="#0a1929" />
-      <text x="17" y="24" fontFamily="Inter, system-ui, sans-serif" fontSize="18" fontWeight={800} textAnchor="middle" fill="#fff" letterSpacing={-0.5}>P</text>
-    </svg>
-  );
-}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 28" preserveAspectRatio="none" aria-hidden="true">
+  <title>Hand-drawn brush underline</title>
+  <!--
+    Single tapered brush stroke modelled to match the reference photo:
+    very thin at both ends, swelling toward the middle-right, with a
+    soft tilt that lifts the right tip slightly. Filled with the brand
+    yellow (#f5b740). Path is intentionally one closed shape so it
+    scales cleanly to any width without stroke-width artifacts.
+  -->
+  <path
+    fill="#f5b740"
+    d="M4 18 C 40 11, 110 8, 180 7 C 240 6.5, 310 8, 392 5
+       C 332 13, 250 16, 188 17 C 118 18, 56 20, 4 18 Z"
+  />
+</svg>

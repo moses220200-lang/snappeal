@@ -6,6 +6,11 @@ import {
   DatabaseNotConfiguredError,
 } from "@/lib/server/appeals";
 import { jsonError } from "@/lib/server/contracts";
+import {
+  canViewAppeal,
+  getRequestSessionId,
+  getViewer,
+} from "@/lib/server/viewer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +23,7 @@ const PatchBody = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
@@ -28,6 +33,14 @@ export async function GET(
       return NextResponse.json(jsonError("NOT_FOUND", `Appeal ${id} not found`), {
         status: 404,
       });
+    }
+    const [viewer] = await Promise.all([getViewer()]);
+    const sessionId = getRequestSessionId(request);
+    if (!canViewAppeal(viewer, appeal, sessionId)) {
+      return NextResponse.json(
+        jsonError("FORBIDDEN", `Appeal ${id} not accessible to this viewer`),
+        { status: 403 },
+      );
     }
     return NextResponse.json({ appeal });
   } catch (err) {
@@ -55,6 +68,20 @@ export async function PATCH(
     });
   }
   try {
+    const existing = await getAppealById(id);
+    if (!existing) {
+      return NextResponse.json(jsonError("NOT_FOUND", `Appeal ${id} not found`), {
+        status: 404,
+      });
+    }
+    const viewer = await getViewer();
+    const sessionId = getRequestSessionId(request);
+    if (!canViewAppeal(viewer, existing, sessionId)) {
+      return NextResponse.json(
+        jsonError("FORBIDDEN", `Appeal ${id} not editable by this viewer`),
+        { status: 403 },
+      );
+    }
     const appeal = await patchAppealDraft(id, body);
     if (!appeal) {
       return NextResponse.json(jsonError("NOT_FOUND", `Appeal ${id} not found`), {

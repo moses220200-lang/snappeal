@@ -2,7 +2,9 @@
 
 What the user is paying £2.99 for, technically. The submission engine is the bridge between the AI-drafted letter and the council's "we received your appeal" confirmation.
 
-**Status as of 2026-05-20** — the engine is implemented and wired end-to-end. The portal path uses `claude -p` with Playwright MCP attached (live behind `SNAPPEAL_SUBMISSION_LIVE=1`). The email path uses a Resend-compatible API call (Resend by default, stubbed in dev). Both are dispatched via the [job queue](./job-queue.md) so `/api/submit` returns in &lt;100ms while the actual work runs on a worker.
+**Status as of 2026-05-20 (v0.1.5)** — the engine is implemented and wired end-to-end. The portal path uses `claude -p` with Playwright MCP attached and **defaults to LIVE**; the engine reads `SNAPPEAL_SUBMISSION_LIVE !== "0"`, so missing/empty/anything-but-"0" runs the real Playwright flow. Set `SNAPPEAL_SUBMISSION_LIVE=0` to opt into the deterministic mock. The email path uses a Resend-compatible API call (Resend by default, stubbed in dev). Both are dispatched via the [job queue](./job-queue.md) so `/api/submit` returns in &lt;100ms while the actual work runs on a worker.
+
+**Fallback fires on BOTH a thrown agent error AND a returned `success: false`** — early versions only fell back on throws, which let "service unavailable" responses end as silent failures instead of routing to email.
 
 ## The two paths
 

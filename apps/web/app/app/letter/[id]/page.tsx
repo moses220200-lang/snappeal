@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { LetterActions } from "@/components/LetterActions";
 import { BackHeader } from "@/components/BackHeader";
@@ -16,6 +17,7 @@ export default function LetterPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const [appeal, setAppeal] = useState<AppealView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -23,7 +25,10 @@ export default function LetterPage({
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const res = await fetch(`/api/appeals/${id}`, { cache: "no-store" });
+      const res = await fetch(`/api/appeals/${id}`, {
+        cache: "no-store",
+        headers: { "x-snappeal-session": getOrCreateSessionId() },
+      });
       if (!alive) return;
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -45,32 +50,27 @@ export default function LetterPage({
     try {
       const res = await fetch("/api/submit", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-snappeal-session": getOrCreateSessionId(),
+        },
         body: JSON.stringify({
           sessionId: getOrCreateSessionId(),
           appealId: appeal.id,
           paymentIntentId: "pi_local_dev",
         }),
       });
-      const body = await res.json();
+      const body = (await res.json()) as { submissionId?: string; error?: { message?: string } };
       if (!res.ok) throw new Error(body?.error?.message ?? `Submission failed (${res.status})`);
 
-      // Submission runs async on the worker. Poll the appeal until
-      // status flips to 'submitted' (or 'ready' on failure).
-      const start = Date.now();
-      while (Date.now() - start < 5 * 60_000) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const fresh = await fetch(`/api/appeals/${id}`, { cache: "no-store" });
-        if (!fresh.ok) continue;
-        const json = (await fresh.json()) as { appeal: AppealView };
-        setAppeal(json.appeal);
-        if (json.appeal.status === "submitted" || json.appeal.status === "under_review") return;
-        if (json.appeal.status === "ready" && Date.now() - start > 5_000) {
-          // Engine bounced back to ready — submission failed.
-          throw new Error("Submission failed — try again in a moment.");
-        }
+      // Hand off to the live "watching the AI drive the portal" page, which
+      // subscribes to the job's progress SSE stream and renders screenshots
+      // + step events as they arrive.
+      if (body.submissionId) {
+        router.push(`/app/submitting/${body.submissionId}`);
+        return;
       }
-      throw new Error("Submission is taking longer than expected. Check back shortly.");
+      throw new Error("Submission accepted but no job id returned");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
     } finally {

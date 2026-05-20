@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { ArrowRight, Loader2, Mail, Lock, Phone, User } from "lucide-react";
+import { getOrCreateSessionId } from "@/lib/client/session";
+import { SnappealMark } from "@/components/Logo";
+import { OAuthButtons } from "@/components/OAuthButtons";
+import {
+  AddressAutocomplete,
+  type PostalAddress,
+} from "@/components/AddressAutocomplete";
 
 function safeNext(raw: string | null): string {
   if (!raw) return "/app/profile";
@@ -14,12 +22,16 @@ function safeNext(raw: string | null): string {
   }
   return "/app/profile";
 }
-import { ArrowRight, Loader2, Mail, Lock, User } from "lucide-react";
-import { getOrCreateSessionId } from "@/lib/client/session";
 
 export default function SignUpPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-snappeal-muted">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-sm text-snappeal-muted">
+          Loading…
+        </div>
+      }
+    >
       <SignUpInner />
     </Suspense>
   );
@@ -29,8 +41,16 @@ function SignUpInner() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params?.get("next") ?? null);
-  const [displayName, setDisplayName] = useState("");
+
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState<PostalAddress>({
+    line1: "",
+    line2: "",
+    city: "",
+    postcode: "",
+  });
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,24 +60,34 @@ function SignUpInner() {
     setSubmitting(true);
     setError(null);
     try {
+      const sessionId = getOrCreateSessionId();
       const res = await fetch("/api/auth/sign-up", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-snappeal-session": sessionId,
+        },
         body: JSON.stringify({
           email,
           password,
-          displayName: displayName || null,
-          sessionId: getOrCreateSessionId(),
+          displayName: fullName || null,
+          phone: phone || null,
+          addressLine1: address.line1 || null,
+          addressLine2: address.line2 || null,
+          addressCity: address.city || null,
+          addressPostcode: address.postcode || null,
+          sessionId,
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message ?? `Sign-up failed (${res.status})`);
-      const target =
-        params?.get("next")
-          ? next
-          : json?.user?.role === "admin"
-            ? "/admin"
-            : "/app/profile";
+      if (!res.ok) {
+        throw new Error(json?.error?.message ?? `Sign-up failed (${res.status})`);
+      }
+      const target = params?.get("next")
+        ? next
+        : json?.user?.role === "admin"
+          ? "/admin"
+          : "/app/profile";
       router.replace(target);
       router.refresh();
     } catch (err) {
@@ -70,21 +100,83 @@ function SignUpInner() {
     <div className="min-h-screen bg-snappeal-bg flex flex-col items-center justify-center px-5 py-12">
       <div className="w-full max-w-sm">
         <Link href="/app" className="flex items-center gap-2.5 mb-6 justify-center">
-          <ShieldGlyph />
-          <span className="text-xl font-bold text-snappeal-navy tracking-tight">Snappeal</span>
+          <SnappealMark size={36} variant="dark" />
+          <span className="text-xl font-bold text-snappeal-navy tracking-tight">
+            Snappeal
+          </span>
         </Link>
         <div className="rounded-3xl bg-white border border-snappeal-border p-6">
-          <h1 className="text-2xl font-bold text-snappeal-navy">Create your account</h1>
+          <h1 className="text-2xl font-bold text-snappeal-navy">
+            Create your account
+          </h1>
           <p className="text-sm text-snappeal-muted mt-1">
-            Keep your appeals synced across devices and get inbox alerts when the council replies.
+            Keep your appeals synced across devices and let the AI fill council
+            forms with your registered-keeper details.
           </p>
-          <form onSubmit={onSubmit} className="flex flex-col gap-3 mt-5">
-            <Field icon={User} type="text" autoComplete="name" placeholder="Your name (optional)" value={displayName} onChange={setDisplayName} />
-            <Field icon={Mail} type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={setEmail} required />
-            <Field icon={Lock} type="password" autoComplete="new-password" placeholder="Password (8+ characters)" value={password} onChange={setPassword} required />
+
+          {/* OAuth providers — branded buttons up top so users with an Apple
+              ID or Google account don't have to fill the whole form. */}
+          <div className="mt-5">
+            <OAuthButtons next={next} />
+          </div>
+
+          <div className="flex items-center gap-3 my-5">
+            <span className="flex-1 h-px bg-snappeal-border" />
+            <span className="text-[11px] uppercase tracking-wider text-snappeal-muted">
+              or with email
+            </span>
+            <span className="flex-1 h-px bg-snappeal-border" />
+          </div>
+
+          <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            <Field
+              icon={User}
+              type="text"
+              autoComplete="name"
+              placeholder="Full name"
+              value={fullName}
+              onChange={setFullName}
+              required
+            />
+            <Field
+              icon={Mail}
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={setEmail}
+              required
+            />
+            <Field
+              icon={Phone}
+              type="tel"
+              autoComplete="tel"
+              placeholder="Mobile (+44 7…)"
+              value={phone}
+              onChange={setPhone}
+            />
+
+            <div className="rounded-2xl border border-snappeal-border bg-white p-3.5 flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-snappeal-muted">
+                Registered keeper address
+              </p>
+              <AddressAutocomplete value={address} onChange={setAddress} />
+            </div>
+
+            <Field
+              icon={Lock}
+              type="password"
+              autoComplete="new-password"
+              placeholder="Password (8+ characters)"
+              value={password}
+              onChange={setPassword}
+              required
+            />
 
             {error && (
-              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>
+              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                {error}
+              </p>
             )}
 
             <button
@@ -107,13 +199,22 @@ function SignUpInner() {
 
             <p className="text-[11px] text-snappeal-muted text-center mt-1">
               By creating an account you agree to our{" "}
-              <Link href="/terms" className="underline">Terms</Link> and{" "}
-              <Link href="/privacy" className="underline">Privacy Policy</Link>.
+              <Link href="/terms" className="underline">
+                Terms
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="underline">
+                Privacy Policy
+              </Link>
+              .
             </p>
 
             <p className="text-xs text-snappeal-muted text-center mt-2">
               Already have one?{" "}
-              <Link href={`/sign-in?next=${encodeURIComponent(next)}`} className="font-semibold text-snappeal-primary">
+              <Link
+                href={`/sign-in?next=${encodeURIComponent(next)}`}
+                className="font-semibold text-snappeal-primary"
+              >
                 Sign in
               </Link>
             </p>
@@ -154,14 +255,5 @@ function Field({
         className="flex-1 text-sm outline-none bg-transparent placeholder:text-snappeal-muted"
       />
     </label>
-  );
-}
-
-function ShieldGlyph() {
-  return (
-    <svg width="32" height="36" viewBox="0 0 34 38" aria-hidden>
-      <path d="M17 1.5 L31.5 6.5 V21 C31.5 29 25 35 17 36.5 C9 35 2.5 29 2.5 21 V6.5 Z" fill="#0a1929" />
-      <text x="17" y="24" fontFamily="Inter, system-ui, sans-serif" fontSize="18" fontWeight={800} textAnchor="middle" fill="#fff" letterSpacing={-0.5}>P</text>
-    </svg>
   );
 }

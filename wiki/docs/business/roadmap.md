@@ -56,7 +56,7 @@ Three phases, eight quarters, one product.
 
 **Shipped — backend**
 
-- ✅ Postgres 16 in docker-compose, four Drizzle migrations applied
+- ✅ Postgres 16 in docker-compose, nine Drizzle migrations applied (0000–0008)
 - ✅ Claude CLI piped headlessly for all AI reasoning (extract + draft + inbound classify)
 - ✅ Postgres-backed job queue (`FOR UPDATE SKIP LOCKED`, exponential backoff, stale-lock recovery)
 - ✅ Worker pool boots via `instrumentation.ts`
@@ -76,16 +76,16 @@ Three phases, eight quarters, one product.
 - Notes step (tier-aware CTA: Free vs £2.99)
 - Stripe Payment Element ready; fake-pay buttons in dev under `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`
 - Three AI calls: pre-payment extract, full draft after payment, inbound classify after council reply — all via Claude CLI
-- Auto-submission for the top 7 councils via Playwright MCP behind `SNAPPEAL_SUBMISSION_LIVE=1`; email fallback otherwise; deterministic mock by default in dev
+- Auto-submission for the top 7 councils via Playwright MCP — **LIVE by default**; set `SNAPPEAL_SUBMISSION_LIVE=0` to opt into the deterministic mock. Email fallback fires on both throw AND `success: false`.
 - Storage: Postgres (canonical) + localStorage/sessionStorage (client cache); Vercel Blob for photos deferred
 - Soft launch: TikTok founder-led + first 200 users/week cap
 
 **Still 🟡 / ⛔ in v0.1**
 
-- 🟡 Apple / Google OAuth — wizard buttons + branded glyphs in place; routes to email sign-up until Apple Developer Program + Google Cloud project clear
+- 🟡 Apple / Google OAuth — branded buttons live on `/sign-up`, `/sign-in`, and the wizard; `/api/auth/oauth/[provider]` returns 503 + "configure these env vars" until Apple Developer Program + Google Cloud project clear
 - 🟡 Care Plan Stripe Subscription — UI live, waitlist captures, Subscription product + webhook pending
-- 🟡 Inbound mail DNS/MX wiring — Postmark Inbound is the front-runner
-- ⛔ Admin backend UI — `role: 'admin'` is on the users table; the `/admin` UI is the next deliverable
+- 🟡 Inbound mail DNS/MX wiring — Postmark Inbound is the front-runner. `INBOUND_WEBHOOK_SECRET` is now REQUIRED in production.
+- ✅ Admin backend UI — 13 admin pages shipped (`/admin/appeals`, `/admin/councils` + create + per-council MCP automation editor + dry-run, `/admin/submissions`, `/admin/inbound`, `/admin/jobs`, `/admin/users`, `/admin/health`, `/admin/wiki`)
 - ⛔ Vercel deployment — local dev only so far
 
 ### v0.2 — OAuth + admin + Vercel *(2027 Q1)*

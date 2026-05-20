@@ -23,7 +23,7 @@ export function PushPermission({ inline = false }: { inline?: boolean }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSupported(ok);
     if (ok) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setPermission(Notification.permission);
     }
   }, []);

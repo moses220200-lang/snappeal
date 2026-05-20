@@ -116,6 +116,9 @@ export const GenerateRequest = z.object({
     .default([]),
   /** Optional 'what happened' notes. */
   notes: z.string().max(2000).optional(),
+  /** Customer-selected card IDs from the step-2 grounds quiz. The drafter
+   *  uses these as hints when picking which canonical grounds to argue. */
+  preferredGroundCardIds: z.array(z.string()).max(20).optional(),
   /** Optional already-extracted ticket fields (from /api/extract). When
    * present, the drafter trusts these instead of re-OCRing the photo. */
   confirmedTicket: Ticket.partial().optional(),

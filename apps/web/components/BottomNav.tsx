@@ -45,13 +45,14 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 ${
+              aria-current={active ? "page" : undefined}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1 transition ${
                 active
                   ? "text-snappeal-primary"
                   : "text-snappeal-muted hover:text-snappeal-navy"
               }`}
             >
-              <Icon className="size-5" />
+              <Icon className="size-5" strokeWidth={1.75} />
               <span className="text-[10px] font-semibold">{label}</span>
             </Link>
           );

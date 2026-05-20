@@ -159,6 +159,11 @@ export interface CreateUserInput {
   email: string;
   password: string;
   displayName?: string | null;
+  phone?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressPostcode?: string | null;
 }
 
 const newUserId = () => {
@@ -188,6 +193,11 @@ export async function createUser(input: CreateUserInput): Promise<SessionUser> {
       email: normalisedEmail,
       passwordHash: hash,
       displayName: input.displayName ?? null,
+      phone: input.phone ?? null,
+      addressLine1: input.addressLine1 ?? null,
+      addressLine2: input.addressLine2 ?? null,
+      addressCity: input.addressCity ?? null,
+      addressPostcode: input.addressPostcode ?? null,
     })
     .returning();
   return {

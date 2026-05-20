@@ -16,14 +16,11 @@
  * a JSON-stringified body POST. We use a POST + ReadableStream rather than
  * GET + EventSource because GET URLs can't carry the image payload.
  */
-import { runStructured } from "@/lib/server/claude-cli";
 import { generateDraft } from "@/lib/server/ai";
 import { createAppeal, getAppealById, attachDraftToAppeal } from "@/lib/server/appeals";
 import { getViewer } from "@/lib/server/viewer";
 import { GenerateRequest } from "@/lib/server/contracts";
 import { z } from "zod";
-
-void runStructured; // imported so the worker side stays linked
 
 export const runtime = "nodejs";
 export const maxDuration = 180;

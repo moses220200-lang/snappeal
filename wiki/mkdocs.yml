@@ -127,6 +127,7 @@ nav:
     - Brand: product/brand.md
     - Mockups: product/mockups.md
     - v0.1 mockup audit: product/v0-1-mockup-audit.md
+    - Gamification: product/gamification.md
     - Homepage (desktop spec): product/screens/homepage.md
   - Architecture:
     - architecture/index.md

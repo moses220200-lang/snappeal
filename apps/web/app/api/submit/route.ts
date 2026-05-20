@@ -5,6 +5,7 @@ import { enqueue } from "@/lib/server/jobs/queue";
 import { startWorker } from "@/lib/server/jobs/worker";
 import { stripe } from "@/lib/server/stripe";
 import { env } from "@/lib/server/env";
+import { canViewAppeal, getRequestSessionId, getViewer } from "@/lib/server/viewer";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -40,6 +41,15 @@ export async function POST(request: Request) {
       return NextResponse.json(jsonError("NOT_FOUND", `Appeal ${body.appealId} not found`), {
         status: 404,
       });
+    }
+
+    const viewer = await getViewer();
+    const sessionId = getRequestSessionId(request);
+    if (!canViewAppeal(viewer, appeal, sessionId)) {
+      return NextResponse.json(
+        jsonError("FORBIDDEN", `Appeal ${body.appealId} cannot be submitted by this viewer`),
+        { status: 403 },
+      );
     }
 
     if (process.env.SNAPPEAL_SKIP_PAYMENT_CHECK !== "1") {

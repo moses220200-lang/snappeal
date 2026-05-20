@@ -2,7 +2,7 @@
   "name": "Snappeal — Appeal a London parking ticket",
   "short_name": "Snappeal",
   "description": "AI drafts and submits your PCN appeal in five taps.",
-  "start_url": "/",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -10,10 +10,30 @@
   "theme_color": "#007aff",
   "icons": [
     {
-      "src": "/logo.svg",
+      "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/apple-icon",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start a new appeal",
+      "short_name": "New appeal",
+      "url": "/app/capture",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "My tickets",
+      "short_name": "Tickets",
+      "url": "/app/tickets",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }

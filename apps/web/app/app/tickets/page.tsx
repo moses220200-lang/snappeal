@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileText, Loader2, MapPin, Plus, Star } from "lucide-react";
+import { ChevronRight, FileText, Loader2, MapPin, Plus, Sparkles, Star } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { HorizontalTimeline } from "@/components/HorizontalTimeline";
 import { getOrCreateSessionId } from "@/lib/client/session";
@@ -177,41 +177,96 @@ function TicketCard({ appeal, isMostRecent }: { appeal: AppealRecord; isMostRece
         year: "numeric",
       })
     : null;
+  // CTA to the AI submission view. Shows for any appeal that has gone
+  // through (or is going through) submission — copy adapts to the state.
+  // `live` = agent is actively driving the portal right now.
+  // Anything else with a submission history → "View AI replay" so the
+  // customer can revisit the agent's screenshots after the fact.
+  const aiLive = appeal.status === "submitting";
+  const aiReplay =
+    appeal.status === "submitted" ||
+    appeal.status === "under_review" ||
+    appeal.status === "decision_pending" ||
+    appeal.status === "cancelled" ||
+    appeal.status === "rejected";
+  const aiVisible = aiLive || aiReplay;
   return (
-    <Link
-      href={`/app/tickets/${appeal.id}`}
-      className="block rounded-2xl bg-white border border-snappeal-border p-4 hover:border-snappeal-primary transition"
-    >
-      {isMostRecent && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-snappeal-primary-50 text-snappeal-primary-700 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 mb-2">
-          <Star className="size-3 fill-current" /> Most Recent
-        </span>
-      )}
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-base font-bold text-snappeal-navy">
-            {appeal.ticket ? `PCN #${appeal.ticket.pcnRef}` : "Draft appeal"}
-          </p>
-          <p className="text-xs text-snappeal-muted mt-0.5">
-            {appeal.ticket?.issuer ?? "Awaiting capture"}
-          </p>
-          <p className="text-[11px] text-snappeal-muted mt-1 flex items-center flex-wrap gap-x-3 gap-y-1">
-            {issued && <span>📅 Issued {issued}</span>}
-            {appeal.ticket?.location && (
-              <span className="flex items-center gap-1">
-                <MapPin className="size-3" />
-                {appeal.ticket.location}
-              </span>
+    <div className="rounded-2xl bg-white border border-snappeal-border overflow-hidden hover:border-snappeal-primary transition">
+      <Link href={`/app/tickets/${appeal.id}`} className="block p-4">
+        {isMostRecent && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-snappeal-primary-50 text-snappeal-primary-700 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 mb-2">
+            <Star className="size-3 fill-current" /> Most Recent
+          </span>
+        )}
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold text-snappeal-navy">
+              {appeal.ticket ? `PCN #${appeal.ticket.pcnRef}` : "Draft appeal"}
+            </p>
+            <p className="text-xs text-snappeal-muted mt-0.5">
+              {appeal.ticket?.issuer ?? "Awaiting capture"}
+            </p>
+            <p className="text-[11px] text-snappeal-muted mt-1 flex items-center flex-wrap gap-x-3 gap-y-1">
+              {issued && <span>📅 Issued {issued}</span>}
+              {appeal.ticket?.location && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="size-3" />
+                  {appeal.ticket.location}
+                </span>
+              )}
+            </p>
+          </div>
+          <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 whitespace-nowrap ${pill.tone}`}>
+            {pill.label}
+          </span>
+        </div>
+        <div className="mt-3">
+          <HorizontalTimeline steps={appeal.timeline} />
+        </div>
+      </Link>
+      {aiVisible && (
+        <Link
+          href={`/app/watch/${appeal.id}`}
+          className="relative block px-4 py-3.5 bg-gradient-to-r from-snappeal-navy to-[#0c1a3a] text-white hover:brightness-110 transition"
+        >
+          {/* Small uppercase title above the CTA — makes the strip read as a
+           *  feature (Snappeal AI), not just another card. */}
+          <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-snappeal-action mb-1.5 flex items-center gap-1.5">
+            <Sparkles className="size-3" />
+            Snappeal AI
+            {aiLive && (
+              <>
+                <span className="ml-1 size-1.5 rounded-full bg-snappeal-action animate-pulse" />
+                <span className="text-snappeal-action/90">Live</span>
+              </>
             )}
           </p>
-        </div>
-        <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 whitespace-nowrap ${pill.tone}`}>
-          {pill.label}
-        </span>
-      </div>
-      <div className="mt-3">
-        <HorizontalTimeline steps={appeal.timeline} />
-      </div>
-    </Link>
+          <div className="flex items-center gap-3">
+            <span
+              className={`size-10 rounded-full flex items-center justify-center shrink-0 ${
+                aiLive
+                  ? "bg-snappeal-action/15 border border-snappeal-action/40"
+                  : "bg-white/10 border border-white/15"
+              }`}
+            >
+              <Sparkles
+                className={`size-4 ${aiLive ? "text-snappeal-action" : "text-white"}`}
+              />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold">
+                {aiLive ? "Filing your appeal now" : "Watch the AI submission"}
+              </p>
+              <p className="text-[11px] text-white/70">
+                {aiLive
+                  ? "Tap to watch the AI operate the council portal in real time."
+                  : "Replay every step the AI took — screenshots, decisions, council reference."}
+              </p>
+            </div>
+            <ChevronRight className="size-5 text-white/80 shrink-0" />
+          </div>
+        </Link>
+      )}
+    </div>
   );
 }

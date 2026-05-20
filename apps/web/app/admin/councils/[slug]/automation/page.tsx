@@ -2,13 +2,22 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { ChevronLeft, Loader2, Play, Save } from "lucide-react";
+import { ChevronLeft, Loader2, RotateCcw, Save } from "lucide-react";
+import { DryRunButton } from "@/components/DryRunButton";
 
 interface Automation {
   councilSlug: string;
   agentPrompt: string;
   fieldHints: Record<string, unknown> | null;
-  lastDryRun: { events: string[]; finalText: string; parsed: unknown; durationMs: number; costUsd: number | null } | null;
+  lastDryRun: {
+    events: string[];
+    finalText: string;
+    parsed: unknown;
+    durationMs: number;
+    costUsd: number | null;
+    screenshotPath?: string | null;
+    appealId?: string | null;
+  } | null;
   lastDryRunAt: string | null;
   lastDryRunOk: string | null;
   updatedAt: string;
@@ -21,7 +30,7 @@ export default function CouncilAutomationPage({ params }: { params: Promise<{ sl
   const [hints, setHints] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dryRunning, setDryRunning] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const load = async () => {
@@ -71,27 +80,6 @@ export default function CouncilAutomationPage({ params }: { params: Promise<{ sl
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const dryRun = async () => {
-    setDryRunning(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/council-automation/${slug}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "dry-run" }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error?.message ?? `Dry-run failed (${res.status})`);
-      }
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Dry-run failed");
-    } finally {
-      setDryRunning(false);
     }
   };
 
@@ -150,14 +138,35 @@ export default function CouncilAutomationPage({ params }: { params: Promise<{ sl
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               {savedAt ? "Saved ✓" : "Save prompt"}
             </button>
+            <DryRunButton councilSlug={slug} size="lg" onComplete={() => void load()} />
             <button
               type="button"
-              onClick={dryRun}
-              disabled={dryRunning}
-              className="inline-flex items-center gap-2 rounded-2xl bg-white border border-snappeal-border text-snappeal-navy font-semibold px-5 py-3 hover:border-snappeal-primary transition disabled:opacity-60"
+              onClick={async () => {
+                if (!confirm(`Reset the ${slug} prompt to the canonical one shipped in the repo? This discards your DB edits.`)) return;
+                setResetting(true);
+                setError(null);
+                try {
+                  const res = await fetch(`/api/admin/council-automation/${slug}`, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ action: "reset-to-canonical" }),
+                  });
+                  if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body?.error?.message ?? `Reset failed (${res.status})`);
+                  }
+                  await load();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Reset failed");
+                } finally {
+                  setResetting(false);
+                }
+              }}
+              disabled={resetting}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white border border-snappeal-border text-snappeal-muted font-semibold px-4 py-3 hover:text-snappeal-navy hover:border-snappeal-navy/30 transition disabled:opacity-60"
             >
-              {dryRunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-              {dryRunning ? "Dry-running… (up to 5 min)" : "Dry-run against live portal"}
+              {resetting ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+              Reset to canonical
             </button>
           </div>
 
@@ -182,7 +191,22 @@ export default function CouncilAutomationPage({ params }: { params: Promise<{ sl
               <div className="flex flex-col gap-3 text-xs">
                 <p className="text-snappeal-muted">
                   Ran {new Date(automation.lastDryRunAt!).toLocaleString("en-GB")} · {Math.round(automation.lastDryRun.durationMs / 1000)}s · cost {automation.lastDryRun.costUsd ? `$${automation.lastDryRun.costUsd.toFixed(2)}` : "—"}
+                  {automation.lastDryRun.appealId ? (
+                    <>
+                      {" · "}
+                      <Link href={`/admin/appeals/${automation.lastDryRun.appealId}`} className="text-snappeal-primary hover:underline font-mono">
+                        appeal {automation.lastDryRun.appealId}
+                      </Link>
+                    </>
+                  ) : (
+                    <> · fixture data</>
+                  )}
                 </p>
+                {automation.lastDryRun.screenshotPath && (
+                  <p className="text-[11px] text-snappeal-muted break-all">
+                    Screenshot: <code className="font-mono">{automation.lastDryRun.screenshotPath}</code>
+                  </p>
+                )}
                 <details>
                   <summary className="cursor-pointer text-snappeal-primary font-semibold">
                     Event trace ({automation.lastDryRun.events.length} events)

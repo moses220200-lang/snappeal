@@ -17,7 +17,7 @@ The queue solves all three: `/api/submit` enqueues in &lt;100 ms and returns; a 
 ```ts
 jobs {
   id              text primary key       // "job_submit-appeal_<base36>_<hex>"
-  kind            text not null          // 'submit_appeal' | 'generate_draft'
+  kind            text not null          // 'submit_appeal' (only handler today)
   appeal_id       text                   // soft FK to appeals(id) — no cascade
   payload         jsonb not null         // per-kind shape, validated by handler
   status          text not null default 'queued'   // queued | running | done | failed
@@ -28,6 +28,7 @@ jobs {
   locked_by       text                              // workerId-kind-slot
   last_error      text
   result          jsonb
+  progress        jsonb not null default '[]'      // append-only event log surfaced to /api/submissions/[id]/progress (SSE)
   created_at      timestamptz default now()
   updated_at      timestamptz default now()
 }
@@ -68,9 +69,10 @@ Three crucial properties:
 ```ts
 const CONCURRENCY = {
   submit_appeal: 2,    // 2 concurrent Playwright browsers max
-  generate_draft: 4,   // reserved for fully-async generation; currently /api/generate is inline + semaphore
 };
 ```
+
+Removed in v0.1.5: a reserved `generate_draft: 4` slot whose handler threw `not yet implemented` — any accidental enqueue would burn its retries and die `failed`. When async generation actually lands, add the slot at the same time as the handler.
 
 Each loop:
 
@@ -115,15 +117,16 @@ We also expose `/api/jobs/[id]` for direct job inspection, useful for admin tool
 - A `cron`-style scheduled-job kind for retry of stuck appeals + DSAR-style data deletion.
 - A real worker entry script (`node scripts/worker.js`) for production deploys that need the worker off-process.
 - Per-job structured logs shipped to an observability backend (Sentry, Axiom, etc.).
-- Admin UI: list jobs by kind / status / age, manual retry, cancel.
 
 ## Files
 
 ```
 lib/server/jobs/
 ├── queue.ts    # enqueue, claimNext, getJob, markDone, markFailed, recoverZombies
+├── progress.ts # appendProgress, readProgress, queuePosition, watchScreenshots
 └── worker.ts   # startWorker(), loop(), runHandler() dispatch
-instrumentation.ts  # boots the worker on Node server start
-app/api/jobs/[id]/route.ts  # GET status for polling
-app/api/submit/route.ts     # current enqueuer (kind = 'submit_appeal')
+instrumentation.ts                                 # boots the worker on Node server start
+app/api/jobs/[id]/route.ts                         # GET status for polling (ownership-gated, strips payload + lockedBy)
+app/api/submissions/[id]/progress/route.ts         # SSE stream of progress events (ownership-gated)
+app/api/submit/route.ts                            # current enqueuer (kind = 'submit_appeal')
 ```

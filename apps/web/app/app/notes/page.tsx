@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
 import { BackHeader } from "@/components/BackHeader";
-import { InlineGroundsQuiz } from "@/components/InlineGroundsQuiz";
-import { getNotes, getServiceTier, setNotes } from "@/lib/client/session";
+import { GroundsCardQuiz } from "@/components/GroundsCardQuiz";
+import {
+  getNotes,
+  getServiceTier,
+  setNotes,
+} from "@/lib/client/session";
 
 function ContinueCta() {
   const [tier, setTier] = useState<"buy_time" | "grounds" | "care_plan">("grounds");
@@ -20,31 +23,21 @@ function ContinueCta() {
   return (
     <Link
       href="/app/paywall"
-      className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 text-center hover:bg-snappeal-action-600 transition shadow-lg shadow-snappeal-action/40"
+      className="rounded-2xl bg-snappeal-action !text-white font-semibold py-4 text-center hover:bg-snappeal-action-600 transition shadow-lg shadow-snappeal-action/40"
     >
-      {label}
+      <span className="text-white">{label}</span>
     </Link>
   );
 }
 
-const PROMPTS = [
-  "The signs were behind a parked truck.",
-  "I had a Blue Badge with the clock set.",
-  "I was loading the van for ten minutes.",
-  "The suspension notice was hidden by scaffolding.",
-];
-
-const MAX = 800;
+const MAX_NOTES = 600;
 
 export default function NotesPage() {
   const [text, setText] = useState("");
-  const [tier, setTier] = useState<"buy_time" | "grounds" | "care_plan">("grounds");
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setText(getNotes());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTier(getServiceTier());
   }, []);
 
   const onChange = (v: string) => {
@@ -52,73 +45,52 @@ export default function NotesPage() {
     setNotes(v);
   };
 
-  const insertPrompt = (p: string) => {
-    const next = text ? `${text.trim()} ${p}` : p;
-    onChange(next.slice(0, MAX));
-  };
-
   return (
     <>
-      <BackHeader title="What happened?" subtitle="Step 2 of 4 · Notes" back="/app/capture" />
-      <div className="flex flex-col gap-5 px-5 pt-4 pb-6">
+      <BackHeader
+        title="What happened?"
+        subtitle="Step 2 of 4 · Pick your reasons"
+        back="/app/capture"
+      />
+      <div className="flex flex-col gap-5 px-5 pt-4 pb-6 snappeal-content-top">
+        {/* Card-based grounds quiz — replaces the old free-text + prompt-
+            chip UI. Customer browses categories of UK PCN appeal reasons
+            and taps the cards that match their case. Selections map to
+            canonical groundIds and are persisted in sessionStorage. */}
+        <GroundsCardQuiz />
 
-      <div className="rounded-2xl bg-white border border-snappeal-border p-2 focus-within:border-snappeal-primary transition">
-        <textarea
-          value={text}
-          onChange={(e) => onChange(e.target.value.slice(0, MAX))}
-          placeholder="In a sentence or two, what happened? (Optional — skip if your photos say enough.)"
-          className="w-full min-h-40 resize-none bg-transparent p-3 text-sm placeholder:text-snappeal-muted outline-none"
-        />
-        <div className="flex items-center justify-between px-3 pb-2">
-          <span className="text-[11px] text-snappeal-muted">
-            Plain English · no jargon needed
-          </span>
-          <span className="text-[11px] text-snappeal-muted">
-            {text.length} / {MAX}
-          </span>
+        {/* Optional extra notes — small, demoted, no longer the primary
+            input on this page. Used to give the AI any context the cards
+            can't capture (e.g. "I was at a funeral" / specific times). */}
+        <details className="rounded-2xl bg-white border border-snappeal-border overflow-hidden">
+          <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between text-sm font-semibold text-snappeal-navy">
+            <span>Add an optional note (rarely needed)</span>
+            <span className="text-xs font-normal text-snappeal-primary">
+              {text ? `${text.length}/${MAX_NOTES}` : "tap to open"}
+            </span>
+          </summary>
+          <div className="px-3 pb-3">
+            <textarea
+              value={text}
+              onChange={(e) => onChange(e.target.value.slice(0, MAX_NOTES))}
+              placeholder="Anything specific the cards above don't capture — times, conditions, who was with you."
+              className="w-full min-h-28 resize-none bg-snappeal-bg/40 border border-snappeal-border rounded-xl p-3 text-sm placeholder:text-snappeal-muted outline-none focus:border-snappeal-primary transition"
+            />
+            <p className="text-[11px] text-snappeal-muted mt-2">
+              Plain English — the AI rewrites it.
+            </p>
+          </div>
+        </details>
+
+        <div className="mt-2 flex flex-col gap-2.5">
+          <ContinueCta />
+          <Link
+            href="/app/paywall"
+            className="text-xs text-snappeal-muted text-center hover:text-snappeal-navy"
+          >
+            Skip and continue
+          </Link>
         </div>
-      </div>
-
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-snappeal-muted mb-2">
-          Honest examples
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {PROMPTS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => insertPrompt(p)}
-              className="text-xs rounded-full bg-white border border-snappeal-border px-3 py-1.5 text-snappeal-muted hover:border-snappeal-primary hover:text-snappeal-navy transition"
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <InlineGroundsQuiz tier={tier} />
-
-      <div className="rounded-2xl bg-snappeal-primary-100 p-4 flex items-start gap-3">
-        <span className="size-9 rounded-full bg-white text-snappeal-primary flex items-center justify-center flex-shrink-0">
-          <Sparkles className="size-[1.125rem]" />
-        </span>
-        <p className="text-xs text-snappeal-navy leading-relaxed">
-          <strong>You can skip this step.</strong> Snappeal will draft from
-          your photos alone — but a sentence or two of context produces a
-          stronger appeal.
-        </p>
-      </div>
-
-      <div className="mt-auto pt-6 flex flex-col gap-2.5">
-        <ContinueCta />
-        <Link
-          href="/app/paywall"
-          className="text-xs text-snappeal-muted text-center hover:text-snappeal-navy"
-        >
-          Skip notes and continue
-        </Link>
-      </div>
       </div>
     </>
   );

@@ -18,10 +18,11 @@ import { getAppealById, recordSubmission } from "../appeals";
 const WORKER_ID = `${hostname()}-${randomBytes(3).toString("hex")}`;
 const POLL_INTERVAL_MS = 1500;
 
-/** Per-kind concurrency budget. */
+/** Per-kind concurrency budget. Add a kind here once it has a real handler
+ *  in `runHandler`. Reserving budget for an un-handled kind only causes
+ *  attempt-burning + failed rows. */
 const CONCURRENCY: Record<string, number> = {
   submit_appeal: 2,
-  generate_draft: 4,
 };
 
 let booted = false;
@@ -71,7 +72,7 @@ async function runHandler(job: Job): Promise<unknown> {
       const appealId = String(job.payload.appealId);
       const appeal = await getAppealById(appealId);
       if (!appeal) throw new Error(`Appeal ${appealId} not found`);
-      const outcome = await runSubmission({ appeal });
+      const outcome = await runSubmission({ appeal, jobId: job.id });
       await recordSubmission({
         appealId: appeal.id,
         method: outcome.method,
@@ -85,10 +86,6 @@ async function runHandler(job: Job): Promise<unknown> {
       });
       return outcome;
     }
-    case "generate_draft":
-      // Reserved for fully-async generation; the synchronous /api/generate
-      // path with the in-process semaphore is the current implementation.
-      throw new Error("generate_draft job kind not yet implemented");
     default:
       throw new Error(`Unknown job kind: ${(job as { kind: string }).kind}`);
   }

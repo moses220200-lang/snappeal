@@ -70,7 +70,7 @@ export default function ManualEntryPage() {
       if (!alive) return;
       if (c.ok) {
         const j = (await c.json()) as { councils: CouncilOption[] };
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         setCouncils(j.councils);
       }
       if (a.ok) {
@@ -80,7 +80,7 @@ export default function ManualEntryPage() {
           const r = ap.ticket?.vehicleReg?.trim().toUpperCase();
           if (r) regs.add(r);
         }
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         setPastVehicles(Array.from(regs));
       }
     })();
@@ -116,7 +116,11 @@ export default function ManualEntryPage() {
       setConfirmedTicket(ticket);
       setSessionNotes("");
       haptic("success");
-      router.push("/app/notes?from=manual");
+      // Route into the unified step-1 capture page so the customer can add
+      // evidence photos and confirm/edit the typed fields before moving on
+      // to step 2 (notes). The "from=manual" query tells capture to skip
+      // the no-photo error state and show the manual-entry banner.
+      router.push("/app/capture?from=manual");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save");
       haptic("error");
@@ -135,7 +139,7 @@ export default function ManualEntryPage() {
         back="/app/capture"
       />
 
-      <div className="flex flex-col gap-5 px-5 pt-4 pb-6">
+      <div className="flex flex-col gap-5 px-5 pt-4 pb-6 snappeal-content-top">
         <StepDots step={step} />
 
         {step === "council" && (

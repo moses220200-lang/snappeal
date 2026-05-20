@@ -3,14 +3,17 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  ChevronRight,
   ExternalLink,
   FileText,
   Loader2,
   MapPin,
+  Sparkles,
 } from "lucide-react";
 import { Timeline } from "@/components/Timeline";
 import { BackHeader } from "@/components/BackHeader";
 import type { AppealRecord } from "@/lib/server/appeals";
+import { getOrCreateSessionId } from "@/lib/client/session";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -49,7 +52,10 @@ export default function TicketDetailPage({
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const res = await fetch(`/api/appeals/${id}`, { cache: "no-store" });
+      const res = await fetch(`/api/appeals/${id}`, {
+        cache: "no-store",
+        headers: { "x-snappeal-session": getOrCreateSessionId() },
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         if (alive) setError(body?.error?.message ?? `Couldn't load (${res.status})`);
@@ -124,6 +130,58 @@ export default function TicketDetailPage({
           )}
         </section>
       )}
+
+      {(() => {
+        const aiLive = appeal.status === "submitting";
+        const aiReplay =
+          appeal.status === "submitted" ||
+          appeal.status === "under_review" ||
+          appeal.status === "decision_pending" ||
+          appeal.status === "cancelled" ||
+          appeal.status === "rejected";
+        if (!aiLive && !aiReplay) return null;
+        return (
+          <Link
+            href={`/app/watch/${appeal.id}`}
+            className="relative block rounded-2xl overflow-hidden bg-gradient-to-r from-snappeal-navy to-[#0c1a3a] text-white p-4 hover:brightness-110 transition"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-snappeal-action mb-1.5 flex items-center gap-1.5">
+              <Sparkles className="size-3" />
+              Snappeal AI
+              {aiLive && (
+                <>
+                  <span className="ml-1 size-1.5 rounded-full bg-snappeal-action animate-pulse" />
+                  <span className="text-snappeal-action/90">Live</span>
+                </>
+              )}
+            </p>
+            <div className="flex items-center gap-3">
+              <span
+                className={`size-11 rounded-full flex items-center justify-center shrink-0 ${
+                  aiLive
+                    ? "bg-snappeal-action/15 border border-snappeal-action/40"
+                    : "bg-white/10 border border-white/15"
+                }`}
+              >
+                <Sparkles
+                  className={`size-5 ${aiLive ? "text-snappeal-action" : "text-white"}`}
+                />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold">
+                  {aiLive ? "Filing your appeal now" : "Watch the AI submission"}
+                </p>
+                <p className="text-[11px] text-white/70">
+                  {aiLive
+                    ? "Watch live as the AI operates the council portal on your behalf."
+                    : "Replay every step the AI took — screenshots, decisions, council reference."}
+                </p>
+              </div>
+              <ChevronRight className="size-5 text-white/80 shrink-0" />
+            </div>
+          </Link>
+        );
+      })()}
 
       <section className="rounded-2xl bg-white border border-snappeal-border p-5">
         <p className="text-sm font-bold text-snappeal-navy mb-4">Progress</p>

@@ -19,7 +19,7 @@ The Next.js app runs natively on the host (not in Docker) so the Claude CLI can 
 docker compose up -d
 cd apps/web
 npm install
-npm run db:migrate   # apply all 5 Drizzle migrations
+npm run db:migrate   # apply all 9 Drizzle migrations (0000–0008)
 npm run db:seed      # seed 7 councils
 npm run dev          # http://localhost:3001
 ```
@@ -34,7 +34,7 @@ AUTH_SECRET=<32+ random chars>
 CLAUDE_MODEL=claude-sonnet-4-6        # optional override
 NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1   # use the Apple/Google/Card stub buttons
 SNAPPEAL_SKIP_PAYMENT_CHECK=1         # skip Stripe verification in dev
-# SNAPPEAL_SUBMISSION_LIVE=1          # 1 = real Playwright MCP, 0 = mock
+# SNAPPEAL_SUBMISSION_LIVE=0          # unset/anything-but-"0" = real Playwright MCP; "0" = mock
 # ANTHROPIC_API_KEY=sk-ant-...        # if not using the CLI's OAuth session
 # OPENAI_API_KEY=sk-...               # voice notes
 # STRIPE_SECRET_KEY=sk_test_...       # real Stripe (test mode)
@@ -59,7 +59,7 @@ The full list lives in `apps/web/.env.example`.
 ┌──────────▼────────────┐    ┌─────────────────────────┐
 │ Neon Postgres (EU)    │    │ Worker box              │
 │ via Vercel Marketplace│◄───┤ Fly.io / Railway        │
-│ 10 tables             │    │ Or Vercel Sandbox       │
+│ 11 tables             │    │ Or Vercel Sandbox       │
 └──────────┬────────────┘    │ - claude CLI            │
            │                 │ - Playwright + Chromium │
            │                 │ - instrumentation.ts    │

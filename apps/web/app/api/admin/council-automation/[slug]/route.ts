@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/server/admin";
-import { getAutomation, upsertAutomation, dryRunAutomation } from "@/lib/server/submission/automation";
+import { getAutomation, upsertAutomation, dryRunAutomation, resetAutomationToCanonical } from "@/lib/server/submission/automation";
 import { jsonError } from "@/lib/server/contracts";
 
 export const runtime = "nodejs";
@@ -48,10 +48,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ slug: string }>
   return NextResponse.json({ automation: row });
 }
 
-const PostBody = z.object({
-  action: z.literal("dry-run"),
-  appealId: z.string().optional(),
-});
+const PostBody = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("dry-run"), appealId: z.string().optional() }),
+  z.object({ action: z.literal("reset-to-canonical") }),
+]);
 
 export async function POST(req: Request, ctx: { params: Promise<{ slug: string }> }) {
   const auth = await requireAdminApi();
@@ -62,6 +62,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
     body = PostBody.parse(await req.json());
   } catch (err) {
     return NextResponse.json(jsonError("BAD_REQUEST", "Invalid body", String(err)), { status: 400 });
+  }
+  if (body.action === "reset-to-canonical") {
+    try {
+      const row = await resetAutomationToCanonical(slug);
+      if (!row) {
+        return NextResponse.json(
+          jsonError("NO_CANONICAL", `No canonical prompt available for ${slug}`),
+          { status: 404 },
+        );
+      }
+      return NextResponse.json({ automation: row });
+    } catch (err) {
+      return NextResponse.json(
+        jsonError("RESET_FAILED", err instanceof Error ? err.message : "Reset failed"),
+        { status: 500 },
+      );
+    }
   }
   try {
     const result = await dryRunAutomation({ councilSlug: slug, appealId: body.appealId ?? null });

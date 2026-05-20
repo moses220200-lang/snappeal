@@ -113,63 +113,9 @@ export default function ProfilePage() {
           <GuestCard />
         )}
 
-        {me?.role === "admin" && (
-          <Link
-            href="/admin"
-            className="rounded-2xl bg-snappeal-navy text-white p-4 flex items-center gap-3 hover:bg-snappeal-navy-soft transition shadow-lg shadow-snappeal-navy/30"
-          >
-            <span className="size-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-              <ShieldAlert className="size-5 text-white" />
-            </span>
-            <div className="flex-1">
-              <p className="text-sm font-bold">Open admin dashboard</p>
-              <p className="text-xs text-white/70 mt-0.5">
-                Appeals · Councils · Submissions · MCP automation · Jobs · Users
-              </p>
-            </div>
-            <ChevronRight className="size-5 text-white/80" />
-          </Link>
-        )}
-
-        <Section title="Account">
-          {SECTIONS_ACCOUNT.map(({ icon: Icon, label, href }) => (
-            <Row key={label} icon={Icon} label={label} href={href} />
-          ))}
-        </Section>
-
-        <Section title="Help">
-          {SECTIONS_HELP.map(({ icon: Icon, label, href }) => (
-            <Row key={label} icon={Icon} label={label} href={href} />
-          ))}
-        </Section>
-
-        <section className="rounded-2xl bg-white border border-snappeal-border p-4">
-          <p className="text-sm font-bold text-snappeal-navy mb-3">Appeal stats</p>
-          <div className="grid grid-cols-3 gap-2">
-            <StatTile icon={ScrollText} value={stats.total} label="Total appeals" />
-            <StatTile icon={ShieldCheck} value={stats.won} label="Won" tone="success" />
-            <StatTile icon={Loader2} value={stats.inProgress} label="In progress" tone="primary" />
-          </div>
-        </section>
-
-        <Link
-          href="/app/profile/care-plan"
-          className="rounded-2xl bg-gradient-to-br from-snappeal-primary to-snappeal-primary-700 text-white p-4 flex items-start gap-3 hover:shadow-lg hover:shadow-snappeal-primary/30 transition"
-        >
-          <span className="size-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-            <Sparkles className="size-5 text-white" />
-          </span>
-          <div className="flex-1">
-            <p className="text-sm font-bold">Snappeal Care Plan</p>
-            <p className="text-xs text-white/80 mt-0.5 leading-relaxed">
-              £9.99/mo · unlimited grounds-based appeals · 90% appeal-rate guarantee · roadside invoice recovery
-            </p>
-          </div>
-          <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-white/15 px-2 py-1 self-center whitespace-nowrap">
-            Coming Soon
-          </span>
-        </Link>
-
+        {/* Auth controls — pulled to the top of the page so customers see
+         *  sign-in / sign-up immediately (guest) and signed-in users can
+         *  log out without scrolling past everything else. */}
         {me ? (
           <button
             type="button"
@@ -197,16 +143,76 @@ export default function ProfilePage() {
             </Link>
             <Link
               href="/sign-up"
-              className="rounded-2xl bg-snappeal-action text-white font-semibold px-5 py-3.5 flex items-center justify-between shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
+              className="rounded-2xl bg-snappeal-action !text-white font-semibold px-5 py-3.5 flex items-center justify-between shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
             >
-              <span className="flex items-center gap-2">
-                <UserPlus className="size-5" />
-                Create an account
+              <span className="flex items-center gap-2 text-white">
+                <UserPlus className="size-5 text-white" />
+                <span className="text-white">Create an account</span>
               </span>
-              <ChevronRight className="size-5" />
+              <ChevronRight className="size-5 text-white" />
             </Link>
           </>
         )}
+
+        {me?.role === "admin" && (
+          <Link
+            href="/admin"
+            className="rounded-2xl bg-snappeal-navy !text-white p-4 flex items-center gap-3 hover:bg-snappeal-navy-soft transition shadow-lg shadow-snappeal-navy/30"
+          >
+            <span className="size-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+              <ShieldAlert className="size-5 text-white" />
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-white">Open admin dashboard</p>
+              <p className="text-xs text-white/70 mt-0.5">
+                Appeals · Councils · Submissions · MCP automation · Jobs · Users
+              </p>
+            </div>
+            <ChevronRight className="size-5 text-white/80" />
+          </Link>
+        )}
+
+        {/* Appeal stats — pulled above the Account/Help sections so the
+         *  customer's three numbers are the first thing they see after
+         *  their identity card. */}
+        <section className="rounded-2xl bg-white border border-snappeal-border p-4">
+          <p className="text-sm font-bold text-snappeal-navy mb-3">Appeal stats</p>
+          <div className="grid grid-cols-3 gap-2">
+            <StatTile icon={ScrollText} value={stats.total} label="Total appeals" />
+            <StatTile icon={ShieldCheck} value={stats.won} label="Won" tone="success" />
+            <StatTile icon={Loader2} value={stats.inProgress} label="In progress" tone="primary" />
+          </div>
+        </section>
+
+        <Section title="Account">
+          {SECTIONS_ACCOUNT.map(({ icon: Icon, label, href }) => (
+            <Row key={label} icon={Icon} label={label} href={href} />
+          ))}
+        </Section>
+
+        <Section title="Help">
+          {SECTIONS_HELP.map(({ icon: Icon, label, href }) => (
+            <Row key={label} icon={Icon} label={label} href={href} />
+          ))}
+        </Section>
+
+        <Link
+          href="/app/profile/care-plan"
+          className="rounded-2xl bg-gradient-to-br from-snappeal-primary to-snappeal-primary-700 text-white p-4 flex items-start gap-3 hover:shadow-lg hover:shadow-snappeal-primary/30 transition"
+        >
+          <span className="size-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="size-5 text-white" />
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-bold">Snappeal Care Plan</p>
+            <p className="text-xs text-white/80 mt-0.5 leading-relaxed">
+              £9.99/mo · unlimited grounds-based appeals · 90% appeal-rate guarantee · roadside invoice recovery
+            </p>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-white/15 px-2 py-1 self-center whitespace-nowrap">
+            Coming Soon
+          </span>
+        </Link>
 
         <div className="text-center text-[11px] text-snappeal-muted py-2">
           Snappeal · © 2026
@@ -301,9 +307,17 @@ function SignedInCard({ user }: { user: Me }) {
       <div className="flex-1 min-w-0">
         <p className="text-base font-bold text-snappeal-navy">{user.displayName ?? "Snappeal user"}</p>
         <p className="text-xs text-snappeal-muted truncate">{user.email}</p>
-        <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
-          <ShieldCheck className="size-3" />
-          {user.role === "admin" ? "Admin" : "Verified driver"}
+        <span
+          className={`mt-1.5 inline-flex items-center gap-1 rounded-full text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 ${
+            user.role === "admin"
+              ? "bg-snappeal-navy !text-white"
+              : "bg-green-100 text-green-700"
+          }`}
+        >
+          <ShieldCheck className={`size-3 ${user.role === "admin" ? "text-white" : ""}`} />
+          <span className={user.role === "admin" ? "text-white" : ""}>
+            {user.role === "admin" ? "Admin" : "Verified driver"}
+          </span>
         </span>
       </div>
     </section>

@@ -61,15 +61,22 @@ export async function POST(request: Request) {
   }
 }
 
-/** GET /api/care-plan/waitlist?email=... — check if an email is already on the list. */
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const email = url.searchParams.get("email")?.trim().toLowerCase();
-  if (!email) {
-    return NextResponse.json(jsonError("BAD_REQUEST", "Missing email"), { status: 400 });
+/**
+ * GET /api/care-plan/waitlist — check if the *current* viewer is on the
+ * list. Used by the in-app Care Plan card to render "you're on the list"
+ * after signup. Authenticated-only by design: an unauthed lookup by
+ * email is a trivial enumeration oracle.
+ */
+export async function GET() {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json(jsonError("UNAUTHENTICATED", "Sign in first"), { status: 401 });
   }
   const db = getDb();
   if (!db) return NextResponse.json({ joined: false });
-  const rows = await db.select().from(schema.carePlanWaitlist).where(eq(schema.carePlanWaitlist.email, email));
+  const rows = await db
+    .select({ id: schema.carePlanWaitlist.id })
+    .from(schema.carePlanWaitlist)
+    .where(eq(schema.carePlanWaitlist.email, user.email.toLowerCase()));
   return NextResponse.json({ joined: rows.length > 0 });
 }

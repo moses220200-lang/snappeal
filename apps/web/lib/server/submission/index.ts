@@ -10,6 +10,7 @@ import type { AppealRecord } from "../appeals";
 import { runPortalAutomation, type PortalAutomationResult } from "./portal";
 import { sendCouncilEmail, type EmailSubmissionResult } from "./email";
 import { getDb, schema } from "../db/client";
+import { getSettings } from "../settings";
 import { eq } from "drizzle-orm";
 
 export type SubmissionOutcome = {
@@ -23,13 +24,20 @@ export type SubmissionOutcome = {
   submittedAt: Date | null;
 };
 
-const LIVE = process.env.SNAPPEAL_SUBMISSION_LIVE === "1";
+// Default: LIVE on. Opt out by setting SNAPPEAL_SUBMISSION_LIVE=0 (mocks the
+// engine so dev work without a Claude CLI / Playwright MCP can still exercise
+// the UI flow). The runtime override at /admin/settings supersedes the env.
+function isLive(): boolean {
+  return getSettings().submissionLive;
+}
 
 interface RunInput {
   appeal: AppealRecord;
+  /** Job id used as the anchor for live progress events (set by the worker). */
+  jobId?: string;
 }
 
-export async function runSubmission({ appeal }: RunInput): Promise<SubmissionOutcome> {
+export async function runSubmission({ appeal, jobId }: RunInput): Promise<SubmissionOutcome> {
   if (!appeal.councilSlug) {
     return mockSubmission(appeal, "council slug missing — generate the draft first");
   }
@@ -42,7 +50,7 @@ export async function runSubmission({ appeal }: RunInput): Promise<SubmissionOut
     return mockSubmission(appeal, `unknown council slug: ${appeal.councilSlug}`);
   }
 
-  if (!LIVE) {
+  if (!isLive()) {
     return mockSubmission(appeal, null, council);
   }
 
@@ -53,27 +61,48 @@ export async function runSubmission({ appeal }: RunInput): Promise<SubmissionOut
     council.automationStatus === "automated_ga";
 
   if (preferPortal) {
+    let portalError: string | null = null;
     try {
-      const result = await runPortalAutomation({ appeal, council });
-      return portalToOutcome(result);
+      const result = await runPortalAutomation({ appeal, council, jobId });
+      if (result.success) return portalToOutcome(result);
+      portalError = result.error ?? "portal automation reported failure";
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // Fall through to email on portal failure when an email address exists.
-      if (council.appealEmail) {
-        const fallback = await sendCouncilEmail({ appeal, council });
-        return { ...emailToOutcome(fallback), lastError: `portal failed: ${message}` };
-      }
-      return {
-        method: "portal",
-        channel: "portal",
-        status: "failed",
-        councilReference: null,
-        messageId: null,
-        screenshotUrl: null,
-        lastError: message,
-        submittedAt: null,
-      };
+      portalError = err instanceof Error ? err.message : String(err);
     }
+    // Portal didn't go through — fall back to email when we have one. This
+    // covers both "agent threw" and "agent returned success=false" (the more
+    // common case for council backends that bounce with 'service unavailable').
+    if (council.appealEmail) {
+      try {
+        const fallback = await sendCouncilEmail({ appeal, council });
+        return {
+          ...emailToOutcome(fallback),
+          lastError: `portal failed → email fallback: ${portalError}`,
+        };
+      } catch (emailErr) {
+        const emailMessage = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        return {
+          method: "portal",
+          channel: "portal",
+          status: "failed",
+          councilReference: null,
+          messageId: null,
+          screenshotUrl: null,
+          lastError: `portal failed: ${portalError}; email fallback also failed: ${emailMessage}`,
+          submittedAt: null,
+        };
+      }
+    }
+    return {
+      method: "portal",
+      channel: "portal",
+      status: "failed",
+      councilReference: null,
+      messageId: null,
+      screenshotUrl: null,
+      lastError: portalError,
+      submittedAt: null,
+    };
   }
 
   if (council.appealEmail) {
@@ -126,7 +155,7 @@ function mockSubmission(
   council?: { appealEmail: string | null } | null,
 ): SubmissionOutcome {
   const ref = `MOCK-${appeal.id.slice(-6).toUpperCase()}`;
-  const method = council?.appealEmail && !LIVE ? "email" : "portal";
+  const method = council?.appealEmail && !isLive() ? "email" : "portal";
   return {
     method,
     channel: method,

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { delimiter as PATH_DELIM, join } from "node:path";
 import { env, hasDatabase } from "@/lib/server/env";
+import { McpHeadedToggle } from "@/components/McpHeadedToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export default function AdminHealthPage() {
     { label: "Stripe", ok: Boolean(env.STRIPE_SECRET_KEY), detail: env.STRIPE_SECRET_KEY ? "configured" : "missing" },
     { label: "Stripe webhook", ok: Boolean(env.STRIPE_WEBHOOK_SECRET), detail: env.STRIPE_WEBHOOK_SECRET ? "configured" : "missing" },
     { label: "AUTH_SECRET", ok: Boolean(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32), detail: process.env.AUTH_SECRET ? "set" : "missing" },
-    { label: "Submission engine", ok: true, detail: process.env.SNAPPEAL_SUBMISSION_LIVE === "1" ? "live (Playwright MCP)" : "mock" },
+    { label: "Submission engine", ok: true, detail: process.env.SNAPPEAL_SUBMISSION_LIVE !== "0" ? "live (Playwright MCP)" : "mock" },
     { label: "Worker in-process", ok: process.env.SNAPPEAL_DISABLE_WORKER !== "1", detail: process.env.SNAPPEAL_DISABLE_WORKER === "1" ? "disabled" : "enabled" },
     { label: "Fake payment", ok: true, detail: process.env.NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT === "1" ? "on (dev)" : "off" },
   ];
@@ -38,6 +39,8 @@ export default function AdminHealthPage() {
           Snapshot of integrations on this server.
         </p>
       </div>
+
+      <McpHeadedToggle />
 
       <div className="overflow-hidden rounded-2xl bg-white border border-snappeal-border">
         <table className="w-full text-sm">

@@ -15,6 +15,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb, schema } from "../db/client";
+import type { JobProgressEvent } from "../db/schema";
 
 const STALE_LOCK_AFTER_MS = 5 * 60_000;
 
@@ -35,6 +36,7 @@ export interface Job {
   lockedBy: string | null;
   lastError: string | null;
   result: unknown;
+  progress: JobProgressEvent[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -99,6 +101,7 @@ export async function claimNext(workerId: string): Promise<Job | null> {
     locked_by: string | null;
     last_error: string | null;
     result: unknown;
+    progress: unknown;
     created_at: string | Date;
     updated_at: string | Date;
   }>(sql`
@@ -137,6 +140,7 @@ export async function claimNext(workerId: string): Promise<Job | null> {
     lockedBy: row.locked_by,
     lastError: row.last_error,
     result: row.result,
+    progress: (row.progress ?? []) as JobProgressEvent[],
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
   });
@@ -215,6 +219,7 @@ function toJob(row: typeof schema.jobs.$inferSelect): Job {
     lockedBy: row.lockedBy,
     lastError: row.lastError,
     result: row.result,
+    progress: (row.progress ?? []) as JobProgressEvent[],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

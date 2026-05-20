@@ -1,15 +1,27 @@
 import Link from "next/link";
 
-const COMING_SOON = true;
+const COMING_SOON = false;
 
-export function AppStoreBadge() {
+type BadgeVariant = "default" | "on-dark";
+
+/**
+ * `variant="on-dark"` is used in the dark navy footer tile — switches the
+ * badge to a white outline with a transparent fill so it reads cleanly
+ * against the dark background. The default variant is the solid navy /
+ * glass pair used in the hero.
+ */
+export function AppStoreBadge({ variant = "default" }: { variant?: BadgeVariant } = {}) {
+  const wrapperClass =
+    variant === "on-dark"
+      ? "flex items-center gap-2.5 rounded-xl border border-white/70 bg-transparent text-white px-5 py-2.5 hover:bg-white/5 transition"
+      : "flex items-center gap-2.5 rounded-xl bg-snappeal-navy text-white px-5 py-2.5 hover:opacity-90 transition";
   return (
     <Link
       href={COMING_SOON ? "#install" : "https://apps.apple.com/gb/app/snappeal"}
-      aria-label="Download Snappeal on the App Store (coming soon)"
+      aria-label="Download Snappeal on the App Store"
       className="group relative inline-flex"
     >
-      <div className="flex items-center gap-2.5 rounded-xl bg-snappeal-navy text-white px-5 py-2.5 hover:opacity-90 transition">
+      <div className={wrapperClass}>
         <svg
           viewBox="0 0 24 24"
           className="size-7"
@@ -34,7 +46,11 @@ export function AppStoreBadge() {
   );
 }
 
-export function GooglePlayBadge() {
+export function GooglePlayBadge({ variant = "default" }: { variant?: BadgeVariant } = {}) {
+  const wrapperClass =
+    variant === "on-dark"
+      ? "flex items-center gap-2.5 rounded-xl border border-white/70 bg-transparent text-white px-5 py-2.5 hover:bg-white/5 transition"
+      : "flex items-center gap-2.5 rounded-xl border border-snappeal-border bg-white/60 backdrop-blur text-snappeal-navy px-5 py-2.5 hover:border-snappeal-primary hover:bg-white/80 transition";
   return (
     <Link
       href={
@@ -42,10 +58,10 @@ export function GooglePlayBadge() {
           ? "#install"
           : "https://play.google.com/store/apps/details?id=com.snappeal"
       }
-      aria-label="Get Snappeal on Google Play (coming soon)"
+      aria-label="Get Snappeal on Google Play"
       className="group relative inline-flex"
     >
-      <div className="flex items-center gap-2.5 rounded-xl bg-snappeal-navy text-white px-5 py-2.5 hover:opacity-90 transition">
+      <div className={wrapperClass}>
         <svg viewBox="0 0 24 24" className="size-7" aria-hidden="true">
           <defs>
             <linearGradient id="play-1" x1="0" y1="0" x2="1" y2="1">
@@ -83,8 +99,10 @@ export function GooglePlayBadge() {
           />
         </svg>
         <div className="text-left leading-tight">
-          <div className="text-[10px] opacity-80">GET IT ON</div>
-          <div className="text-base font-semibold tracking-tight">
+          <div className={`text-[10px] ${variant === "on-dark" ? "text-white/70" : "text-snappeal-muted"}`}>
+            GET IT ON
+          </div>
+          <div className={`text-base font-semibold tracking-tight ${variant === "on-dark" ? "text-white" : "text-snappeal-navy"}`}>
             Google Play
           </div>
         </div>

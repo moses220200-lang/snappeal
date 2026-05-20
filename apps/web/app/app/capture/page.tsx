@@ -80,9 +80,9 @@ export default function CapturePage() {
     // Hydrate from sessionStorage so navigating away/back is non-destructive.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPcn(getPcnPhoto());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setEvidence(getEvidencePhotos());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setTicket(getConfirmedTicket());
   }, []);
 
@@ -188,15 +188,48 @@ export default function CapturePage() {
     setConfirmedTicket(next);
   };
 
-  const canContinue = Boolean(pcn);
+  // A ticket counts as "manually filled" when we have at least the PCN ref
+  // + vehicle reg in session (set by /app/manual-entry). We treat that as
+  // satisfying step 1 just like a photo would — evidence photos remain
+  // optional in either case.
+  const hasManualTicket = Boolean(
+    ticket && ticket.pcnRef && ticket.vehicleReg && !pcn,
+  );
+  const canContinue = Boolean(pcn) || hasManualTicket;
 
   return (
     <>
-      <BackHeader title="Add your parking ticket" subtitle="Step 1 of 4 · Photos" back="/app" />
-      <div className="flex flex-col gap-5 px-5 pt-4 pb-6">
+      <BackHeader
+        title="Add your parking ticket"
+        subtitle="Step 1 of 4 · Ticket details"
+        back="/app"
+      />
+      <div className="flex flex-col gap-5 px-5 pt-4 pb-6 snappeal-content-top">
 
-      {/* PCN photo zone */}
-      {!pcn ? (
+      {hasManualTicket && (
+        <div className="rounded-2xl bg-snappeal-primary-50 border border-snappeal-primary-100 p-4 flex items-start gap-3">
+          <span className="size-9 rounded-full bg-white text-snappeal-primary flex items-center justify-center flex-shrink-0">
+            <Keyboard className="size-[1.125rem]" />
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-snappeal-navy">
+              Ticket details entered
+            </p>
+            <p className="text-[11px] text-snappeal-muted mt-0.5">
+              Add evidence photos and review the fields below, then continue
+              to your notes. You can still <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="underline text-snappeal-primary"
+              >snap the PCN</button> if you have it.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* PCN photo zone — hidden once we have either a photo OR a
+          manually-entered ticket. */}
+      {!pcn && !hasManualTicket ? (
         <>
           <div
             onClick={() => cameraInputRef.current?.click()}
@@ -267,22 +300,26 @@ export default function CapturePage() {
         </>
       ) : (
         <>
-          {/* PCN preview + remove */}
-          <div className="relative rounded-3xl overflow-hidden bg-snappeal-navy aspect-[4/3]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pcn} alt="Your PCN" className="absolute inset-0 size-full object-cover" />
-            <button
-              type="button"
-              onClick={removePcn}
-              aria-label="Remove PCN photo"
-              className="absolute top-3 right-3 size-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/75 transition"
-            >
-              <X className="size-4" />
-            </button>
-            <div className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-snappeal-success/95 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1">
-              <CheckCircle2 className="size-3" /> PCN captured
+          {/* PCN preview — only when we have a real photo. The manual-entry
+              path skips this block entirely; the banner above already tells
+              the customer their typed details are in. */}
+          {pcn && (
+            <div className="relative rounded-3xl overflow-hidden bg-snappeal-navy aspect-[4/3]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={pcn} alt="Your PCN" className="absolute inset-0 size-full object-cover" />
+              <button
+                type="button"
+                onClick={removePcn}
+                aria-label="Remove PCN photo"
+                className="absolute top-3 right-3 size-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/75 transition"
+              >
+                <X className="size-4" />
+              </button>
+              <div className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-snappeal-success/95 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1">
+                <CheckCircle2 className="size-3" /> PCN captured
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Extracted metadata for confirmation */}
           <section className="rounded-2xl bg-white border border-snappeal-border p-4">

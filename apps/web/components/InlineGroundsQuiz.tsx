@@ -47,7 +47,7 @@ export function InlineGroundsQuiz({ tier }: { tier: "buy_time" | "grounds" | "ca
       }
     }
     if (window.localStorage.getItem(DISMISS_KEY) === "1") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setDismissed(true);
     }
     // We intentionally only read once on mount.

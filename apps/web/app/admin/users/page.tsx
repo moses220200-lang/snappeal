@@ -10,7 +10,25 @@ const ROLE_TONE: Record<string, string> = {
 
 export default async function AdminUsersPage() {
   const db = getDb();
-  const rows = db ? await db.select().from(schema.users).orderBy(desc(schema.users.createdAt)).limit(200) : [];
+  // Select only the columns we render. Never pull `passwordHash` into the
+  // React tree, even from a Server Component — it would land in the RSC
+  // payload and (depending on hydration boundaries) become reachable from
+  // a future `"use client"` child.
+  const rows = db
+    ? await db
+        .select({
+          id: schema.users.id,
+          email: schema.users.email,
+          displayName: schema.users.displayName,
+          role: schema.users.role,
+          serviceTier: schema.users.serviceTier,
+          createdAt: schema.users.createdAt,
+          lastSignInAt: schema.users.lastSignInAt,
+        })
+        .from(schema.users)
+        .orderBy(desc(schema.users.createdAt))
+        .limit(200)
+    : [];
 
   return (
     <div className="flex flex-col gap-5">

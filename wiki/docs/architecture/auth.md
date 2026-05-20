@@ -20,14 +20,22 @@ Snappeal supports anonymous **guest** sessions and signed-in **users** side-by-s
 
 ```ts
 users {
-  id              text primary key         // "u_<hex>"
-  email           text unique not null
-  password_hash   text                     // "<saltHex>:<hashHex>" — null for OAuth-only users
-  display_name    text
-  role            text default 'user'      // 'user' | 'admin'
+  id                 text primary key         // "u_<hex>"
+  email              text unique not null
+  password_hash      text                     // "<saltHex>:<hashHex>" — null for OAuth-only users
+  display_name       text
+  role               text default 'user'      // 'user' | 'admin'
+  service_tier       text default 'grounds'   // 'buy_time' | 'grounds' | 'care_plan'
+  /* address + phone fed to the portal-automation agent — captured at /sign-up */
+  address_line1      text
+  address_line2      text
+  address_city       text
+  address_postcode   text
+  phone              text
+  notification_prefs jsonb                    // { emailOnCouncilReply, push, … }
   email_verified_at  timestamptz
-  created_at      timestamptz default now()
-  last_sign_in_at timestamptz
+  created_at         timestamptz default now()
+  last_sign_in_at    timestamptz
 }
 ```
 
@@ -84,10 +92,11 @@ token    = header + "." + payload + "." + sig
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/auth/sign-up` | POST | `{email, password, displayName?, sessionId?}` → creates user, sets cookie, claims guest appeals |
-| `/api/auth/sign-in` | POST | `{email, password, sessionId?}` → verifies + sets cookie + claims |
+| `/api/auth/sign-up` | POST | `{email, password, displayName?, phone?, addressLine1?, addressLine2?, addressCity?, addressPostcode?, sessionId?}` → creates user, sets cookie, claims guest appeals (only when sessionId matches `x-snappeal-session` header) |
+| `/api/auth/sign-in` | POST | `{email, password, sessionId?}` → verifies + sets cookie + claims (same header-match defence) |
 | `/api/auth/sign-out` | POST | Clears cookie |
-| `/api/auth/me` | GET | Returns `{ user: SessionUser | null }` from the cookie |
+| `/api/auth/me` | GET / PATCH | Returns `{ user }` from cookie; PATCH updates displayName |
+| `/api/auth/oauth/[provider]` | GET | Apple + Google entry point. Returns 503 with "configure these env vars" until OAuth credentials land. |
 
 All return JSON. Errors come back as `{ error: { code, message } }`.
 
@@ -110,16 +119,24 @@ export async function POST(request: Request) {
 
 The viewer abstraction doesn't care how the JWT got minted. To wire Apple or Google:
 
-1. Add `/api/auth/[provider]/callback` route that exchanges the auth code for the IdP user info.
-2. `upsert` into `users` keyed by email (no `password_hash`; OAuth-only).
-3. Call `signJwt({ id, email, displayName, role: 'user' })` from `lib/server/auth.ts`.
-4. `setSessionCookie(token)` and redirect to `/app`.
+1. Set the provider env vars (`APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CLIENT_SECRET` for Apple; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` for Google). Until they're set, `/api/auth/oauth/<provider>` returns 503 with a helpful "missing X, Y, Z" message.
+2. Implement the authorize-redirect inside `app/api/auth/oauth/[provider]/route.ts` (TODO) and add a corresponding `/api/auth/oauth/[provider]/callback` route that exchanges the code for IdP user info.
+3. `upsert` into `users` keyed by email (no `password_hash`; OAuth-only). Mirror the sign-up flow's guest-appeal claim when the session header matches.
+4. Call `signJwt({ id, email, displayName, role: 'user' })` from `lib/server/auth.ts`, then `setSessionCookie(token)` and redirect to `/app`.
 
-The wizard's Apple / Google buttons are already in place with proper brand glyphs — they currently route to `/sign-up` so the user can still create an account by email. Swap that `onClick` to `window.location.href = '/api/auth/apple/start'` when ready.
+The wizard's Apple / Google buttons (`components/OAuthButtons.tsx`, also rendered on `/sign-up` + `/sign-in`) already wire `window.location.href = "/api/auth/oauth/<provider>?next=…"` — once the env vars are set and the handler is implemented, no UI changes are needed.
 
-## CSRF
+## CSRF + ownership
 
-JWT is in an httpOnly + SameSite=Lax cookie, which blocks cross-site request forgery for the dominant attack pattern. State-changing routes that are reachable from a different origin (`/api/inbound` webhook in particular) gate on a shared secret header instead (`X-Snappeal-Webhook-Secret`).
+JWT is in an httpOnly + SameSite=Lax cookie, which blocks cross-site request forgery for the dominant attack pattern. State-changing routes that are reachable from a different origin (`/api/inbound` webhook in particular) gate on a shared secret header instead (`X-Snappeal-Webhook-Secret`, REQUIRED in `NODE_ENV=production`).
+
+Appeal-scoped routes (`/api/appeals/[id]`, `/api/submit`, `/api/jobs/[id]`, `/api/submissions/[id]/progress`) use the helpers in `lib/server/viewer.ts` (`canViewAppeal`, `getRequestSessionId`) to gate access:
+
+- Signed-in users prove identity via the `snappeal.token` JWT cookie.
+- Guests prove ownership of their anonymous session via the `x-snappeal-session` request header (or a `?session=` query param on the SSE endpoint, since EventSource can't send custom headers).
+- Admins always pass.
+
+This blocks the "knows the appeal id → reads/edits/submits it" attack that was open in earlier builds.
 
 ## Open work
 
