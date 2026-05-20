@@ -157,49 +157,72 @@ parkingappeal/                                    # working dir (rename to snapp
 | Route | Notes |
 |---|---|
 | `/api/health` | Reports claudeCli / db / stripe / submissionEngine / aiModel |
-| `/api/auth/{sign-up,sign-in,sign-out,me}` | pbkdf2 + HS256 JWT |
-| `/api/appeals` + `/api/appeals/[id]` | CRUD |
+| `/api/auth/{sign-up,sign-in,sign-out,me}` | pbkdf2 + HS256 JWT. `sign-up` accepts displayName + phone + addressLine1/2/city/postcode. `me` GET returns `{ user, profile }`; PATCH accepts displayName + phone + address. |
+| `/api/auth/oauth/[provider]` | Apple + Google OAuth entry point. Returns 503 with "configure these env vars" until APPLE_* / GOOGLE_* land. |
+| `/api/appeals` + `/api/appeals/[id]` | CRUD. Ownership-gated via JWT cookie OR `x-snappeal-session` header. |
 | `/api/extract` | Pre-payment OCR (Claude CLI) |
-| `/api/generate` | Full draft (semaphore-capped) — accepts `preferredGroundCardIds[]` from the step-2 quiz |
-| `/api/generate-stream` | SSE variant of /api/generate (scaffolded — Letter page still uses /api/generate) |
-| `/api/submit` | Enqueues `submit_appeal` job |
-| `/api/submissions/[id]/progress` | SSE — streams `progress` events from the job row (queue position, agent steps, screenshots) |
+| `/api/generate` | Full draft (semaphore-capped) — backwards-compat. The paywall no longer uses this; `/api/generate-stream` is the live path. |
+| `/api/generate-stream` | **Live path for the paywall.** SSE: `appeal` → `ticket` → `ground` events → `chunk` (typing animation, 80-char chunks) → `done`. Consumed via `fetch().body` + `lib/client/sse.ts`. |
+| `/api/submit` | Enqueues `submit_appeal` job. Ownership-gated. |
+| `/api/submissions/[id]/progress` | SSE — streams `progress` events from the job row (queue position, agent steps, screenshots). Ownership-gated; accepts `?session=` query for guest auth (EventSource limitation). |
 | `/api/inbox` | Thread aggregator |
-| `/api/inbound` | Mail webhook → classify + store |
-| `/api/jobs/[id]` | Job status polling + retry/cancel actions |
+| `/api/inbound` | Mail webhook → classify + store. `INBOUND_WEBHOOK_SECRET` REQUIRED in `NODE_ENV=production`. |
+| `/api/jobs/[id]` | Job status polling. Ownership-gated; strips `payload` + `lockedBy` on the wire. |
 | `/api/improve-notes` | "Strengthen my notes" rewrite |
 | `/api/transcribe` | Voice note → text (Whisper-compatible) |
 | `/api/checkout` | Stripe PaymentIntent (real path, when enabled) |
 | `/api/stripe/webhook` | Signature-verified |
-| `/api/care-plan/waitlist` | Care plan signup |
+| `/api/care-plan/waitlist` | Care plan signup. GET is auth-gated (uses viewer email, no `?email=` enumeration). |
 | `/api/subscriptions/care-plan` | Care plan checkout endpoint |
+| `/api/push/subscribe` | Web Push subscribe; merges into existing `notificationPrefs` (doesn't clobber). |
 | `/api/admin/councils` + `/[slug]` | Council CRUD |
 | `/api/admin/council-automation/[slug]` | GET/PUT prompt; POST `{action: "dry-run" \| "reset-to-canonical"}` |
 | `/api/admin/jobs/[id]` | POST `{action: "retry" \| "cancel"}` |
-| `/api/admin/settings/mcp` | GET/PUT `{mcpHeaded, stopAtReview}` runtime toggles |
+| `/api/admin/settings/mcp` | Legacy — GET/PUT `{mcpHeaded, stopAtReview}` only |
+| `/api/admin/settings` | **New** — GET returns `{ settings, envStatus }` (full env inventory + resolved booleans); PATCH `{key, value}` toggles a runtime override (`mcpHeaded`, `stopAtReview`, `submissionLive`, `workerDisabled`, `fakePayment`, `skipPaymentCheck`). Secret env values are NEVER returned. |
 | `/api/admin/inbound/classify` | Sandbox classifier |
+| `/api/health` | Reports claudeCli / db / stripe / submissionEngine / aiModel (reads `SNAPPEAL_SUBMISSION_LIVE !== "0"` — matches the engine). |
 
-## Components (16)
+## Components (33)
 
 | Component | Where | What |
 |---|---|---|
-| `AppHeader` | /app/*, top of each main tab | Shield + "Snappeal" wordmark + tagline + UK location pill |
-| `Logo` | landing nav + footer + splash | `ShieldLogo` + `Wordmark` |
+| `Logo` | landing nav + footer + sign-in + sign-up + splash + apple-icon + OG | **Canonical source.** Exports `SnappealMark` (shield only) + `SnappealLogo` (shield + wordmark) with `dark`/`light` variants. Backward-compat: `ShieldLogo`, `Wordmark` aliases. |
+| `AppHeader` | /app, /app/tickets, /app/inbox, /app/profile | Sticky glass header using `SnappealMark` + wordmark + UK pill |
+| `BackHeader` | every other /app sub-page + sign-in/up | Sticky glass back-arrow header. No negative margin — reserves full height including safe-area inset. |
 | `PhoneMockup` | landing hero | In-app preview with timeline |
 | `WindscreenBackdrop` | landing hero | CSS-only PCN-on-windscreen scene |
-| `StoreBadges` | landing download section | App Store + Google Play with Coming Soon ribbon |
-| `BottomNav` | /app shell | 5-tab nav: Home / Tickets (Receipt) / Camera● / Inbox / Profile |
+| `StoreBadges` | landing download section | App Store + Google Play |
+| `BottomNav` | /app shell | 5-tab nav: Home / Tickets / Camera● / Inbox / Profile |
 | `AppealCard` | (legacy — replaced by inline `TicketCard`) | Status pill + summary + step progress |
 | `Timeline` | ticket detail | Vertical timeline (Apple-style dots) |
-| `HorizontalTimeline` | /app home + tickets list | Horizontal stepper, green completed + blue in-progress |
+| `HorizontalTimeline` | /app home + tickets list | Horizontal stepper |
 | `CaptureMethods` | (subsumed into /app/capture) | Real `<input capture="environment">` for camera + library |
-| `LetterActions` | /app/letter | navigator.clipboard.writeText + navigator.share + Track link |
+| `LetterActions` | /app/letter | Copy / share / Track link |
 | `StripePaymentForm` | /app/paywall | `<Elements>` + `<PaymentElement>` themed to brand |
-| `FakePaymentButtons` | /app/paywall | Apple Pay / Google Pay / Card buttons — simulates Stripe in dev |
-| `GeneratingOverlay` | /app/paywall (while drafting) | 30s phased progress card while Claude CLI runs |
+| `FakePaymentButtons` | /app/paywall | Apple/Google/Card fake buttons in dev |
+| `GeneratingOverlay` | /app/paywall | Event-driven (read → ground → draft → done) milestone ladder + live letter preview with typing caret |
 | `SnappealSplash` | root layout | 3-second branded splash (sessionStorage-gated) |
-| `WizardOnboarding` | /app shell | First-launch: welcome → service tier quiz → grounds quiz → permissions → OAuth/email upsell |
-| `InstallBanner` | landing-only | Sticky bottom-banner, beforeinstallprompt + dismissible (scope-gated to `/`, `/privacy`, `/terms`) |
+| `WizardOnboarding` | /app shell | First-launch: welcome → service tier quiz → grounds quiz → permissions → OAuth/email upsell; OAuth buttons now wire to `/api/auth/oauth/<provider>` |
+| `WizardSheet` | various | Reusable bottom-sheet for AI photo-coach + Strengthen-my-notes previews |
+| `InstallBanner` | landing-only | Sticky bottom-banner, beforeinstallprompt + dismissible |
+| `OAuthButtons` | /sign-up, /sign-in | Branded "Continue with Apple" (black) + "Continue with Google" (white + multi-colour G). Click → `/api/auth/oauth/<provider>` |
+| `AddressAutocomplete` | /sign-up + /app/profile/personal-details | UK postcode → city autofill via free postcodes.io; manual line1/line2 entry |
+| `AdminMobileNav` | /admin | Mobile-only drawer for the admin sidebar |
+| `AuthGate` | /app/paywall | "Create your account first" intercept before payment |
+| `Confetti` | /app/page (Home) | One-shot burst when an appeal flips to cancelled |
+| `CouncilForm` | /admin/councils/new + /admin/councils/[slug] | Shared council CRUD form |
+| `DryRunButton` | /admin/jobs + /admin/submissions + /admin/councils/[slug]/automation | Per-row dry-run modal (`Dry-run against live portal`) |
+| `GroundsCardQuiz` | /app/notes | Card-based step-2 grounds picker (6 categories, ~25 cards mapping to 11 canonical groundIds) |
+| `InboundClassifierSandbox` | /admin/inbound | Try the LLM classifier on arbitrary text |
+| `InlineGroundsQuiz` | (legacy free-text grounds picker) | Demoted to optional-note details |
+| `JobRowActions` | /admin/jobs | Retry / cancel actions |
+| `McpHeadedToggle` | /admin/health | Headless ↔ headed Chromium toggle |
+| `ProfileSubPage` | /app/profile/* sub-pages | Shared header + container |
+| `PushPermission` | /app/profile/notifications | Web Push subscribe button (VAPID) |
+| `SettingsToggles` | /admin/settings | The six runtime override toggles (mcpHeaded, stopAtReview, submissionLive, workerDisabled, fakePayment, skipPaymentCheck) |
+| `VoiceNoteButton` | /app/notes | Whisper-compatible voice note → text |
+| `WinRateRing` | /app/page (Home) | Per-user win-rate ring |
 
 ## Brand — iOS system palette + action red
 

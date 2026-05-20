@@ -2,7 +2,7 @@
 
 The admin UI lives at `/admin`. It's gated by `users.role = 'admin'` and is invisible to regular users — a guest hitting `/admin` is redirected to `/sign-in?next=/admin`, and a signed-in non-admin is bounced to `/app?notAdmin=1`.
 
-## Pages (13)
+## Pages (14)
 
 | Route | Purpose |
 |---|---|
@@ -16,9 +16,10 @@ The admin UI lives at `/admin`. It's gated by `users.role = 'admin'` and is invi
 | `/admin/submissions` | Joined-on-appeal submissions table — status, method, council, ref, **per-row appeal-context dry-run button** |
 | `/admin/inbound` | 100 most recent inbound council messages + the **InboundClassifierSandbox** for trying the classifier on arbitrary text |
 | `/admin/jobs` | Job queue inspector with **retry/cancel** actions and **per-row appeal-context dry-run** for `submit_appeal` rows |
-| `/admin/users` | All users (email, name, role, tier, last sign-in) |
+| `/admin/users` | All users (email, name, role, tier, last sign-in). `passwordHash` is **not** in the RSC payload (the page selects only the rendered columns). |
 | `/admin/health` | Integration check — DB / Claude CLI / API key / Stripe / Stripe webhook / AUTH_SECRET / submission engine mode / worker / fake-payment **+ Safety mode (stop-at-review) toggle + MCP browser visibility (headless / headed) toggle** |
-| `/admin/wiki` | The MkDocs build embedded via iframe so admins can read the full wiki without leaving the admin shell |
+| `/admin/settings` | **New in v0.1.5.** Full env-var inventory (39 vars, grouped by category, status + sensitivity pills) + the six runtime override toggles (`mcpHeaded`, `stopAtReview`, `submissionLive`, `workerDisabled`, `fakePayment`, `skipPaymentCheck`). Secret values are NEVER displayed — secrets must still be edited in `.env.local` or the hosting provider's dashboard. |
+| `/admin/wiki` | The MkDocs build embedded via iframe so admins can read the full wiki without leaving the admin shell. Reads `NEXT_PUBLIC_WIKI_URL` (default `http://127.0.0.1:8800/`). |
 
 ## How to make yourself admin
 
@@ -39,7 +40,8 @@ If the user doesn't exist yet, create the account via `/sign-up` first, then run
   - `POST/PATCH/DELETE /api/admin/councils[/:slug]` — council CRUD
   - `GET/PUT /api/admin/council-automation/[slug]` + `POST {action}` — save prompt, dry-run, reset-to-canonical
   - `POST /api/admin/jobs/[id]` — retry / cancel
-  - `GET/PUT /api/admin/settings/mcp` — runtime MCP toggles (headed + stop-at-review)
+  - `GET/PUT /api/admin/settings/mcp` — legacy MCP toggles (headed + stop-at-review). Kept for backwards compat.
+  - `GET /api/admin/settings` → `{ settings, envStatus }`. `PATCH /api/admin/settings` body `{key, value}` — flips a single runtime override.
   - `POST /api/admin/inbound/classify` — sandbox classifier
 - **Layout padding**: outer wrapper adds `px-5 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-[1400px]` content gutters so every page reads consistently against the sidebar.
 

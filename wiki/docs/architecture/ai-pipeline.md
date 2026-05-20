@@ -28,7 +28,10 @@ A cheap OCR-only pass run from the capture screen via `/api/extract`. Single PCN
 
 ### 2. Full appeal draft — `lib/server/ai.ts → generateDraft()`
 
-The headline call. PCN photo + up to 6 evidence photos + the user's confirmed ticket fields + their notes go in; structured `{ ticket, groundIds[], letter }` comes back. Run from `/api/generate` after payment.
+The headline call. PCN photo + up to 6 evidence photos + the user's confirmed ticket fields + their notes go in; structured `{ ticket, groundIds[], letter }` comes back. Two endpoints expose it:
+
+- **`/api/generate-stream` (live path used by `/app/paywall`)** — Server-Sent Events. Emits `appeal` (with the new appealId) → `ticket` → `ground` (one per identified ground) → `chunk` events for an 80-char-at-a-time typing animation of the persisted letter → `done`. Consumed via `fetch().body` + the tiny SSE parser at `lib/client/sse.ts` (EventSource can't POST a JSON body with the PCN photo). `attachDraftToAppeal()` runs BEFORE any chunk events fire, so the letter is fully persisted by the time the chunks start.
+- **`/api/generate` (legacy synchronous path)** — same input, blocks for ~30 s, returns the structured payload as a single JSON response. No client uses this since v0.1.5; kept for backwards compat.
 
 The system prompt is long and opinionated — see the file for the canonical version. It enforces:
 
