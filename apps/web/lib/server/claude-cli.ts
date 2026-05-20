@@ -65,7 +65,15 @@ export class ClaudeCliError extends Error {
     public readonly stderr: string,
     public readonly stdoutTail: string,
   ) {
-    super(message);
+    // Bake the stderr tail into .message so response bodies + logs show
+    // the actual cause (Not logged in / npx missing / model rejected the
+    // request / etc.) instead of just "claude exited with code 1".
+    const stderrTail = (stderr ?? "").trim().slice(-600);
+    const outTail = (stdoutTail ?? "").trim().slice(-300);
+    const detail = stderrTail || outTail
+      ? `\n  stderr: ${stderrTail || "(empty)"}\n  stdout (tail): ${outTail || "(empty)"}`
+      : "";
+    super(message + detail);
     this.name = "ClaudeCliError";
   }
 }

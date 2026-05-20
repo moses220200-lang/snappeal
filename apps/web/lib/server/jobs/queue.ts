@@ -83,7 +83,9 @@ export async function getJob(id: string): Promise<Job | null> {
 export async function claimNext(workerId: string): Promise<Job | null> {
   const db = getDb();
   if (!db) return null;
-  const staleCutoff = new Date(Date.now() - STALE_LOCK_AFTER_MS);
+  // postgres-js + drizzle sql template can't bind a JS Date directly —
+  // serialize to ISO 8601 so it lands as a `timestamptz` literal.
+  const staleCutoff = new Date(Date.now() - STALE_LOCK_AFTER_MS).toISOString();
   const rows = await db.execute<{
     id: string;
     kind: string;
