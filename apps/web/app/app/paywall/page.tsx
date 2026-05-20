@@ -7,7 +7,7 @@ import { CheckCircle2, Clock, Scale, Sparkles } from "lucide-react";
 import { BackHeader } from "@/components/BackHeader";
 import { StripePaymentForm } from "@/components/StripePaymentForm";
 import { FakePaymentButtons } from "@/components/FakePaymentButtons";
-import { GeneratingOverlay } from "@/components/GeneratingOverlay";
+import { GeneratingOverlay, type GeneratingPhase } from "@/components/GeneratingOverlay";
 import { AuthGate } from "@/components/AuthGate";
 import {
   ServiceTier,
@@ -20,6 +20,7 @@ import {
   setCurrentAppealId,
   clearCaptureFlow,
 } from "@/lib/client/session";
+import { consumeSSE } from "@/lib/client/sse";
 
 const FAKE_PAYMENT = process.env.NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT === "1";
 
@@ -36,6 +37,8 @@ export default function PaywallPage() {
   const [stage, setStage] = useState<"pay" | "generating" | "error">("pay");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tier, setTier] = useState<ServiceTier>("grounds");
+  const [phase, setPhase] = useState<GeneratingPhase>("read");
+  const [streamedLetter, setStreamedLetter] = useState("");
   const sessionId = useMemo(() => getOrCreateSessionId(), []);
 
   useEffect(() => {
@@ -46,15 +49,25 @@ export default function PaywallPage() {
   const handleConfirmed = useCallback(
     async (paymentIntentId: string | null) => {
       setStage("generating");
+      setPhase("read");
+      setStreamedLetter("");
       try {
         const pcn = getPcnPhoto();
         const notes = getNotes();
         const evidence = getEvidencePhotos();
         const confirmedTicket = getConfirmedTicket();
         if (!pcn) throw new Error("No PCN photo captured. Please retake.");
-        const res = await fetch("/api/generate", {
+
+        // Stream the draft via SSE so the overlay can show the letter typing
+        // in real time. The Claude call itself is one-shot — the chunks are
+        // a deliberate UX flourish — but the `appeal`/`ticket`/`ground`
+        // milestone events come back as soon as each step completes.
+        const res = await fetch("/api/generate-stream", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "x-snappeal-session": sessionId,
+          },
           body: JSON.stringify({
             sessionId,
             pcnPhoto: pcn,
@@ -69,10 +82,52 @@ export default function PaywallPage() {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error?.message ?? `Generate failed (${res.status})`);
         }
-        const json = (await res.json()) as { appealId: string };
-        setCurrentAppealId(json.appealId);
+
+        let appealId: string | null = null;
+        let letterSoFar = "";
+        let streamError: string | null = null;
+
+        await consumeSSE(res, (ev) => {
+          switch (ev.event) {
+            case "appeal": {
+              const d = ev.data as { appealId: string };
+              appealId = d.appealId;
+              setPhase("ground");
+              break;
+            }
+            case "ticket":
+              setPhase("ground");
+              break;
+            case "ground":
+              // First ground event = we're about to start drafting.
+              setPhase("draft");
+              break;
+            case "chunk": {
+              const d = ev.data as { text: string };
+              letterSoFar += d.text;
+              setStreamedLetter(letterSoFar);
+              break;
+            }
+            case "done": {
+              const d = ev.data as { appealId: string };
+              appealId = d.appealId;
+              setPhase("done");
+              break;
+            }
+            case "error": {
+              const d = ev.data as { message?: string };
+              streamError = d?.message ?? "Stream failed";
+              break;
+            }
+          }
+        });
+
+        if (streamError) throw new Error(streamError);
+        if (!appealId) throw new Error("Stream ended without an appeal id");
+
+        setCurrentAppealId(appealId);
         clearCaptureFlow();
-        router.replace(`/app/letter/${json.appealId}`);
+        router.replace(`/app/letter/${appealId}`);
       } catch (err) {
         setErrorMessage(err instanceof Error ? err.message : "Failed to draft your appeal");
         setStage("error");
@@ -98,7 +153,9 @@ export default function PaywallPage() {
 
   return (
     <>
-      {stage === "generating" && <GeneratingOverlay />}
+      {stage === "generating" && (
+        <GeneratingOverlay phase={phase} streamedText={streamedLetter} />
+      )}
       <BackHeader title={pricing.title} subtitle={`Step 3 of 4 · ${isFree ? "Confirm" : "Pay"}`} back="/app/notes" />
       <div className="flex flex-col gap-5 px-5 pt-4 pb-6">
 

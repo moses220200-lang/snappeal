@@ -182,6 +182,17 @@ This pass shipped the system audit, four user-requested UX fixes, and the doc-sy
 - `app/sign-in/page.tsx` — OAuth buttons added above the email form; logo swapped to canonical mark.
 - `components/WizardOnboarding.tsx` — `AuthStep`'s three buttons now wire real flows: Apple/Google → `/api/auth/oauth/<provider>`, Email → `/sign-up`.
 
+**Personal-details: capture phone + address (Task 2 from "what to do next")**
+
+- `/app/profile/personal-details` now captures `displayName`, `phone`, and full UK postal address (line 1, line 2, city, postcode) via the same `AddressAutocomplete` component used on sign-up. The DB columns existed since migration 0008; the profile UI now writes to them.
+- `/api/auth/me` GET returns `{ user, profile }` (profile = `{ phone, addressLine1, addressLine2, addressCity, addressPostcode }`); PATCH accepts all five fields. JWT cookie stays small — profile fields are not in the token.
+
+**Streaming letter cutover (Task 5)**
+
+- `/app/paywall` now consumes `/api/generate-stream` via `fetch().body` + a tiny SSE parser at `lib/client/sse.ts` (`EventSource` can't POST a JSON body). The `GeneratingOverlay` accepts new `phase` + `streamedText` props; the milestone ladder advances on real `appeal` / `ticket` / `ground` / `done` events, and the bottom of the overlay renders the letter being typed live as `chunk` events stream in.
+- Old synchronous `POST /api/generate` callsite removed. `/api/generate` route stays for backwards-compat; no client uses it now.
+- Letter page (`/app/letter/[id]`) unchanged — it still loads the already-persisted appeal; the streaming endpoint calls `attachDraftToAppeal` before emitting any chunks, so the route handler order keeps the DB authoritative.
+
 **Doc sync**
 
 - `.env.example` — rewritten with all 25+ referenced vars grouped (Auth / DB / Claude+AI / Stripe / Submission / Inbound / Push / OAuth / Wiki / Address). Inline comments explain every variable.

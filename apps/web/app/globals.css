@@ -301,6 +301,15 @@ html {
   animation: generating-line 1.6s ease-in-out infinite alternate;
 }
 
+/* Caret blink for the live letter preview in the generating overlay. */
+@keyframes generating-cursor {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.snappeal-generating-cursor {
+  animation: generating-cursor 1s steps(1, end) infinite;
+}
+
 /* Respect users who want reduced motion — fall back to a quick fade */
 @media (prefers-reduced-motion: reduce) {
   .snappeal-splash {
