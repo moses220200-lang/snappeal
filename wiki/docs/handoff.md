@@ -124,17 +124,37 @@ This is the most differentiating thing in the codebase. Read it once.
 6. Iterate until dry-run is reliably green.
 7. Flip `SNAPPEAL_SUBMISSION_LIVE=1` → real `/api/submit` calls now enqueue `submit_appeal` jobs → worker (booted from `instrumentation.ts`) claims them via `FOR UPDATE SKIP LOCKED` → calls `runPortalAutomation()` → **which now loads the per-council `agentPrompt` from `council_automation`** (the gap closed in the latest commit) → submission runs end-to-end → council reference + screenshot persisted to `submissions` table.
 
-## Recent commits (last 5)
+## Recent commits (most recent first)
 
 ```
-v0.1 backend live: Claude CLI, queue, auth, admin, gamification + docs refresh
-Roadmap: v0.1 status checklist (shipped vs in-flight)
-Splash + install banner + native features + 100% test green + wiki sync
-Full QA pass: lint clean, E2E suite (19 passing), web CI workflow
-Add /api/health endpoint — config status at a glance
+56a34bc  Claude CLI: add --verbose flag required by --print + stream-json
+ef43dcf  Worker crashloop fix + Claude CLI error transparency
+4f969bb  Embed wiki at /admin/wiki via iframe inside the admin shell
+a94c8b3  Wiki link: bind wiki container on localhost:8800 + update default URL
+b242de6  gitignore: also exclude admin-audit and admin-councils screenshots
+ae928e7  Admin build-out: council CRUD, MCP automation editor, mobile nav, wiki link
+56e96a8  v0.1 backend live: Claude CLI, queue, auth, admin, gamification + docs refresh
 ```
 
-The current uncommitted work (admin council CRUD, MCP automation editor, manual-entry wizard, per-council prompt loading) is staged for the next commit.
+Tree is clean.
+
+## Gotchas you'll hit fast (lessons from the last few hours)
+
+These are real footguns I tripped over. Listing them here so the next person doesn't.
+
+1. **postgres-js + drizzle's raw `sql\`\`` template can't bind a JS `Date`.** Always pre-serialize with `.toISOString()` before interpolating into a `sql\`...\`` template. Drizzle's typed query builder (`db.update(...).set({ ... })`) handles Date fine — the issue is exclusively the raw-SQL path. Bit me in `lib/server/jobs/queue.ts → claimNext()` (worker crashloop) and `app/admin/page.tsx` (dashboard query). Both fixed.
+
+2. **Claude CLI: `--print` + `--output-format stream-json` requires `--verbose`.** Hard CLI requirement, fails with exit code 1 and a clear stderr otherwise. `runAgentic` includes `--verbose` now; the verbose preamble lines aren't JSON so the existing line-parse loop ignores them.
+
+3. **`ClaudeCliError` swallowed stderr** for a while — the error message was the opaque `claude exited with code N` line and the actual cause was on the error object but never made it into the response body. Fixed: the constructor now folds the stderr tail (600 chars) + stdout tail (300 chars) into `.message`.
+
+4. **Next.js `Edit` tool gotcha**: the Write/Edit pair requires you to *re-Read* a file after a Write before the next Edit can apply. A few admin layout edits in this session failed and had to be retried because of that.
+
+5. **`document.cookie = ""` doesn't clear httpOnly cookies.** When testing sign-out via MCP, hit `POST /api/auth/sign-out` instead of trying to wipe `snappeal.token` from JS.
+
+6. **The wiki container had no host port binding.** Default `WIKI_URL` was an unreachable `theailab.dev` subdomain. Fixed by binding the MkDocs container to `127.0.0.1:8800` in `docker-compose.yml` and defaulting the env var to that.
+
+7. **`@playwright/mcp` first-install takes ~30 s.** First dry-run from `/admin/councils/<slug>/automation` will fetch the package via `npx -y`. Subsequent runs hit the cache.
 
 ## Open questions / decisions waiting
 

@@ -18,7 +18,7 @@ The trade-off is that the runtime needs the `claude` binary on PATH (or `CLAUDE_
 - **Model**: `claude-sonnet-4-6` (overridable via `CLAUDE_MODEL`).
 - **Auth**: OAuth subscription by default (the user's logged-in CLI session); `--bare` + `ANTHROPIC_API_KEY` in prod.
 - **Structured-output mode**: `--output-format json` + `--json-schema '<jsonSchema>'`. Result lives on `structured_output`.
-- **Agentic mode**: `--output-format stream-json` + `--mcp-config <path>` + `--allowedTools '...'` + `--dangerously-skip-permissions`.
+- **Agentic mode**: `--output-format stream-json` + `--verbose` (required combo with `-p`) + `--mcp-config <path>` + `--allowedTools '...'` + `--dangerously-skip-permissions`.
 
 ## Three callers
 
@@ -72,6 +72,7 @@ lib/server/
 | Schema validation fails | `runStructured` throws `ClaudeCliError` with the failing payload tail (last 2 KB) for diagnostics. |
 | Image unreadable | Claude returns empty-string fields (per the prompt). We persist what's there and the letter uses bracketed placeholders the user fills in. |
 | Timeout (>120s structured / >180s agentic) | Child process killed with SIGTERM then SIGKILL; throws to the route handler. |
+| Any non-zero CLI exit | `ClaudeCliError.message` includes the **stderr tail (600 chars) + stdout tail (300 chars)** baked in, so response bodies + logs surface the real cause instead of the opaque exit code. |
 
 ## Cost target
 
