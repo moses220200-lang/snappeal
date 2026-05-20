@@ -20,6 +20,8 @@ const Body = z.object({
   pcnRefPattern: z.string().max(80).nullable().optional(),
   automationStatus: z.enum(["manual", "automated_beta", "automated_ga"]).default("manual"),
   notes: z.string().max(2000).nullable().optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+  logoBg: z.string().max(20).nullable().optional(),
 });
 
 /** POST /api/admin/councils — create a new council row. */
@@ -49,6 +51,8 @@ export async function POST(request: Request) {
         postalAddress: body.postalAddress ?? null,
         pcnRefPattern: body.pcnRefPattern ?? null,
         notes: body.notes ?? null,
+        logoUrl: body.logoUrl ?? null,
+        logoBg: body.logoBg ?? null,
         lastVerifiedAt: new Date(),
       })
       .returning();

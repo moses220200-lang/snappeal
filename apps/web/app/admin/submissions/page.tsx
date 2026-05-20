@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/server/db/client";
+import { getCouncilLookup } from "@/lib/server/councils";
+import { CouncilBadge } from "@/components/CouncilBadge";
 import { DryRunButton } from "@/components/DryRunButton";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,7 @@ export default async function AdminSubmissionsPage() {
         .orderBy(desc(schema.submissions.createdAt))
         .limit(100)
     : [];
+  const councilMap = await getCouncilLookup();
 
   return (
     <div className="flex flex-col gap-5">
@@ -57,7 +60,9 @@ export default async function AdminSubmissionsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-snappeal-border">
-            {rows.map((s) => (
+            {rows.map((s) => {
+              const council = s.councilSlug ? councilMap.get(s.councilSlug) : null;
+              return (
               <tr key={s.id} className="hover:bg-snappeal-bg/40 transition">
                 <td className="px-4 py-3 font-mono text-[11px] text-snappeal-muted">{s.id}</td>
                 <td className="px-4 py-3 font-mono text-[11px]">
@@ -65,8 +70,17 @@ export default async function AdminSubmissionsPage() {
                     {s.appealId}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-[11px] capitalize text-snappeal-navy">
-                  {s.councilSlug ? s.councilSlug.replace(/-/g, " ") : <span className="text-snappeal-muted">—</span>}
+                <td className="px-4 py-3 text-snappeal-navy">
+                  {council ? (
+                    <CouncilBadge
+                      size="sm"
+                      name={council.name}
+                      logoUrl={council.logoUrl}
+                      logoBg={council.logoBg}
+                    />
+                  ) : (
+                    <span className="text-snappeal-muted text-[11px]">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${STATUS_TONE[s.status] ?? STATUS_TONE.queued}`}>
@@ -86,7 +100,8 @@ export default async function AdminSubmissionsPage() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -4,28 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BackHeader } from "@/components/BackHeader";
 import { GroundsCardQuiz } from "@/components/GroundsCardQuiz";
-import {
-  getNotes,
-  getServiceTier,
-  setNotes,
-} from "@/lib/client/session";
+import { getNotes, setNotes } from "@/lib/client/session";
 
 function ContinueCta() {
-  const [tier, setTier] = useState<"buy_time" | "grounds" | "care_plan">("grounds");
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTier(getServiceTier());
-  }, []);
-  const label =
-    tier === "buy_time"
-      ? "Send holding challenge — Free"
-      : "Generate appeal — £2.99";
   return (
     <Link
       href="/app/paywall"
       className="rounded-2xl bg-snappeal-action !text-white font-semibold py-4 text-center hover:bg-snappeal-action-600 transition shadow-lg shadow-snappeal-action/40"
     >
-      <span className="text-white">{label}</span>
+      <span className="text-white">Draft my appeal — Free</span>
     </Link>
   );
 }

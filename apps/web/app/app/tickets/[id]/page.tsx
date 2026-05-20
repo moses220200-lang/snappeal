@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Timeline } from "@/components/Timeline";
 import { BackHeader } from "@/components/BackHeader";
+import { CouncilBadge } from "@/components/CouncilBadge";
 import type { AppealRecord } from "@/lib/server/appeals";
 import { getOrCreateSessionId } from "@/lib/client/session";
 
@@ -100,8 +101,13 @@ export default function TicketDetailPage({
 
       {ticket && (
         <section className="rounded-2xl bg-white border border-snappeal-border p-5">
-          <p className="text-sm font-bold text-snappeal-navy">{ticket.issuer}</p>
-          <p className="text-xs text-snappeal-muted mt-0.5 flex items-center gap-1.5">
+          <CouncilBadge
+            size="md"
+            name={ticket.issuer}
+            logoUrl={appeal.councilLogoUrl}
+            logoBg={appeal.councilLogoBg}
+          />
+          <p className="text-xs text-snappeal-muted mt-2 flex items-center gap-1.5">
             <MapPin className="size-3.5" />
             {ticket.location}
           </p>

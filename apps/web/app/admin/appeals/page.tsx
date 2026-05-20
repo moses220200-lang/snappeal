@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/server/db/client";
+import { getCouncilLookup } from "@/lib/server/councils";
+import { CouncilBadge } from "@/components/CouncilBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,7 @@ const TONE: Record<string, string> = {
 export default async function AdminAppealsPage() {
   const db = getDb();
   const rows = db ? await db.select().from(schema.appeals).orderBy(desc(schema.appeals.createdAt)).limit(100) : [];
+  const councilMap = await getCouncilLookup();
 
   return (
     <div className="flex flex-col gap-5">
@@ -50,6 +53,7 @@ export default async function AdminAppealsPage() {
             )}
             {rows.map((a) => {
               const ticket = a.ticket as { issuer?: string; pcnRef?: string } | null;
+              const council = a.councilSlug ? councilMap.get(a.councilSlug) : null;
               return (
                 <tr key={a.id} className="hover:bg-snappeal-bg/40 transition">
                   <td className="px-4 py-3 font-mono text-[11px] text-snappeal-navy">
@@ -62,7 +66,18 @@ export default async function AdminAppealsPage() {
                       {a.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-snappeal-navy">{ticket?.issuer ?? "—"}</td>
+                  <td className="px-4 py-3 text-snappeal-navy">
+                    {ticket?.issuer ? (
+                      <CouncilBadge
+                        size="sm"
+                        name={ticket.issuer}
+                        logoUrl={council?.logoUrl ?? null}
+                        logoBg={council?.logoBg ?? null}
+                      />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-mono text-[11px] text-snappeal-muted">{ticket?.pcnRef ?? "—"}</td>
                   <td className="px-4 py-3 text-[11px] text-snappeal-muted">{a.serviceTier}</td>
                   <td className="px-4 py-3 text-[11px] text-snappeal-muted">

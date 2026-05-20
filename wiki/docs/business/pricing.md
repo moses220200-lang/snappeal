@@ -1,10 +1,15 @@
 # Pricing
 
+> **2026-05-20 — model simplified.** The previous three-tier model (Buy Time free / Full Appeal £2.99 / Care Plan £9.99/mo) has been retired in favour of a simpler two-line model: **drafting an appeal letter is free and unlimited; £2.99 is charged only when the user opts to auto-submit the letter via the MCP portal-automation agent.** All copy below describing "£2.99 buys the work / appeal we deliver" should be read as describing only the auto-submission line — the drafting itself is now a free product. The £2.99 still buys "work, not outcome" (the work being the portal submission). Refund logic is unchanged.
+
 ## Headline
 
-**£2.99 per automated appeal. One-off, non-refundable.**
+**Free to draft. £2.99 per auto-submission. One-off, non-refundable.**
 
-£2.99 buys the **work** — an AI-drafted representation submitted on your behalf — not the **outcome**. We're priced like a service, not a wager: you pay for the appeal we deliver, not for whether the council says yes.
+- **Drafting the appeal letter (vision OCR, grounds picker, AI-drafted representation, saved to inbox)** → free, unlimited. No card on file.
+- **Auto-submitting that letter through the council's portal via the MCP agent** → £2.99 per submission, opt-in on the letter review screen.
+
+£2.99 buys the **submission work** — the MCP agent operating the council portal on your behalf — not the **outcome**. We're priced like a service, not a wager: you pay for the submission we deliver, not for whether the council says yes.
 
 **One service-failure exception**: if our system fails to deliver the appeal (e.g., AI generation fails on retry, the council portal is unreachable for an extended period, payment is taken but no letter is produced), we issue an exceptional refund. That is a service-quality remedy — not an outcome refund.
 

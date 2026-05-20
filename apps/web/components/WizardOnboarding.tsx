@@ -7,45 +7,35 @@ import {
   Camera,
   CheckCircle2,
   ChevronRight,
-  Clock,
   FileText,
-  Scale,
+  Send,
   ShieldCheck,
   Sparkles,
   X,
 } from "lucide-react";
 
 /**
- * First-launch wizard — short, focused, all-in-one onboarding for users
- * who've never seen Snappeal. By design this only plays ONCE per device.
+ * First-launch wizard — short, focused, all-in-one onboarding.
  *
- * Contextual interventions (grounds quiz at the right moment, camera
- * permission prompt when /app/capture is first opened, OAuth upsell after
- * the first appeal) live in their respective pages — not here. This file
- * is the welcome, the tier pick, the permission warm-up, and the sign-in
- * offer. After that, the wizard never re-renders.
+ * Flow: welcome → plan → permissions → auth.
+ *
+ * The "plan" step is informational under the new pricing model: drafting
+ * is always free; £2.99 is only charged at auto-submission time. The
+ * selection seeds `snappeal.preferAutoSubmit` so the letter page can
+ * default the CTA accordingly. The grounds quiz lives on /app/notes (the
+ * `<GroundsCardQuiz>` component) — no need to ask it again here before
+ * the user has even captured a PCN.
  */
 const STORAGE_KEY = "snappeal.wizardDone";
-const SERVICE_KEY = "snappeal.serviceTier";
+const PREFERENCE_KEY = "snappeal.preferAutoSubmit";
 
-type Step = "welcome" | "service" | "quiz" | "permissions" | "auth" | "done";
-type ServiceTier = "buy_time" | "grounds" | "care_plan";
-
-interface QuizAnswers {
-  insidePermitArea: boolean | null;
-  hasEvidence: boolean | null;
-  alreadyPaid: boolean | null;
-}
+type Step = "welcome" | "plan" | "permissions" | "auth" | "done";
+type Preference = "draft_only" | "auto_submit" | "care_plan";
 
 export function WizardOnboarding() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("welcome");
-  const [tier, setTier] = useState<ServiceTier | null>(null);
-  const [quiz, setQuiz] = useState<QuizAnswers>({
-    insidePermitArea: null,
-    hasEvidence: null,
-    alreadyPaid: null,
-  });
+  const [preference, setPreference] = useState<Preference | null>(null);
 
   // Decide whether the wizard should ever appear:
   //   1. If the user is signed in → skip immediately and never show.
@@ -110,7 +100,12 @@ export function WizardOnboarding() {
   const finish = () => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, "1");
-      if (tier) window.localStorage.setItem(SERVICE_KEY, tier);
+      if (preference) {
+        window.localStorage.setItem(
+          PREFERENCE_KEY,
+          preference === "auto_submit" ? "1" : "0",
+        );
+      }
     }
     setStep("done");
     router.refresh();
@@ -130,25 +125,17 @@ export function WizardOnboarding() {
       </button>
 
       <div className="min-h-full flex flex-col px-6 py-12 max-w-md mx-auto">
-        {step === "welcome" && <WelcomeStep onNext={() => setStep("service")} />}
-        {step === "service" && (
-          <ServiceStep
-            tier={tier}
-            onPick={(t) => setTier(t)}
-            onNext={() => setStep(tier === "grounds" ? "quiz" : "permissions")}
+        {step === "welcome" && <WelcomeStep onNext={() => setStep("plan")} />}
+        {step === "plan" && (
+          <PlanStep
+            preference={preference}
+            onPick={(p) => setPreference(p)}
             onBack={() => setStep("welcome")}
-          />
-        )}
-        {step === "quiz" && (
-          <QuizStep
-            quiz={quiz}
-            onUpdate={(patch) => setQuiz((q) => ({ ...q, ...patch }))}
-            onBack={() => setStep("service")}
             onNext={() => setStep("permissions")}
           />
         )}
         {step === "permissions" && (
-          <PermissionsStep onBack={() => setStep(tier === "grounds" ? "quiz" : "service")} onNext={() => setStep("auth")} />
+          <PermissionsStep onBack={() => setStep("plan")} onNext={() => setStep("auth")} />
         )}
         {step === "auth" && <AuthStep onFinish={finish} />}
       </div>
@@ -328,44 +315,47 @@ function MiniWestminsterPCN() {
   );
 }
 
-function ServiceStep({
-  tier,
+function PlanStep({
+  preference,
   onPick,
   onNext,
   onBack,
 }: {
-  tier: ServiceTier | null;
-  onPick: (t: ServiceTier) => void;
+  preference: Preference | null;
+  onPick: (p: Preference) => void;
   onNext: () => void;
   onBack: () => void;
 }) {
   const options: {
-    id: ServiceTier;
-    icon: typeof Clock;
+    id: Preference;
+    icon: typeof FileText;
     title: string;
     pitch: string;
-    badge?: string;
+    badge: string;
     comingSoon?: boolean;
   }[] = [
     {
-      id: "buy_time",
-      icon: Clock,
-      title: "Buy time",
-      pitch: "Free holding challenge — protects the £80 discount window while you decide whether to fight the full case.",
-      badge: "Free",
+      id: "draft_only",
+      icon: FileText,
+      title: "Draft only",
+      pitch:
+        "We AI-draft the full grounds-based appeal and save it to your inbox. You copy/paste or download — submit it yourself.",
+      badge: "Free · unlimited",
     },
     {
-      id: "grounds",
-      icon: Scale,
-      title: "I have grounds",
-      pitch: "Full AI-drafted appeal with quiz + evidence review, tailored to your council.",
-      badge: "£2.99 · most popular",
+      id: "auto_submit",
+      icon: Send,
+      title: "Snappeal submits for me",
+      pitch:
+        "Same AI draft, plus our MCP agent files it through your council's portal end-to-end. Pay only when you use it.",
+      badge: "£2.99 per submission",
     },
     {
       id: "care_plan",
       icon: Sparkles,
       title: "Care Plan",
-      pitch: "Unlimited grounds-based appeals included. Plus 90% appeal-rate guarantee, roadside invoice recovery, and priority support.",
+      pitch:
+        "Unlimited auto-submissions, 90% appeal-rate guarantee, roadside invoice recovery, priority support.",
       badge: "£9.99/mo",
       comingSoon: true,
     },
@@ -373,18 +363,18 @@ function ServiceStep({
 
   return (
     <StepShell
-      badge="Step 1 of 3"
-      title="What do you need?"
-      subtitle="Pick the path that fits your case. You can change this anytime."
+      badge="Step 1 of 2"
+      title="How would you like to appeal?"
+      subtitle="Drafting is always free. Choose how you want to submit — you can change this on each appeal."
       footer={
         <>
           <button
             type="button"
             onClick={onNext}
-            disabled={!tier || tier === "care_plan"}
+            disabled={!preference || preference === "care_plan"}
             className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-40 disabled:shadow-none"
           >
-            {tier === "care_plan" ? "Join waitlist (coming soon)" : "Continue"}
+            {preference === "care_plan" ? "Join waitlist (coming soon)" : "Continue"}
           </button>
           <button type="button" onClick={onBack} className="text-xs text-white/60 hover:text-white py-2">
             Back
@@ -393,7 +383,7 @@ function ServiceStep({
       }
     >
       {options.map((opt) => {
-        const isPicked = tier === opt.id;
+        const isPicked = preference === opt.id;
         const disabled = opt.comingSoon;
         return (
           <button
@@ -420,17 +410,15 @@ function ServiceStep({
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold flex items-center gap-2 flex-wrap">
                 {opt.title}
-                {opt.badge && (
-                  <span
-                    className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-                      isPicked
-                        ? "bg-snappeal-primary-100 text-snappeal-primary-700"
-                        : "bg-white/15 text-white"
-                    }`}
-                  >
-                    {opt.badge}
-                  </span>
-                )}
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+                    isPicked
+                      ? "bg-snappeal-primary-100 text-snappeal-primary-700"
+                      : "bg-white/15 text-white"
+                  }`}
+                >
+                  {opt.badge}
+                </span>
                 {opt.comingSoon && (
                   <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-amber-400/20 text-amber-200 px-2 py-0.5">
                     Coming soon
@@ -445,92 +433,6 @@ function ServiceStep({
           </button>
         );
       })}
-    </StepShell>
-  );
-}
-
-function QuizStep({
-  quiz,
-  onUpdate,
-  onNext,
-  onBack,
-}: {
-  quiz: QuizAnswers;
-  onUpdate: (patch: Partial<QuizAnswers>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  const questions: { key: keyof QuizAnswers; q: string; yes: string; no: string }[] = [
-    {
-      key: "insidePermitArea",
-      q: "Were you parked in a controlled / permit area?",
-      yes: "Yes",
-      no: "No / not sure",
-    },
-    {
-      key: "hasEvidence",
-      q: "Do you have photos or a note that supports your side?",
-      yes: "Yes",
-      no: "Just the PCN photo",
-    },
-    {
-      key: "alreadyPaid",
-      q: "Have you already paid the penalty?",
-      yes: "Yes",
-      no: "No",
-    },
-  ];
-  const canContinue = questions.every((q) => quiz[q.key] !== null);
-  return (
-    <StepShell
-      badge="Step 2 of 3"
-      title="3-question case check"
-      subtitle="We'll use your answers to pick the strongest legal ground."
-      footer={
-        <>
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={!canContinue}
-            className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-40"
-          >
-            Continue
-          </button>
-          <button type="button" onClick={onBack} className="text-xs text-white/60 hover:text-white py-2">
-            Back
-          </button>
-        </>
-      }
-    >
-      {questions.map(({ key, q, yes, no }) => (
-        <div key={key} className="rounded-2xl bg-white/10 p-4 border border-white/15">
-          <p className="text-sm font-semibold text-white">{q}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => onUpdate({ [key]: true })}
-              className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition ${
-                quiz[key] === true
-                  ? "bg-snappeal-action text-white"
-                  : "bg-white/10 text-white hover:bg-white/15"
-              }`}
-            >
-              {yes}
-            </button>
-            <button
-              type="button"
-              onClick={() => onUpdate({ [key]: false })}
-              className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition ${
-                quiz[key] === false
-                  ? "bg-snappeal-action text-white"
-                  : "bg-white/10 text-white hover:bg-white/15"
-              }`}
-            >
-              {no}
-            </button>
-          </div>
-        </div>
-      ))}
     </StepShell>
   );
 }
@@ -559,7 +461,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
 
   return (
     <StepShell
-      badge="Step 3 of 3"
+      badge="Step 2 of 2"
       title="Get the most from Snappeal"
       subtitle="Two quick permissions. You can change either anytime in your phone settings."
       footer={

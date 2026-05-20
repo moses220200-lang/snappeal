@@ -2,28 +2,37 @@ import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   FileText,
-  Lock,
   MapPin,
+  PlayCircle,
   PoundSterling,
   Send,
   ShieldCheck,
   Sparkles,
   Star,
+  Tag,
+  TrendingUp,
   Trophy,
   Upload,
 } from "lucide-react";
-import { Wordmark } from "@/components/Logo";
+import { SnappealLogo, Wordmark } from "@/components/Logo";
 import { PhoneMockup } from "@/components/PhoneMockup";
 import { AppStoreBadge, GooglePlayBadge } from "@/components/StoreBadges";
+import { getCouncilLookup } from "@/lib/server/councils";
 
-export default function Home() {
+export default async function Home() {
+  const councilMap = await getCouncilLookup();
+  const councils = Array.from(councilMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
   return (
     <div className="min-h-screen bg-snappeal-bg text-snappeal-navy">
       <Header />
       <main>
         <Hero />
         <TrustStrip />
+        <CouncilStrip councils={councils} />
         <HowItWorks />
         <DownloadSection />
       </main>
@@ -42,22 +51,26 @@ function Header() {
       className="sticky top-0 z-50 border-b border-snappeal-border bg-snappeal-bg/85 backdrop-blur pt-[env(safe-area-inset-top,0px)]"
     >
       <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
-        <Wordmark />
+        <SnappealLogo size={40} variant="dark" layout="horizontal" />
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-snappeal-navy">
           <Link href="#how" className="hover:text-snappeal-primary transition">
-            How it works
+            How It Works
           </Link>
           <Link href="#why" className="hover:text-snappeal-primary transition">
-            Why Snappeal?
-          </Link>
-          <Link href="#stories" className="hover:text-snappeal-primary transition">
-            Success stories
+            Success Rate
           </Link>
           <Link href="#pricing" className="hover:text-snappeal-primary transition">
             Pricing
           </Link>
           <Link href="#faq" className="hover:text-snappeal-primary transition">
-            FAQ
+            FAQs
+          </Link>
+          <Link
+            href="#resources"
+            className="inline-flex items-center gap-1 hover:text-snappeal-primary transition"
+          >
+            Resources
+            <ChevronDown className="size-4" strokeWidth={2.25} />
           </Link>
         </nav>
         <div className="flex items-center gap-3">
@@ -82,48 +95,43 @@ function Header() {
 function Hero() {
   return (
     <section className="hero-bg relative overflow-hidden">
-      <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8 py-14 md:py-20 grid grid-cols-1 lg:grid-cols-[0.48fr_0.52fr] gap-10 lg:gap-12 xl:gap-14 items-center">
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-14 md:py-20 grid grid-cols-1 lg:grid-cols-[0.6fr_0.4fr] gap-10 lg:gap-12 xl:gap-14 items-center">
         {/* LEFT — copy + CTAs */}
-        <div className="max-w-xl">
+        <div className="max-w-[740px]">
           <div className="inline-flex items-center gap-2 rounded-full bg-white border border-snappeal-border px-3.5 py-1.5 text-xs font-semibold text-snappeal-navy shadow-sm">
             <MapPin className="size-3.5 text-snappeal-primary" />
             Made for drivers in London
           </div>
 
-          <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight text-snappeal-navy">
-            Don&apos;t pay that parking ticket.
-            <br />
-            <span className="whitespace-nowrap text-snappeal-primary">
-              Appeal it in{" "}
-              <span className="relative inline-block">
-                seconds.
-                {/* Hand-drawn yellow brush stroke — sits under "seconds" only.
-                    Using a plain <img> rather than next/image because the SVG
-                    is a tiny static asset and we want it to scale 1:1 with the
-                    word width via percentage-based positioning. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/seconds-underline.svg"
-                  alt=""
-                  aria-hidden
-                  className="pointer-events-none select-none absolute left-0 right-0 -bottom-2 sm:-bottom-2.5 lg:-bottom-3 w-full h-auto"
-                />
-              </span>
+          <h1 className="mt-6">
+            <span className="sr-only">
+              Appealing a parking ticket is your right.
             </span>
+            <HeroHeadlineSvg />
           </h1>
 
-          <p className="mt-7 text-base sm:text-lg text-snappeal-muted leading-relaxed max-w-md">
-            Upload your notice, answer a few questions, and Snappeal drafts a
-            clear, tailored appeal for you.
+          <p className="mt-7 text-base sm:text-[17px] text-snappeal-muted leading-relaxed max-w-[620px]">
+            Under the Traffic Management Act 2004 and the Civil Enforcement of
+            Parking Contraventions (England) Representations and Appeals
+            Regulations 2007, motorists can challenge a Penalty Charge Notice
+            (PCN).
           </p>
 
-          {/* Hero CTA: store badges (iOS + Android). Native apps are still
-           *  in flight — both badges show a "Coming soon" pill. The
-           *  in-browser app is reachable via the "Get Started" button in
-           *  the top-right header. */}
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <AppStoreBadge />
-            <GooglePlayBadge />
+          <div className="mt-8 flex items-stretch gap-3 sm:flex-wrap">
+            <Link
+              href="/app"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-snappeal-primary !text-white text-base font-semibold px-6 py-3.5 hover:bg-snappeal-primary-600 transition"
+            >
+              <span className="text-white">Free Appeal</span>
+              <ArrowRight className="size-4 text-white shrink-0" strokeWidth={2.25} />
+            </Link>
+            <Link
+              href="#how"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-white border border-snappeal-border text-snappeal-navy text-base font-semibold px-6 py-3.5 hover:border-snappeal-primary/40 transition"
+            >
+              <PlayCircle className="size-5 text-snappeal-primary shrink-0" strokeWidth={1.75} />
+              See How It Works
+            </Link>
           </div>
 
           <div className="mt-6 flex items-center gap-2.5 text-sm text-snappeal-muted">
@@ -143,28 +151,20 @@ function Hero() {
          *  translate so the visual group sits closer to the headline column
          *  on wide viewports instead of drifting to the page edge. */}
         <div className="relative isolate min-h-[640px] flex items-center justify-center lg:-translate-x-4 xl:-translate-x-8">
-          {/* Soft circle backdrop */}
           <div
             aria-hidden
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
           >
-            <div className="size-[420px] lg:size-[480px] rounded-full bg-snappeal-primary-50/70" />
-            <div className="absolute size-[540px] rounded-full border border-snappeal-primary-100/70" />
             <div
-              className="absolute size-[420px] lg:size-[480px] rounded-full opacity-40"
-              style={{
-                backgroundImage:
-                  "radial-gradient(circle at 1px 1px, rgba(0,122,255,0.18) 1px, transparent 0)",
-                backgroundSize: "16px 16px",
-                WebkitMaskImage:
-                  "radial-gradient(closest-side, #000 60%, transparent 100%)",
-                maskImage:
-                  "radial-gradient(closest-side, #000 60%, transparent 100%)",
-              }}
-            />
+              className="size-[430px] lg:size-[480px] rounded-full overflow-hidden"
+              style={{ opacity: 0.12, filter: "blur(0.3px)", zIndex: 0 }}
+            >
+              <UnionJackMuted />
+            </div>
+            <div className="absolute size-[540px] rounded-full border border-snappeal-primary-100/70" />
           </div>
 
-          <div className="relative">
+          <div className="relative z-10">
             <PhoneMockup />
 
             {/* Floating context cards — all stacked on the RIGHT of the phone,
@@ -207,37 +207,23 @@ function Hero() {
                 </p>
               </FloatingCard>
 
-              {/* 3 · Real London stats — center-aligned to match the two
-               *  cards above (Notice + Trust badge). Title, big % figure,
-               *  description, and mini chart sit on one optical centre line. */}
-              <div className="rounded-2xl bg-white border border-snappeal-border shadow-xl shadow-black/[0.06] p-3 flex flex-col items-center justify-center text-center">
-                <p className="text-[9px] font-semibold text-snappeal-muted">Real London stats</p>
-                <p className="text-xl font-extrabold text-snappeal-primary leading-none mt-1">
+              {/* 3 · Outcome stat — TrendingUp + 49.4% + description */}
+              <FloatingCard>
+                <TrendingUp
+                  className="size-4 text-snappeal-success"
+                  strokeWidth={2.25}
+                />
+                <p className="mt-1.5 text-xl font-extrabold text-snappeal-primary leading-none">
                   49.4%
                 </p>
-                <p className="text-[9px] text-snappeal-muted leading-tight mt-1">
+                <p className="mt-1.5 text-[10px] text-snappeal-muted leading-snug">
                   of formal appeals
                   <br />
                   were upheld in
                   <br />
-                  2024–25.
+                  London in 2024–25.
                 </p>
-                <svg
-                  viewBox="0 0 80 28"
-                  className="mt-2 w-20 h-5 text-snappeal-primary"
-                  aria-hidden
-                >
-                  <path
-                    d="M2 22 L 16 18 L 30 20 L 44 12 L 58 14 L 72 6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path d="M72 6 L 67 8 M 72 6 L 70 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-              </div>
+              </FloatingCard>
             </div>
           </div>
         </div>
@@ -251,6 +237,114 @@ function FloatingCard({ children }: { children: React.ReactNode }) {
     <div className="rounded-2xl bg-white border border-snappeal-border shadow-xl shadow-black/[0.06] p-2.5">
       {children}
     </div>
+  );
+}
+
+function HeroHeadlineSvg() {
+  const BAND_LEFT = 12;
+  const BAND_WIDTH = 700;
+  const BAND_RIGHT = BAND_LEFT + BAND_WIDTH;
+  const VERT_BUMPS = 5;
+  const VERT_STEP = 22;
+  const VERT_DEPTH = 11;
+  const BAND_BOTTOM = VERT_BUMPS * VERT_STEP;
+
+  const rightEdge = Array.from({ length: VERT_BUMPS }, (_, i) => {
+    const tipY = VERT_STEP / 2 + i * VERT_STEP;
+    const baseY = VERT_STEP + i * VERT_STEP;
+    return `L ${BAND_RIGHT + VERT_DEPTH} ${tipY} L ${BAND_RIGHT} ${baseY}`;
+  }).join(" ");
+
+  const leftEdge = Array.from({ length: VERT_BUMPS }, (_, i) => {
+    const tipY = BAND_BOTTOM - VERT_STEP / 2 - i * VERT_STEP;
+    const baseY = BAND_BOTTOM - VERT_STEP - i * VERT_STEP;
+    return `L ${BAND_LEFT - VERT_DEPTH} ${tipY} L ${BAND_LEFT} ${baseY}`;
+  }).join(" ");
+
+  const ticketPath = `M ${BAND_LEFT} 0 L ${BAND_RIGHT} 0 ${rightEdge} L ${BAND_LEFT} ${BAND_BOTTOM} ${leftEdge} Z`;
+
+  return (
+    <svg
+      viewBox="0 -12 740 410"
+      className="block w-full max-w-[740px] h-auto"
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden
+    >
+      <text
+        x="0"
+        y="92"
+        fontFamily="Inter, system-ui, sans-serif"
+        fontWeight="800"
+        fontSize="96"
+        fill="#0A1929"
+        letterSpacing="-3"
+      >
+        Appealing a
+      </text>
+
+      <g transform="translate(0, 138)">
+        <path d={ticketPath} fill="#FACC15" />
+        <line
+          x1="34"
+          y1="14"
+          x2="34"
+          y2={BAND_BOTTOM - 14}
+          stroke="#0A1929"
+          strokeWidth="3"
+          strokeDasharray="9,8"
+          opacity="0.8"
+        />
+        <text
+          x="58"
+          y="86"
+          fontFamily="Inter, system-ui, sans-serif"
+          fontWeight="900"
+          fontSize="84"
+          fill="#0A1929"
+          letterSpacing="-2"
+          textLength={BAND_RIGHT - 76}
+          lengthAdjust="spacingAndGlyphs"
+        >
+          PARKING TICKET
+        </text>
+      </g>
+
+      <text
+        x="0"
+        y="365"
+        fontFamily="Inter, system-ui, sans-serif"
+        fontWeight="800"
+        fontSize="96"
+        fill="#0A1929"
+        letterSpacing="-3"
+      >
+        Is your right.
+      </text>
+    </svg>
+  );
+}
+
+function UnionJackMuted() {
+  const blue = "#4a6b96";
+  const white = "#f5f5f5";
+  const red = "#c08891";
+  return (
+    <svg
+      viewBox="0 0 60 30"
+      preserveAspectRatio="xMidYMid slice"
+      className="block w-full h-full"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect width="60" height="30" fill={blue} />
+      <line x1="0" y1="0" x2="60" y2="30" stroke={white} strokeWidth="6" />
+      <line x1="60" y1="0" x2="0" y2="30" stroke={white} strokeWidth="6" />
+      <line x1="0" y1="0" x2="60" y2="30" stroke={red} strokeWidth="2" />
+      <line x1="60" y1="0" x2="0" y2="30" stroke={red} strokeWidth="2" />
+      <rect x="25" y="0" width="10" height="30" fill={white} />
+      <rect x="0" y="10" width="60" height="10" fill={white} />
+      <rect x="27" y="0" width="6" height="30" fill={red} />
+      <rect x="0" y="12" width="60" height="6" fill={red} />
+    </svg>
   );
 }
 
@@ -289,49 +383,158 @@ function MiniPcnThumb() {
 }
 
 function TrustStrip() {
-  const items = [
-    {
-      icon: Sparkles,
-      title: "AI-Drafted Appeals",
-      body: "Clear, formal appeal letters tailored to your contravention.",
-    },
-    {
-      icon: MapPin,
-      title: "London-Focused",
-      body: "Built around real London parking appeal workflows and data.",
-    },
-    {
-      icon: PoundSterling,
-      title: "£2.99, One-Off",
-      body: "Simple fixed pricing. Pay once per appeal.",
-    },
-    {
-      icon: Lock,
-      title: "Secure & Private",
-      body: "Your information is encrypted and handled securely.",
-    },
-  ];
-
   return (
     <section
       id="why"
       className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-4 lg:mt-2 relative z-10"
     >
-      <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
-        {items.map(({ icon: Icon, title, body }) => (
-          <div
-            key={title}
-            className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-start gap-3.5 hover:border-snappeal-primary/40 transition"
+      <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5 items-stretch">
+        <FeatureCard
+          icon={Sparkles}
+          title="AI-Assisted Appeals"
+          body="Guided by AI, reviewed for clarity, and tailored to your case."
+          pill={{ icon: MapPin, label: "Built for London drivers" }}
+        />
+        <StatCard
+          icon={TrendingUp}
+          value="7,842+"
+          title="Appeals overturned"
+          body="Successful challenges for drivers so far."
+        />
+        <StatCard
+          icon={PoundSterling}
+          value="£318,400+"
+          title="Saved for clients"
+          body="Estimated parking charges avoided."
+        />
+        <FeatureCard
+          icon={Tag}
+          title="Free To Draft"
+          body="Generate and save every appeal letter for free. Pay only when you auto-submit through the council's portal."
+          pill={{ label: "£2.99 per submission" }}
+        />
+      </div>
+    </section>
+  );
+}
+
+type LucideIcon = React.ComponentType<{
+  className?: string;
+  strokeWidth?: number;
+}>;
+
+function FeatureCard({
+  icon: Icon,
+  title,
+  body,
+  pill,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  pill: { icon?: LucideIcon; label: string };
+}) {
+  const PillIcon = pill.icon;
+  return (
+    <div className="rounded-2xl bg-white border border-snappeal-border p-5 flex flex-col h-full hover:border-snappeal-primary/40 transition">
+      <span className="size-11 rounded-2xl bg-snappeal-primary-50 flex items-center justify-center">
+        <Icon className="size-5 text-snappeal-primary" strokeWidth={1.75} />
+      </span>
+      <h3 className="mt-5 text-[17px] font-bold text-snappeal-navy">{title}</h3>
+      <p className="mt-2 text-[13px] text-snappeal-muted leading-relaxed">
+        {body}
+      </p>
+      <div className="mt-auto pt-5">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-snappeal-primary-50 px-3 py-1.5 text-[12px] font-semibold text-snappeal-primary">
+          {PillIcon && <PillIcon className="size-3.5" strokeWidth={2} />}
+          {pill.label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  value,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  value: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white border border-snappeal-border p-5 flex flex-col h-full hover:border-snappeal-primary/40 transition">
+      <div className="flex items-start justify-between gap-3">
+        <span className="size-11 rounded-2xl bg-snappeal-primary flex items-center justify-center shadow-sm shadow-snappeal-primary/30">
+          <Icon className="size-5 text-white" strokeWidth={2.25} />
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-semibold text-green-700">
+          <span className="size-1.5 rounded-full bg-green-500" />
+          Live total
+        </span>
+      </div>
+      <div className="mt-5 flex items-center gap-0.5">
+        {Array.from(value).map((ch, i) => (
+          <span
+            key={i}
+            className="inline-flex h-8 min-w-[1.25rem] items-center justify-center rounded-md border border-snappeal-border bg-white px-1 text-xl font-extrabold text-snappeal-primary leading-none"
           >
-            <span className="flex-shrink-0 size-11 rounded-full bg-snappeal-primary-50 flex items-center justify-center">
-              <Icon className="size-5 text-snappeal-primary" strokeWidth={1.75} />
+            {ch}
+          </span>
+        ))}
+      </div>
+      <h3 className="mt-4 text-[15px] font-bold text-snappeal-navy">{title}</h3>
+      <p className="mt-1.5 text-[13px] text-snappeal-muted leading-relaxed">
+        {body}
+      </p>
+    </div>
+  );
+}
+
+function CouncilStrip({
+  councils,
+}: {
+  councils: { slug: string; name: string; logoUrl: string | null; logoBg: string | null }[];
+}) {
+  if (councils.length === 0) return null;
+  return (
+    <section
+      id="authorities"
+      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-12 lg:mt-16"
+    >
+      <p className="text-center text-xs font-semibold uppercase tracking-wide text-snappeal-muted">
+        Covering these London authorities
+      </p>
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+        {councils.map((c) => (
+          <div
+            key={c.slug}
+            className="flex items-center gap-2.5 rounded-full bg-white border border-snappeal-border pl-1.5 pr-4 py-1.5 shadow-sm"
+            title={c.name}
+          >
+            <span
+              className="size-8 rounded-full overflow-hidden flex items-center justify-center border border-snappeal-border/60"
+              style={{ background: c.logoBg ?? "#ffffff" }}
+            >
+              {c.logoUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={c.logoUrl}
+                  alt=""
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <span className="text-[10px] font-bold text-snappeal-navy">
+                  {c.name.slice(0, 2).toUpperCase()}
+                </span>
+              )}
             </span>
-            <div className="min-w-0">
-              <h3 className="text-[15px] font-bold text-snappeal-navy">{title}</h3>
-              <p className="text-[13px] text-snappeal-muted mt-1 leading-relaxed">
-                {body}
-              </p>
-            </div>
+            <span className="text-[13px] font-semibold text-snappeal-navy">
+              {c.name}
+            </span>
           </div>
         ))}
       </div>

@@ -19,6 +19,8 @@ const Patch = z.object({
   pcnRefPattern: z.string().max(80).nullable().optional(),
   automationStatus: z.enum(["manual", "automated_beta", "automated_ga"]).optional(),
   notes: z.string().max(2000).nullable().optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+  logoBg: z.string().max(20).nullable().optional(),
 });
 
 export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }> }) {

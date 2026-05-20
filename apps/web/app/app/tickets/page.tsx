@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, FileText, Loader2, MapPin, Plus, Sparkles, Star } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
+import { CouncilBadge } from "@/components/CouncilBadge";
 import { HorizontalTimeline } from "@/components/HorizontalTimeline";
 import { getOrCreateSessionId } from "@/lib/client/session";
 import type { AppealRecord } from "@/lib/server/appeals";
@@ -203,9 +204,14 @@ function TicketCard({ appeal, isMostRecent }: { appeal: AppealRecord; isMostRece
             <p className="text-base font-bold text-snappeal-navy">
               {appeal.ticket ? `PCN #${appeal.ticket.pcnRef}` : "Draft appeal"}
             </p>
-            <p className="text-xs text-snappeal-muted mt-0.5">
-              {appeal.ticket?.issuer ?? "Awaiting capture"}
-            </p>
+            <div className="mt-0.5">
+              <CouncilBadge
+                size="sm"
+                name={appeal.ticket?.issuer ?? "Awaiting capture"}
+                logoUrl={appeal.councilLogoUrl}
+                logoBg={appeal.councilLogoBg}
+              />
+            </div>
             <p className="text-[11px] text-snappeal-muted mt-1 flex items-center flex-wrap gap-x-3 gap-y-1">
               {issued && <span>📅 Issued {issued}</span>}
               {appeal.ticket?.location && (

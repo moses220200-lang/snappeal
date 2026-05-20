@@ -1,6 +1,8 @@
 # Context handoff
 
-**Read this first if you're picking up Snappeal cold.** Last refreshed **2026-05-20 (v0.1.5)**.
+**Read this first if you're picking up Snappeal cold.** Last refreshed **2026-05-20 (v0.1.6)**.
+
+> **2026-05-20 (later session)** — pricing simplified to **free drafting + £2.99 per auto-submission**; council logos now sourced from Wikipedia thumbs and stored in `councils.logo_url` / `logo_bg` (migration 0009); new `<CouncilBadge>` component renders the logo + name in the tickets list, ticket detail, admin appeals/submissions, and the manual-entry authority picker; homepage now has a "Covering these London authorities" logo strip; hero copy is "Appealing a / PARKING TICKET / Is your right." with a faded Union Jack circle behind the phone mockup; bottom-nav active tab now correctly highlights in `text-snappeal-primary` (a global `a { color: inherit }` rule was beating the Tailwind utility — moved into `@layer base`).
 
 This page exists so a new collaborator (human or Claude) can get to "I know what's shipped and what's next" in 5 minutes. Everything below is current as of the latest commit on `main`.
 
@@ -12,7 +14,7 @@ Snappeal is a London-only PCN appeal app. The v0.1 prototype frontend + backend 
 - **All AI piped through the headless Claude CLI** (`lib/server/claude-cli.ts`).
 - **Postgres-backed job queue** + in-process worker for portal submission.
 - **Email/password auth** with HS256 JWT cookies; admin role gate.
-- **Three-tier pricing UI**: Buy Time (free), Full Appeal (£2.99), Care Plan (£9.99/mo unlimited).
+- **Free-to-draft pricing**: AI-drafted appeal letters are FREE and unlimited (saved to the user's inbox). £2.99 is charged only when the user opts to **auto-submit** the letter through the council's portal via the MCP agent. The legacy three-tier model (Buy Time / Full Appeal / Care Plan) is being retired — copy now says "Free to draft, £2.99 to auto-submit". Schema field `appeals.serviceTier` is still present but no longer surfaced in the wizard.
 - **Full admin UI** at `/admin` — appeals, councils (with **per-council Playwright MCP automation editor + dry-run**), submissions, inbound mail (with **classifier sandbox**), jobs (retry / cancel), users, health.
 - **Westminster portal automation** scaffolded — prompt lives in `council_automation` table, edited via `/admin/councils/westminster/automation`, dry-run-able from the same page.
 

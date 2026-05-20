@@ -67,6 +67,8 @@ export const councils = pgTable("councils", {
     .default("manual"),
   automationFormSchema: jsonb("automation_form_schema"),
   notes: text("notes"),
+  logoUrl: text("logo_url"),
+  logoBg: text("logo_bg"),
   lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

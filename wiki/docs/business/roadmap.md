@@ -63,7 +63,7 @@ Three phases, eight quarters, one product.
 - ✅ Real submission engine — Claude+Playwright MCP for portal councils, email fallback (Resend-compatible)
 - ✅ Inbound mail webhook + LLM classification + auto status update
 - ✅ Email/password auth (pbkdf2-sha256, HS256 JWT in httpOnly cookie)
-- ✅ Three-tier pricing: Buy Time (free), Full Appeal (£2.99), Care Plan (£9.99/mo waitlist)
+- ✅ Free-to-draft pricing model: AI letter drafting is free and unlimited; £2.99 is charged only when the user auto-submits via the MCP portal agent. (Retires the legacy Buy Time / Full Appeal / Care Plan three-tier model — wizard tier picker removed 2026-05-20; the `appeals.serviceTier` column still exists but is no longer surfaced in the UI.)
 - ✅ Test-mode payment scaffold (Apple/Google/Card buttons that fake Stripe in dev)
 - ✅ In-process semaphore caps concurrent Claude subprocesses
 - ✅ Backend smoke tests: `npm run test:claude`, `npm run test:e2e:backend`

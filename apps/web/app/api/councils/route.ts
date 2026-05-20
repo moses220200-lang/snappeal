@@ -18,6 +18,8 @@ export async function GET() {
       name: schema.councils.name,
       type: schema.councils.type,
       automationStatus: schema.councils.automationStatus,
+      logoUrl: schema.councils.logoUrl,
+      logoBg: schema.councils.logoBg,
     })
     .from(schema.councils)
     .orderBy(schema.councils.name);

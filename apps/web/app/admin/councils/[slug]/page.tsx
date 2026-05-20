@@ -32,6 +32,8 @@ export default async function EditCouncilPage({
         pcnRefPattern: c.pcnRefPattern,
         automationStatus: c.automationStatus,
         notes: c.notes,
+        logoUrl: c.logoUrl,
+        logoBg: c.logoBg,
       }}
     />
   );

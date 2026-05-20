@@ -2,49 +2,38 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { CheckCircle2, Clock, Scale, Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import { BackHeader } from "@/components/BackHeader";
-import { StripePaymentForm } from "@/components/StripePaymentForm";
-import { FakePaymentButtons } from "@/components/FakePaymentButtons";
 import { GeneratingOverlay, type GeneratingPhase } from "@/components/GeneratingOverlay";
 import { AuthGate } from "@/components/AuthGate";
 import {
-  ServiceTier,
   getOrCreateSessionId,
   getPcnPhoto,
   getEvidencePhotos,
   getNotes,
   getConfirmedTicket,
-  getServiceTier,
   setCurrentAppealId,
   clearCaptureFlow,
 } from "@/lib/client/session";
 import { consumeSSE } from "@/lib/client/sse";
 
-const FAKE_PAYMENT = process.env.NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT === "1";
-
 /**
- * v0.1 paywall. Pricing tiers (set on the wizard's Service-Tier step):
+ * Pricing model:
  *
- *   - "buy_time"  → FREE — a fast holding challenge. Skips Stripe entirely.
- *   - "grounds"   → £2.99 — full AI-drafted representation.
- *   - "care_plan" → £9.99/mo subscription (coming soon — wizard nudges them
- *                   to "grounds" until billing is live).
+ *   - Drafting an appeal letter and saving it to the user's inbox = FREE,
+ *     unlimited. No payment, no card.
+ *   - £2.99 is charged only when the user opts to auto-submit the letter
+ *     through the council's portal via the MCP agent. One-off per
+ *     submission. (Future) the auto-submit toggle lives on the letter
+ *     review screen, not before draft generation.
  */
 export default function PaywallPage() {
   const router = useRouter();
   const [stage, setStage] = useState<"pay" | "generating" | "error">("pay");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [tier, setTier] = useState<ServiceTier>("grounds");
   const [phase, setPhase] = useState<GeneratingPhase>("read");
   const [streamedLetter, setStreamedLetter] = useState("");
   const sessionId = useMemo(() => getOrCreateSessionId(), []);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTier(getServiceTier());
-  }, []);
 
   const handleConfirmed = useCallback(
     async (paymentIntentId: string | null) => {
@@ -150,76 +139,50 @@ export default function PaywallPage() {
     }
   }, [handleConfirmed]);
 
-  const isFree = tier === "buy_time";
-  const pricing = isFree
-    ? { amount: "Free", caption: "No card needed", title: "Buy time — free holding challenge", icon: Clock }
-    : { amount: "£2.99", caption: "One-off, non-refundable", title: "Full appeal — £2.99", icon: Scale };
+  const pricing = {
+    amount: "Free",
+    caption: "Drafting your appeal is free",
+    title: "Draft your appeal — Free",
+  };
 
   return (
     <>
       {stage === "generating" && (
         <GeneratingOverlay phase={phase} streamedText={streamedLetter} />
       )}
-      <BackHeader title={pricing.title} subtitle={`Step 3 of 4 · ${isFree ? "Confirm" : "Pay"}`} back="/app/notes" />
+      <BackHeader title={pricing.title} subtitle="Step 3 of 4 · Confirm" back="/app/notes" />
       <div className="flex flex-col gap-5 px-5 pt-4 pb-6">
 
       <section className="rounded-3xl bg-white border border-snappeal-border p-6 text-center">
         <p className="text-xs uppercase tracking-wide text-snappeal-muted">{pricing.caption}</p>
         <p className="mt-2 text-5xl font-bold text-snappeal-navy tracking-tight">{pricing.amount}</p>
-        <p className="mt-2 text-xs text-snappeal-muted leading-relaxed max-w-[280px] mx-auto">
-          {isFree
-            ? "Snappeal AI files a quick holding challenge with your council — protects your 14-day discount window while you decide."
-            : "You're paying for the appeal we draft and submit, not for the outcome."}
+        <p className="mt-2 text-xs text-snappeal-muted leading-relaxed max-w-[300px] mx-auto">
+          Snappeal AI drafts your full grounds-based appeal and saves it to your inbox — at no cost. Pay only when you want us to auto-submit it through your council&apos;s portal (£2.99 per submission).
         </p>
       </section>
 
       <section className="rounded-2xl bg-white border border-snappeal-border p-5">
-        <p className="text-sm font-bold text-snappeal-navy mb-3">What&apos;s included</p>
+        <p className="text-sm font-bold text-snappeal-navy mb-3">What you get — free</p>
         <ul className="space-y-2.5">
-          {(isFree
-            ? [
-                "Brief holding challenge filed with your council",
-                "Protects the £80 discount window if rejected",
-                "You can upgrade to a full grounds-based appeal any time",
-              ]
-            : [
-                "AI-drafted appeal citing the right ground and contravention code",
-                "Submitted directly to your council's portal (or by email)",
-                "Status timeline you can track in the Tickets tab",
-                "Service-failure refund if our system doesn't deliver",
-              ]
-          ).map((item) => (
+          {[
+            "AI-drafted appeal citing the right ground and contravention code",
+            "Saved to your inbox — copy/paste or download as PDF",
+            "Status timeline you can track in the Tickets tab",
+            "Unlimited drafts, no card on file",
+          ].map((item) => (
             <li key={item} className="flex items-start gap-2.5">
               <CheckCircle2 className="size-4 text-snappeal-success flex-shrink-0 mt-0.5" />
               <span className="text-xs text-snappeal-navy leading-relaxed">{item}</span>
             </li>
           ))}
         </ul>
-        {!isFree && (
-          <div className="mt-4 pt-3 border-t border-snappeal-border flex flex-col gap-2">
-            <Link
-              href="/app/notes"
-              onClick={() => {
-                if (typeof window !== "undefined") {
-                  window.localStorage.setItem("snappeal.serviceTier", "buy_time");
-                }
-              }}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-snappeal-primary"
-            >
-              Just need a holding challenge? Switch to Buy Time (free) →
-            </Link>
-            <Link
-              href="/app/profile#care-plan"
-              className="rounded-xl bg-gradient-to-br from-snappeal-primary to-snappeal-primary-700 text-white p-3 flex items-start gap-3"
-            >
-              <Sparkles className="size-4 mt-0.5 flex-shrink-0" />
-              <span className="flex-1 text-[11px] leading-relaxed">
-                <span className="font-bold">Care Plan — £9.99/mo</span> · unlimited
-                grounds-based appeals included. Worth it from your 4th PCN.
-              </span>
-            </Link>
-          </div>
-        )}
+        <div className="mt-4 pt-3 border-t border-snappeal-border">
+          <p className="text-[11px] text-snappeal-muted leading-relaxed">
+            <span className="font-semibold text-snappeal-navy">Optional add-on:</span>{" "}
+            <span className="font-semibold text-snappeal-primary">£2.99 per submission</span>{" "}
+            to have Snappeal&apos;s MCP agent auto-submit the letter through your council&apos;s portal. Pay only if and when you choose to use it — never charged for the draft.
+          </p>
+        </div>
       </section>
 
       {stage === "error" && errorMessage && (
@@ -238,35 +201,21 @@ export default function PaywallPage() {
 
       <AuthGate
         title="Create your free Snappeal account"
-        subtitle={
-          isFree
-            ? "Even free Buy Time appeals need an account so we can track council replies and protect your discount window."
-            : "We need an account on file before charging anything — it's how your tickets and council replies stay tied to you."
-        }
+        subtitle="Drafting the appeal is free — we just need an account on file so your tickets and council replies stay tied to you."
         benefits={[
-          isFree ? "Free Buy Time appeals — no card needed" : "Full grounds-based appeal — £2.99 one-off",
+          "Free AI-drafted appeal — no card needed",
           "Sync your tickets across every device",
           "Inbox alerts when the council replies",
         ]}
       >
-        {isFree ? (
-          <button
-            type="button"
-            onClick={() => void handleConfirmed(null)}
-            className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
-          >
-            <Clock className="size-5" />
-            Send my holding challenge — Free
-          </button>
-        ) : FAKE_PAYMENT ? (
-          <FakePaymentButtons onSucceeded={(pi) => void handleConfirmed(pi)} />
-        ) : (
-          <StripePaymentForm
-            sessionId={sessionId}
-            returnUrl="/app/paywall"
-            onSucceededInPlace={(pi) => void handleConfirmed(pi)}
-          />
-        )}
+        <button
+          type="button"
+          onClick={() => void handleConfirmed(null)}
+          className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
+        >
+          <Sparkles className="size-5" />
+          Draft my appeal — Free
+        </button>
       </AuthGate>
       </div>
     </>

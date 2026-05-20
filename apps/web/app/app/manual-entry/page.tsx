@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { BackHeader } from "@/components/BackHeader";
+import { CouncilBadge } from "@/components/CouncilBadge";
 import {
   ConfirmedTicket,
   getOrCreateSessionId,
@@ -28,6 +29,8 @@ interface CouncilOption {
   name: string;
   type: string;
   automationStatus: string;
+  logoUrl: string | null;
+  logoBg: string | null;
 }
 
 type Step = "council" | "pcn" | "vehicle" | "review";
@@ -277,9 +280,13 @@ function CouncilStep({
                   : "bg-white border-snappeal-border hover:border-snappeal-primary"
               }`}
             >
-              <span className="size-10 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">
-                <Building2 className="size-5" />
-              </span>
+              <CouncilBadge
+                size="lg"
+                name={c.name}
+                logoUrl={c.logoUrl}
+                logoBg={c.logoBg}
+                showName={false}
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-snappeal-navy">{c.name}</p>
                 <p className="text-[11px] text-snappeal-muted capitalize mt-0.5">

@@ -87,13 +87,20 @@ export interface AppealRecord {
   letterAddressedTo: string | null;
   timeline: AppealView["timeline"];
   councilSlug: string | null;
+  councilLogoUrl: string | null;
+  councilLogoBg: string | null;
   modelUsed: string | null;
   costPenceMillis: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
-function toRecord(row: typeof schema.appeals.$inferSelect): AppealRecord {
+type CouncilDisplay = { logoUrl: string | null; logoBg: string | null };
+
+function toRecord(
+  row: typeof schema.appeals.$inferSelect,
+  council?: CouncilDisplay | null,
+): AppealRecord {
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -110,11 +117,28 @@ function toRecord(row: typeof schema.appeals.$inferSelect): AppealRecord {
     letterAddressedTo: row.letterAddressedTo,
     timeline: (row.timeline as AppealView["timeline"]) ?? DEFAULT_TIMELINE,
     councilSlug: row.councilSlug,
+    councilLogoUrl: council?.logoUrl ?? null,
+    councilLogoBg: council?.logoBg ?? null,
     modelUsed: row.modelUsed,
     costPenceMillis: row.costPenceMillis,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+async function loadCouncilDisplayMap(
+  slugs: (string | null)[],
+): Promise<Map<string, CouncilDisplay>> {
+  const unique = Array.from(new Set(slugs.filter((s): s is string => !!s)));
+  if (unique.length === 0) return new Map();
+  const rows = await db()
+    .select({
+      slug: schema.councils.slug,
+      logoUrl: schema.councils.logoUrl,
+      logoBg: schema.councils.logoBg,
+    })
+    .from(schema.councils);
+  return new Map(rows.map((r) => [r.slug, { logoUrl: r.logoUrl, logoBg: r.logoBg }]));
 }
 
 export async function createAppeal(input: CreateAppealInput): Promise<AppealRecord> {
@@ -145,7 +169,9 @@ export async function createAppeal(input: CreateAppealInput): Promise<AppealReco
 
 export async function getAppealById(id: string): Promise<AppealRecord | null> {
   const rows = await db().select().from(schema.appeals).where(eq(schema.appeals.id, id));
-  return rows[0] ? toRecord(rows[0]) : null;
+  if (!rows[0]) return null;
+  const councilMap = await loadCouncilDisplayMap([rows[0].councilSlug]);
+  return toRecord(rows[0], rows[0].councilSlug ? councilMap.get(rows[0].councilSlug) : null);
 }
 
 export async function listAppealsForViewer(opts: {
@@ -160,7 +186,10 @@ export async function listAppealsForViewer(opts: {
     .from(schema.appeals)
     .where(conditions)
     .orderBy(desc(schema.appeals.createdAt));
-  return rows.map(toRecord);
+  const councilMap = await loadCouncilDisplayMap(rows.map((r) => r.councilSlug));
+  return rows.map((r) =>
+    toRecord(r, r.councilSlug ? councilMap.get(r.councilSlug) : null),
+  );
 }
 
 export async function attachDraftToAppeal(

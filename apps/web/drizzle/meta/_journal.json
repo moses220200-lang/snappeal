@@ -64,6 +64,13 @@
       "when": 1779250000000,
       "tag": "0008_user_postal_address",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779309197024,
+      "tag": "0009_short_quicksilver",
+      "breakpoints": true
     }
   ]
 }

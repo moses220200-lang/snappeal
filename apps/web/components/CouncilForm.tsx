@@ -17,6 +17,8 @@ interface CouncilRow {
   pcnRefPattern: string | null;
   automationStatus: "manual" | "automated_beta" | "automated_ga";
   notes: string | null;
+  logoUrl: string | null;
+  logoBg: string | null;
 }
 
 interface Props {
@@ -36,6 +38,8 @@ const EMPTY: CouncilRow = {
   pcnRefPattern: "",
   automationStatus: "manual",
   notes: "",
+  logoUrl: "",
+  logoBg: "",
 };
 
 export function CouncilForm({ mode, initial }: Props) {
@@ -227,6 +231,58 @@ export function CouncilForm({ mode, initial }: Props) {
               className="font-mono input-base"
             />
           </Field>
+        </Card>
+
+        <Card title="Logo">
+          <Grid>
+            <Field
+              label="Logo URL"
+              hint="Public PNG/SVG URL (Wikipedia or council site is fine)"
+              full
+            >
+              <input
+                type="url"
+                value={draft.logoUrl ?? ""}
+                onChange={(e) => setField("logoUrl", e.target.value || null)}
+                placeholder="https://upload.wikimedia.org/.../Westminster_arms.svg"
+                className="input-base"
+              />
+            </Field>
+            <Field label="Background colour (optional)" hint="Used behind transparent logos">
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={draft.logoBg ?? "#ffffff"}
+                  onChange={(e) => setField("logoBg", e.target.value)}
+                  className="h-9 w-12 rounded-md border border-snappeal-border bg-white cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={draft.logoBg ?? ""}
+                  onChange={(e) => setField("logoBg", e.target.value || null)}
+                  placeholder="#ffffff"
+                  className="input-base font-mono"
+                />
+              </div>
+            </Field>
+            <Field label="Preview">
+              <div
+                className="size-14 rounded-lg border border-snappeal-border flex items-center justify-center overflow-hidden"
+                style={{ background: draft.logoBg || "#ffffff" }}
+              >
+                {draft.logoUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={draft.logoUrl}
+                    alt=""
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <span className="text-[10px] text-snappeal-muted">no logo</span>
+                )}
+              </div>
+            </Field>
+          </Grid>
         </Card>
 
         <Card title="Notes (internal)">
