@@ -12,31 +12,31 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "https://snappeal.ai",
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://parkingrabbit.com",
   ),
-  title: "Snappeal — Appeal a London parking ticket in under five taps",
+  title: "ParkingRabbit — Pay or challenge London parking tickets in minutes",
   description:
-    "Snappeal drafts your appeal from a photo of your PCN and submits it to your London council in five taps. £2.99 — one-off, non-refundable. You pay for the work, not the outcome.",
-  applicationName: "Snappeal",
+    "ParkingRabbit helps you pay or challenge London parking tickets in one place. Upload your PCN, choose pay or appeal, and track the outcome. UK-focused, mobile-first.",
+  applicationName: "ParkingRabbit",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Snappeal",
+    title: "ParkingRabbit",
   },
   openGraph: {
-    title: "Snappeal — Appeal a London parking ticket",
+    title: "ParkingRabbit — Pay or challenge a London parking ticket",
     description:
-      "AI drafts and submits your PCN appeal in five taps. £2.99 one-off, non-refundable.",
+      "Upload your PCN, then pay or appeal in minutes. UK-focused. We help you handle it.",
     type: "website",
-    siteName: "Snappeal",
+    siteName: "ParkingRabbit",
     locale: "en_GB",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Snappeal — Appeal a London parking ticket",
+    title: "ParkingRabbit — Pay or challenge a London parking ticket",
     description:
-      "AI drafts and submits your PCN appeal in five taps. £2.99 one-off, non-refundable.",
+      "Upload your PCN, then pay or appeal in minutes. UK-focused. We help you handle it.",
   },
 };
 

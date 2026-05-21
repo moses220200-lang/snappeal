@@ -1,7 +1,7 @@
 {
-  "name": "Snappeal — Appeal a London parking ticket",
-  "short_name": "Snappeal",
-  "description": "AI drafts and submits your PCN appeal in five taps.",
+  "name": "ParkingRabbit — Pay or challenge a parking ticket",
+  "short_name": "ParkingRabbit",
+  "description": "Upload your PCN, then pay or appeal it in minutes. UK-focused.",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
@@ -10,13 +10,13 @@
   "theme_color": "#007aff",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/logo.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/apple-icon",
+      "src": "/logo.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any maskable"
@@ -24,16 +24,22 @@
   ],
   "shortcuts": [
     {
-      "name": "Start a new appeal",
-      "short_name": "New appeal",
+      "name": "Pay a ticket",
+      "short_name": "Pay",
+      "url": "/app/pay",
+      "icons": [{ "src": "/logo.png", "sizes": "any", "type": "image/png" }]
+    },
+    {
+      "name": "Challenge a ticket",
+      "short_name": "Challenge",
       "url": "/app/capture",
-      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/logo.png", "sizes": "any", "type": "image/png" }]
     },
     {
       "name": "My tickets",
       "short_name": "Tickets",
       "url": "/app/tickets",
-      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/logo.png", "sizes": "any", "type": "image/png" }]
     }
   ]
 }

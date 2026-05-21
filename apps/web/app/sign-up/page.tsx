@@ -102,7 +102,7 @@ function SignUpInner() {
         <Link href="/app" className="flex items-center gap-2.5 mb-6 justify-center">
           <SnappealMark size={36} variant="dark" />
           <span className="text-xl font-bold text-snappeal-navy tracking-tight">
-            Snappeal
+            ParkingRabbit
           </span>
         </Link>
         <div className="rounded-3xl bg-white border border-snappeal-border p-6">

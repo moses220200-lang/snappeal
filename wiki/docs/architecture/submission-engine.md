@@ -37,6 +37,7 @@ Both paths produce the same observable outcome from the user's perspective: an a
 
 Implemented in `lib/server/submission/portal.ts`. When the council's online portal is supported and healthy:
 
+0. **Client-side payment gate.** Submit on `/app/tickets/<id>` (where the AI-drafted letter + Submit live; the standalone `/app/letter/<id>` route is now a redirect stub) opens `PaymentSheet` (`components/PaymentSheet.tsx`), which mounts either the Stripe `<PaymentElement>` (Apple Pay / Google Pay / card auto-detected) or `FakePaymentButtons` when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`. Only on a succeeded PaymentIntent does the page POST to `/api/submit` with that intent id. The route itself verifies the id against Stripe (unless `SNAPPEAL_SKIP_PAYMENT_CHECK=1`) before enqueueing the job — so the engine is doubly gated.
 1. `/api/submit` enqueues a `submit_appeal` job in the [Postgres queue](./job-queue.md) — durable, retry-safe.
 2. A worker (booted by `instrumentation.ts`) claims the job with `FOR UPDATE SKIP LOCKED`.
 3. The worker calls `runPortalAutomation()`. It **loads the per-council agent prompt** from the `council_automation` table (the same prompt the admin edits at `/admin/councils/[slug]/automation`) and falls back to a generic prompt if no row exists for this slug.
@@ -68,7 +69,7 @@ When the portal path can't be used. Reasons:
 When fallback fires:
 
 1. The workflow composes a structured email — the appeal letter as body, photos as attachments, PCN reference + vehicle reg in the subject line per the council's stated format.
-2. Email is sent from a per-user transactional alias (`<user-id>@appeals.snappeal.ai`) so the council's reply lands in our inbound mail handler — closing the loop on response tracking (see [response-tracking](#response-tracking-stub)).
+2. Email is sent from a per-user transactional alias (`<user-id>@appeals.parkingrabbit.com`) so the council's reply lands in our inbound mail handler — closing the loop on response tracking (see [response-tracking](#response-tracking-stub)).
 3. The submission is recorded with `method: "email"` and the email's message-id as the immutable receipt.
 4. We monitor for bounces; a bounce promotes to a manual ops queue rather than silently failing.
 
@@ -139,14 +140,14 @@ For every borough not yet automated, **the email fallback path is active from da
 
 ## Response tracking — implemented
 
-Council replies arrive at the per-appeal alias (`<appeal-id>@appeals.snappeal.ai`, stored on `appeals.reply_email`). `/api/inbound` is the webhook target:
+Council replies arrive at the per-appeal alias (`<appeal-id>@appeals.parkingrabbit.com`, stored on `appeals.reply_email`). `/api/inbound` is the webhook target:
 
 1. Accepts a Postmark / Resend / SES envelope (from / to / subject / text / html / headers).
 2. `lib/server/inbound.ts → processInboundMessage()` runs a small Claude CLI call with a tiny schema to classify into `cancelled | rejected | acknowledged | request | unknown`.
 3. The full message + classification lands in the `inbound_messages` table.
-4. When the classification is `cancelled` or `rejected`, the appeal's `status` is updated; the Tickets list pill flips ("Won" / "Lost") and the Inbox thread shows the new message.
+4. When the classification is `cancelled` or `rejected`, the appeal's `status` is updated; on the Tickets list the card collapses to its resolved variant ("Cancelled £X" green, or "Closed £X" slate), and the Inbox thread shows the new message.
 
-Production needs DNS + MX wiring for `appeals.snappeal.ai` plus a transactional provider that forwards to the webhook — pending pick (Postmark Inbound is the front-runner).
+Production needs DNS + MX wiring for `appeals.parkingrabbit.com` plus a transactional provider that forwards to the webhook — pending pick (Postmark Inbound is the front-runner).
 
 ## Sources and references
 

@@ -16,7 +16,7 @@ export function stripe(): Stripe {
     // value and falls back to the account's default API version.
     stripeClient = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
       typescript: true,
-      appInfo: { name: "Snappeal", version: "0.1.0" },
+      appInfo: { name: "ParkingRabbit", version: "0.2.0" },
     });
   }
   return stripeClient;

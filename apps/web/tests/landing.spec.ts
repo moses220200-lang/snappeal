@@ -1,49 +1,35 @@
 import { test, expect } from "./_fixtures";
 
 test.describe("Landing page", () => {
-  test("renders hero with CTAs + brand-blue palette", async ({ page }) => {
+  test("renders ParkingRabbit hero + CTAs", async ({ page }) => {
     await page.goto("/");
 
-    // Page title set in layout metadata
-    await expect(page).toHaveTitle(
-      /Snappeal — Appeal a London parking ticket/i,
-    );
+    // Title set in layout metadata.
+    await expect(page).toHaveTitle(/ParkingRabbit/i);
 
-    // Headline copy
-    await expect(
-      page.getByRole("heading", { name: /Don.+pay that parking ticket/i }),
-    ).toBeVisible();
-
-    // Both hero CTAs visible
-    await expect(
-      page.getByRole("link", { name: /Start Your Appeal/i }).first(),
-    ).toBeVisible();
-    await expect(page.getByRole("link", { name: /How It Works/i }).first()).toBeVisible();
-
-    // London-only pill (locked A2 decision — should NOT say "UK")
+    // Locked decision: London-only.
     await expect(page.getByText(/Made for drivers in London/i)).toBeVisible();
-  });
 
-  test("trust strip + How it works visible", async ({ page }) => {
-    await page.goto("/");
+    // Both hero CTAs visible.
+    await expect(
+      page.getByRole("link", { name: /Free Appeal/i }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /See How It Works/i }).first(),
+    ).toBeVisible();
 
-    // 4 trust-strip cards (audit-safe copy — no "experts", no "no win no fee")
-    await expect(page.getByText("AI-Drafted Appeals")).toBeVisible();
-    await expect(page.getByText("Real London Stats")).toBeVisible();
-    await expect(page.getByText("£2.99, One-Off")).toBeVisible();
-    await expect(page.getByText("Secure & Private")).toBeVisible();
-
-    // 4-step How it works
-    await expect(page.getByText("Upload Your Ticket")).toBeVisible();
-    await expect(page.getByText("We Draft Your Case")).toBeVisible();
-    await expect(page.getByText("We Submit Your Appeal")).toBeVisible();
-    await expect(page.getByText("We Stay With You")).toBeVisible();
+    // Header CTA into the app.
+    await expect(
+      page.getByRole("link", { name: /Get Started/i }).first(),
+    ).toBeVisible();
   });
 
   test("Get Started CTA deep-links into /app", async ({ page }) => {
     await page.goto("/");
 
-    const getStarted = page.getByRole("link", { name: /Get Started/i }).first();
+    const getStarted = page
+      .getByRole("link", { name: /Get Started/i })
+      .first();
     await expect(getStarted).toBeVisible();
     await getStarted.click();
     await expect(page).toHaveURL(/\/app$/);

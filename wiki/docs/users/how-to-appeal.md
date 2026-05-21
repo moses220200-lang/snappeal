@@ -4,7 +4,7 @@ The short version: **most PCNs that get appealed get cancelled at the first or s
 
 ## Before you do anything
 
-1. **Photograph the PCN.** Both sides if it's a windscreen ticket. Make sure the contravention code, date, time, location and PCN reference number are all readable. Use Snappeal's photo step, or just your camera roll.
+1. **Photograph the PCN.** Both sides if it's a windscreen ticket. Make sure the contravention code, date, time, location and PCN reference number are all readable. Use ParkingRabbit's photo step, or just your camera roll.
 
 2. **Photograph the scene.** While you're still by the car: photograph the signs, any bay markings, the surrounding street, the position of the car. If there's a suspension notice, photograph the dates clearly. If something is obscured by a vehicle, a tree, scaffolding — photograph that too.
 
@@ -21,7 +21,7 @@ Be honest with yourself. Pay if:
 - You overstayed on pay-and-display by more than a few minutes.
 - You parked in a residents' bay without a permit and you knew it.
 
-Snappeal if any of the below are true:
+ParkingRabbit if any of the below are true:
 
 - **The signs were unclear, obscured, contradictory, or absent.** (Code 01, 12, 16, 19, 21, 24, 30.)
 - **You were actively loading or unloading goods.** With continuous activity, not just the engine running. (Code 02, 25.)
@@ -46,11 +46,11 @@ The full mechanism is documented in [legal/representations-and-appeals.md](../le
 
 4. **Statutory declaration** at the Traffic Enforcement Centre. Only relevant if you never received the prior notices.
 
-## What Snappeal does at each stage
+## What ParkingRabbit does at each stage
 
 - **Stage 1**: Drafts the informal representation, picks the strongest informal ground from your photos + notes, addresses it to the right council channel.
 - **Stage 2**: Re-uses the case to draft a formal representation citing the appropriate statutory ground from TMA 2004 Schedule 1.
-- **Stage 3**: Drafts the Tribunal appeal letter. Snappeal does **not** represent you at an oral hearing — for that, see the [London Tribunals self-rep guidance](https://www.londontribunals.gov.uk/).
+- **Stage 3**: Drafts the Tribunal appeal letter. ParkingRabbit does **not** represent you at an oral hearing — for that, see the [London Tribunals self-rep guidance](https://www.londontribunals.gov.uk/).
 - **Stage 4**: Out of scope; we point you to the [TEC route on GOV.UK](https://www.gov.uk/parking-tickets/challenge-a-parking-ticket).
 
 ## How long it takes
@@ -66,7 +66,7 @@ You won't be chased for payment while a representation is live, and the discount
 ## Cost
 
 - **Pay the PCN immediately**: £80 (Band A discount) or £65 (Band B discount).
-- **Appeal it via Snappeal**: £2.99, one-off, non-refundable. You're paying for the appeal we draft and submit, not for the outcome.
+- **Appeal it via ParkingRabbit**: £2.99, one-off, non-refundable. You're paying for the appeal we draft and submit, not for the outcome.
 - **Pay the PCN if you lose at every stage**: full charge (£160 / £130), occasionally plus a 50% charge certificate uplift if you missed a deadline.
 
 The expected value of appealing is positive whenever your honest read of the evidence puts your win-probability above ~2% — because the cost of trying is so low.

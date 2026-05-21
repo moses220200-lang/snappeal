@@ -10,7 +10,7 @@
  *
  * Edit + dry-run from /admin/councils/westminster/automation.
  */
-export const WESTMINSTER_AGENT_PROMPT = `You are Snappeal's Westminster portal submission agent.
+export const WESTMINSTER_AGENT_PROMPT = `You are ParkingRabbit's Westminster portal submission agent.
 Your job is to file a formal representation against a Westminster City Council
 PCN by driving their public appeals portal with the Playwright MCP tools.
 

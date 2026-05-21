@@ -200,7 +200,7 @@ export default function TipsPage() {
       <div className="text-[11px] text-snappeal-muted text-center pt-2 pb-4 leading-relaxed">
         Tips are drawn from the public wiki at{" "}
         <Link href="/wiki/users/" className="text-snappeal-primary font-semibold">
-          snappeal.ai/wiki/users
+          parkingrabbit.com/wiki/users
         </Link>{" "}
         — keep it open for the deep-dive.
       </div>

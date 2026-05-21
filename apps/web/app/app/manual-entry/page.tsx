@@ -18,9 +18,8 @@ import { CouncilBadge } from "@/components/CouncilBadge";
 import {
   ConfirmedTicket,
   getOrCreateSessionId,
-  setConfirmedTicket,
-  setNotes as setSessionNotes,
 } from "@/lib/client/session";
+import { patchCurrentAppeal } from "@/lib/client/draft";
 import { haptic } from "@/lib/client/haptics";
 import type { AppealRecord } from "@/lib/server/appeals";
 
@@ -116,8 +115,10 @@ export default function ManualEntryPage() {
         location: "",
         amountPence: 0,
       };
-      setConfirmedTicket(ticket);
-      setSessionNotes("");
+      // Persist to the cloud (creates the draft appeal if needed) before
+      // routing into the capture page. Notes reset is implicit — the new
+      // appeal row starts with notes=null.
+      await patchCurrentAppeal({ ticket, notes: "" });
       haptic("success");
       // Route into the unified step-1 capture page so the customer can add
       // evidence photos and confirm/edit the typed fields before moving on

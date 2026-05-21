@@ -15,7 +15,7 @@ const SESSION_KEY = "snappeal.splashShown";
  *   0.85–1.20s : Camera-shutter white flash.
  *   0.65–2.10s : Viewfinder brackets bracket the ticket then collapse.
  *   1.00–2.10s : Blue "AI scan" line sweeps top→bottom across the ticket.
- *   1.75–2.80s : Snappeal shield logo + wordmark fade up.
+ *   1.75–2.80s : ParkingRabbit shield logo + wordmark fade up.
  *   2.40–2.85s : "Drafting your appeal" dots pulse.
  *   2.50–2.80s : Success tick pops in over the shield.
  *   2.85–3.05s : Whole overlay fades + becomes pointer-events:none.
@@ -99,19 +99,17 @@ export function SnappealSplash() {
           />
         </div>
 
-        {/* Camera-shutter white flash */}
-        <div className="snappeal-splash-flash absolute inset-0 bg-white pointer-events-none" />
+        {/* Camera-shutter white flash — constrained to the viewfinder frame
+         *  (matches the brackets' inset-4) so the flash never bleeds past
+         *  the white scan corners into the surrounding navy. */}
+        <div className="snappeal-splash-flash absolute inset-4 bg-white rounded-xl pointer-events-none" />
       </div>
 
       {/* Wordmark + loading dots — bottom of the screen */}
       <div className="snappeal-splash-wordmark absolute bottom-[18%] inset-x-0 flex flex-col items-center gap-4 px-6 text-center">
         <div className="relative">
-          {/* Canonical Snappeal shield — same mark used everywhere else. */}
-          <SnappealMark
-            size={72}
-            variant="light"
-            className="drop-shadow-[0_4px_12px_rgba(255,255,255,0.35)]"
-          />
+          {/* Canonical ParkingRabbit shield — same mark used everywhere else. */}
+          <SnappealMark size={72} variant="light" />
           {/* Success tick that pops in over the shield in the final beat */}
           <span className="snappeal-splash-tick absolute -bottom-2 -right-2 size-7 rounded-full bg-snappeal-success flex items-center justify-center ring-4 ring-snappeal-navy">
             <svg
@@ -131,7 +129,7 @@ export function SnappealSplash() {
 
         <div className="flex flex-col items-center gap-1.5">
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            Snappeal
+            ParkingRabbit
           </h1>
           <div className="flex items-center gap-2 text-sm text-white/80">
             <span>Drafting your appeal</span>
@@ -166,7 +164,7 @@ function WestminsterPCN() {
 export function RealisticPcnInWallet() {
   return (
     <svg
-      viewBox="0 0 220 300"
+      viewBox="0 24 220 276"
       xmlns="http://www.w3.org/2000/svg"
       className="w-full h-auto"
     >
@@ -184,15 +182,15 @@ export function RealisticPcnInWallet() {
           <rect width="7" height="7" fill="#0a0a0a" />
           <rect x="0.9" y="0.9" width="5.2" height="5.2" fill="#ffffff" />
         </pattern>
-        {/* Clear plastic wallet body — barely tinted, slight sheen. */}
+        {/* Clear plastic wallet body — translucent, glass-like. */}
         <linearGradient id="pcnWallet" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f4f4f5" />
-          <stop offset="40%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor="#e7e7ea" />
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
+          <stop offset="50%" stopColor="#ffffff" stopOpacity="0.08" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.18" />
         </linearGradient>
         {/* Subtle diagonal sheen across the plastic. */}
         <linearGradient id="pcnSheen" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.6" />
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.35" />
           <stop offset="55%" stopColor="#ffffff" stopOpacity="0.0" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
         </linearGradient>
@@ -200,43 +198,24 @@ export function RealisticPcnInWallet() {
 
       {/* Plastic wallet outer body + thin border */}
       <rect
+        x="0"
+        y="24"
         width="220"
-        height="300"
-        rx="8"
+        height="276"
+        rx="22"
         fill="url(#pcnWallet)"
-        stroke="#cfcfd4"
-        strokeWidth="0.6"
-      />
-
-      {/* Adhesive zip-seal strip at the top (the part that sticks to glass) */}
-      <rect width="220" height="22" fill="#e6e6ea" />
-      <line
-        x1="6"
-        y1="11"
-        x2="214"
-        y2="11"
-        stroke="#bcbcc2"
-        strokeWidth="0.7"
-        strokeDasharray="3 2"
-      />
-      <line
-        x1="6"
-        y1="18"
-        x2="214"
-        y2="18"
-        stroke="#cfcfd4"
-        strokeWidth="0.5"
-        strokeDasharray="1 3"
+        stroke="rgba(255,255,255,0.35)"
+        strokeWidth="0.8"
       />
 
       {/* Diagonal plastic sheen highlight (top-left → middle) */}
-      <rect width="220" height="300" rx="8" fill="url(#pcnSheen)" />
+      <rect x="0" y="24" width="220" height="276" rx="22" fill="url(#pcnSheen)" />
 
       {/* Diamond-hatched border frame */}
       <rect x="22" y="42" width="176" height="240" fill="url(#pcnDiamondHatch)" />
 
       {/* Yellow inner notice */}
-      <rect x="36" y="56" width="148" height="212" fill="#fdd420" />
+      <rect x="29" y="49" width="162" height="226" fill="#fdd420" />
 
       {/* PENALTY CHARGE NOTICE — three stacked lines, bold black */}
       <text

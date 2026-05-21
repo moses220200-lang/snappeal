@@ -100,10 +100,27 @@ export default function SubmittingPage({ params }: { params: Promise<{ id: strin
     });
     es.addEventListener("error", (e) => {
       try {
+        // Server-sent terminal error (job not found / forbidden / etc.).
+        // Surface it via `status` so the page can render the not-found card
+        // and close the stream so EventSource doesn't auto-reconnect.
         const data = JSON.parse((e as MessageEvent).data) as { message?: string };
-        if (data?.message) setLastError(data.message);
+        if (data?.message) {
+          setLastError(data.message);
+          setStatus("failed");
+          es.close();
+          return;
+        }
       } catch {
-        /* heartbeat error from EventSource — ignore */
+        /* fall through to the transport-error branch below */
+      }
+      // Belt-and-braces: if the connection closed (readyState=CLOSED) without
+      // ever delivering a progress event, treat it as a not-found / forbidden
+      // case so the user gets the "Submission not found" card instead of an
+      // eternal spinner. This handles browsers that surface non-2xx SSE
+      // responses as a closed connection with no usable payload.
+      if (es.readyState === EventSource.CLOSED) {
+        setLastError((prev) => prev ?? `Job ${id} not found`);
+        setStatus("failed");
       }
     });
 
@@ -183,16 +200,54 @@ export default function SubmittingPage({ params }: { params: Promise<{ id: strin
     status === "queued"
       ? "We submit appeals one at a time so the council portal stays responsive."
       : status === "running"
-        ? "Snappeal AI is operating the portal on your behalf."
+        ? "ParkingRabbit AI is operating the portal on your behalf."
         : status === "done"
           ? "Your appeal has been submitted. We'll email when the council replies."
           : "Your draft is safe — you can retry from the ticket page.";
+
+  // If the very first SSE frame is a server-sent error (job not found /
+  // forbidden), we'll have status=failed with zero progress events. That
+  // means this isn't a mid-run failure — the resource itself is missing or
+  // not ours to view. Render a focused "not found" card instead of the
+  // normal live-progress UI so the customer has a clear next step.
+  if (status === "failed" && events.length === 0 && lastError) {
+    return (
+      <>
+        <BackHeader title="Submission not found" subtitle="" back="/app/tickets" />
+        <div className="flex flex-col gap-4 px-5 pt-4 pb-10 snappeal-content-top">
+          <section className="rounded-2xl bg-white border border-snappeal-border p-5 flex flex-col gap-3">
+            <div className="flex items-start gap-3">
+              <span className="size-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                <XCircle className="size-5" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-bold text-snappeal-navy">
+                  We couldn&apos;t find this submission
+                </p>
+                <p className="text-xs text-snappeal-muted mt-0.5">
+                  {lastError}. Your tickets are still safe — open them from your list.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/app/tickets")}
+              className="self-start inline-flex items-center gap-1.5 rounded-2xl bg-snappeal-navy text-white font-semibold text-sm px-4 py-2.5"
+            >
+              Back to my tickets
+              <ArrowRight className="size-4" />
+            </button>
+          </section>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <BackHeader
         title="Submitting your appeal"
-        subtitle={status === "running" ? "Snappeal AI is filing it now" : status === "queued" ? "Waiting in queue" : status === "done" ? "Submitted" : "Halted"}
+        subtitle={status === "running" ? "ParkingRabbit AI is filing it now" : status === "queued" ? "Waiting in queue" : status === "done" ? "Submitted" : "Halted"}
         back="/app/tickets"
       />
       <div className="flex flex-col gap-4 px-5 pt-4 pb-10 snappeal-content-top">
@@ -445,7 +500,7 @@ export default function SubmittingPage({ params }: { params: Promise<{ id: strin
               </span>
               <div className="flex-1">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-green-700">
-                  Snappeal AI · Submission complete
+                  ParkingRabbit AI · Submission complete
                 </p>
                 <p className="text-lg font-bold text-snappeal-navy mt-0.5">
                   Appeal lodged with the council

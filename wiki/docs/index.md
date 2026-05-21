@@ -4,11 +4,11 @@ hide:
   - toc
 ---
 
-# Snappeal
+# ParkingRabbit
 
-**Appeal a London parking ticket in under five taps.**
+**Pay or challenge London parking tickets in minutes.**
 
-This wiki is the public source of truth for the Snappeal project — what we're building, why, how, and for whom.
+This wiki is the public source of truth for the ParkingRabbit project — what we're building, why, how, and for whom. **Last refreshed 2026-05-21 (v0.2.2 — error guards + cloud-first drafts).** Read [handoff.md](handoff.md) first if you're picking this up cold.
 
 <div class="appeal-hero" markdown>
 
@@ -26,18 +26,24 @@ This wiki is the public source of truth for the Snappeal project — what we're 
 
 </div>
 
-## What Snappeal does
+## What ParkingRabbit does
 
-A Londoner snaps a photo of their Penalty Charge Notice (PCN), takes a few photos of the car and the scene, writes a sentence or two about what happened, and pays £2.99. Within seconds, Snappeal drafts a formal representation letter — citing the right statutory grounds and contravention code — and submits it to the issuing council or TfL via their portal (with email fallback when the portal is unavailable).
+A Londoner snaps a photo of their Penalty Charge Notice (PCN). ParkingRabbit OCRs the ticket, asks the customer a few quick questions, and — depending on the path the customer chooses — either:
 
-## What Snappeal doesn't do
+- **Pays the ticket** for them through `/app/pay` (PCN amount + £1.99 service fee), or
+- **Drafts a formal representation letter for free**, then optionally **auto-submits it** to the issuing council via Claude + Playwright MCP (`£2.99` per auto-submission).
 
-Snappeal is not a solicitor. We draft representations and submit them on your behalf — we don't represent you at a tribunal hearing, and we don't guarantee an outcome. The strongest appeal is grounded in honest facts; we'll never invent evidence.
+Email submission is the fallback channel for councils whose portal isn't automated yet.
 
-## Where the project is right now
+## What ParkingRabbit doesn't do
 
-- **Phase A — wiki & business plan** (this milestone). You're reading it.
-- **Phase B — admin backend** with login, user management, and a council knowledge-base editor.
-- **Phase C — customer-facing mobile app** (Next.js PWA → Capacitor wrapper for the App Store).
+ParkingRabbit is not a solicitor. We draft representations and submit them on your behalf — we don't represent you at a tribunal hearing, and we don't guarantee an outcome. The strongest appeal is grounded in honest facts; we'll never invent evidence.
 
-See the [roadmap](business/roadmap.md) for what each phase contains and when.
+## Where the project is right now (v0.2.x)
+
+- **Backend live**: Postgres + Drizzle schema (11 tables, 10 migrations), JWT auth, Postgres-backed job queue, Claude CLI piped headlessly, Westminster portal automation via Playwright MCP, inbound mail webhook.
+- **Customer app live in dev**: home → capture → notes → paywall → letter → live submitting view → tickets list (all UIs rebuilt for the ParkingRabbit pivot).
+- **Admin backend live**: 13 admin pages — appeals, councils + MCP editor, submissions, inbound, jobs, users, health, wiki.
+- **Deferred until production keys**: live Stripe, Apple/Google OAuth, inbound DNS+MX, Vercel deploy, Vercel Blob for photos. Tracked in [todo.md](todo.md).
+
+See [handoff.md](handoff.md) for the canonical "what's shipped vs in-flight" log, and [business/roadmap.md](business/roadmap.md) for the longer-form plan.

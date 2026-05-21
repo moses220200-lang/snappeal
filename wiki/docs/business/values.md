@@ -15,4 +15,4 @@ We help the user articulate what actually happened. We do not invent mitigating 
 Five taps to a draft letter. Every screen has at most one decision. If a feature can't survive contact with a stressed driver on a phone in the rain, it doesn't ship.
 
 ### 5. The council is the customer too
-A council reviewer reading our letter has thirty seconds. We respect that. Our letters are short, cite the right code, attach the right evidence, and don't pad. If a council reviewer dreads opening an "Snappeal-generated" letter, we have already lost.
+A council reviewer reading our letter has thirty seconds. We respect that. Our letters are short, cite the right code, attach the right evidence, and don't pad. If a council reviewer dreads opening an "ParkingRabbit-generated" letter, we have already lost.

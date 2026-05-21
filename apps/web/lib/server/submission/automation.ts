@@ -154,9 +154,9 @@ export async function dryRunAutomation(input: DryRunInput): Promise<DryRunResult
     location: "Test Lane, W1U 1AA",
     issuedAt: "2026-05-12T09:14:00+01:00",
     grounds: ["signage-unclear"],
-    replyEmail: "dry-run@appeals.snappeal.ai",
+    replyEmail: "dry-run@appeals.parkingrabbit.com",
     letterSubject: "Representation against PCN WC00000000",
-    letterBody: "This is a Snappeal dry-run. No appeal is being submitted.",
+    letterBody: "This is a ParkingRabbit dry-run. No appeal is being submitted.",
     fixture: true,
   };
   if (input.appealId) {

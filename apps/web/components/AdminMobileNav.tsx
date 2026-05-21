@@ -48,7 +48,7 @@ export function AdminMobileNav({ email }: { email: string }) {
           <aside className="absolute left-0 top-0 bottom-0 w-72 bg-snappeal-navy text-white flex flex-col">
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
-                <p className="text-base font-bold">Snappeal Admin</p>
+                <p className="text-base font-bold">ParkingRabbit Admin</p>
                 <p className="text-[11px] text-white/60">{email}</p>
               </div>
               <button

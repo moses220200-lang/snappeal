@@ -15,7 +15,7 @@
  *     supplied, the bottom of the overlay renders the letter being typed in
  *     real time so the wait feels alive.
  */
-import { CheckCircle2, Sparkles } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export type GeneratingPhase = "read" | "ground" | "draft" | "done";
@@ -38,9 +38,16 @@ interface Props {
   phase?: GeneratingPhase;
   /** Letter text appended chunk-by-chunk as `chunk` events arrive. */
   streamedText?: string;
+  /** Email-style header — shown above the streaming body the moment the
+   *  ticket is parsed, so the wait feels like a real letter being drafted. */
+  letterHeader?: {
+    to: string;
+    subject: string;
+    date: string;
+  } | null;
 }
 
-export function GeneratingOverlay({ phase, streamedText }: Props = {}) {
+export function GeneratingOverlay({ phase, streamedText, letterHeader }: Props = {}) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => setTick((t) => t + 1), 250);
@@ -64,6 +71,16 @@ export function GeneratingOverlay({ phase, streamedText }: Props = {}) {
     return 0;
   })();
 
+  // Timer-driven progress percentage shown in the central tile. Eases up
+  // toward 95 % over a typical ~30 s draft, snaps to 100 % the moment the
+  // `done` phase lands. The exponential curve feels deliberate (fast early,
+  // slow near the end) and never crosses 100 % until we actually have a
+  // letter — so the user doesn't see "100 %" stalled on screen.
+  const percent =
+    phase === "done"
+      ? 100
+      : Math.min(95, Math.round(95 * (1 - Math.exp(-elapsed / 11000))));
+
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-snappeal-navy overflow-hidden">
       <div
@@ -82,8 +99,18 @@ export function GeneratingOverlay({ phase, streamedText }: Props = {}) {
         }}
       />
       <div className="relative max-w-md w-full px-6 flex flex-col items-center text-center gap-6">
-        <span className="snappeal-generating-scan size-28 rounded-2xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center relative overflow-hidden">
-          <Sparkles className="size-12 text-snappeal-primary relative z-10" />
+        <span
+          className="snappeal-generating-scan size-28 rounded-2xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center relative overflow-hidden"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          aria-label="Drafting progress"
+        >
+          <span className="text-4xl font-extrabold tabular-nums text-snappeal-primary relative z-10 leading-none">
+            {percent}
+            <span className="text-xl font-bold align-top ml-0.5">%</span>
+          </span>
           <span className="absolute inset-x-0 h-1.5 rounded-full snappeal-generating-line bg-gradient-to-b from-transparent via-snappeal-primary to-transparent" />
         </span>
         <div>
@@ -93,7 +120,7 @@ export function GeneratingOverlay({ phase, streamedText }: Props = {}) {
           <p className="text-sm text-white/70 mt-1">
             {phase === "draft"
               ? "Writing the letter now — almost there."
-              : "Snappeal AI is on it — about 30 seconds."}
+              : "ParkingRabbit AI is on it — about 30 seconds."}
           </p>
         </div>
         <ul className="w-full flex flex-col gap-3">
@@ -124,18 +151,43 @@ export function GeneratingOverlay({ phase, streamedText }: Props = {}) {
           })}
         </ul>
 
-        {/* Live letter preview — only shown once chunks start arriving. */}
-        {streamedText && streamedText.length > 0 && (
-          <div className="w-full rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm p-3 text-left">
-            <p className="text-[10px] uppercase tracking-wider text-white/55 mb-1.5">
+        {/* Live letter preview — appears as soon as either the email header
+         *  is known (right after the `ticket` event) or chunks start
+         *  arriving, so the user has something concrete to read during the
+         *  long wait instead of staring at the milestone ladder. */}
+        {(letterHeader || (streamedText && streamedText.length > 0)) && (
+          <div className="w-full rounded-2xl bg-white/95 text-snappeal-navy shadow-2xl shadow-black/30 p-4 text-left flex flex-col gap-3">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-snappeal-primary">
               Your letter, live
             </p>
+            {letterHeader && (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] pb-2.5 border-b border-snappeal-border">
+                <dt className="text-snappeal-muted uppercase tracking-wide text-[9px] self-center">
+                  To
+                </dt>
+                <dd className="font-semibold truncate">{letterHeader.to}</dd>
+                <dt className="text-snappeal-muted uppercase tracking-wide text-[9px] self-center">
+                  Subject
+                </dt>
+                <dd className="font-semibold truncate">{letterHeader.subject}</dd>
+                <dt className="text-snappeal-muted uppercase tracking-wide text-[9px] self-center">
+                  Date
+                </dt>
+                <dd className="font-medium">{letterHeader.date}</dd>
+              </dl>
+            )}
             <pre
               ref={previewRef}
-              className="whitespace-pre-wrap text-[11px] text-white/85 leading-relaxed font-sans max-h-32 overflow-y-auto no-scrollbar"
+              className="whitespace-pre-wrap text-[11.5px] text-snappeal-navy leading-relaxed font-sans max-h-36 min-h-[3rem] overflow-y-auto no-scrollbar"
             >
-              {streamedText}
-              <span className="snappeal-generating-cursor inline-block w-1.5 h-3 align-baseline bg-snappeal-primary ml-0.5" />
+              {streamedText || (
+                <span className="text-snappeal-muted italic">
+                  ParkingRabbit AI is composing the body…
+                </span>
+              )}
+              {streamedText && (
+                <span className="snappeal-generating-cursor inline-block w-1.5 h-3 align-baseline bg-snappeal-primary ml-0.5" />
+              )}
             </pre>
           </div>
         )}

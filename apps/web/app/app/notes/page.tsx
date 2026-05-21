@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BackHeader } from "@/components/BackHeader";
 import { GroundsCardQuiz } from "@/components/GroundsCardQuiz";
-import { getNotes, setNotes } from "@/lib/client/session";
+import { getCurrentAppealId } from "@/lib/client/session";
+import { debouncedPatch, getAppeal } from "@/lib/client/draft";
 
 function ContinueCta() {
   return (
@@ -21,15 +22,30 @@ const MAX_NOTES = 600;
 
 export default function NotesPage() {
   const [text, setText] = useState("");
+  // One debouncer per mount — keystroke writes coalesce into a single
+  // trailing PATCH so the appeal row gets touched ~once every 600 ms, not
+  // once per character. The patch helper handles ensureCurrentAppeal under
+  // the hood so the first stroke can land before the appeal exists yet.
+  const patchNotes = useMemo(() => debouncedPatch(600), []);
 
+  // Hydrate from the cloud appeal record on mount (if a draft exists).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setText(getNotes());
+    let alive = true;
+    void (async () => {
+      const id = getCurrentAppealId();
+      if (!id) return;
+      const appeal = await getAppeal(id).catch(() => null);
+      if (!alive || !appeal?.notes) return;
+      setText(appeal.notes);
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const onChange = (v: string) => {
     setText(v);
-    setNotes(v);
+    patchNotes({ notes: v });
   };
 
   return (

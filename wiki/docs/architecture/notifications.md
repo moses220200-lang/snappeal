@@ -1,6 +1,6 @@
 # Notifications
 
-How Snappeal lets users know when something changes — locally (haptics + confetti) and remotely (Web Push).
+How ParkingRabbit lets users know when something changes — locally (haptics + confetti) and remotely (Web Push).
 
 ## Layers
 
@@ -61,21 +61,21 @@ Generate a key pair with `npx web-push generate-vapid-keys`. (Previous versions 
 
 ## Transactional email — pending provider pick
 
-Snappeal sends three transactional email categories:
+ParkingRabbit sends three transactional email categories:
 
 1. **Submission receipt** — "We submitted your appeal to Westminster" (with council reference + screenshot link).
 2. **Council reply digest** — when `/api/inbound` classifies, send a one-line summary email + push.
 3. **Care Plan billing events** — Stripe-driven (paid, failed, cancelled).
 
-`lib/server/submission/email.ts` is Resend-compatible; falls back to a stub `<stub-...@appeals.snappeal.ai>` message id in dev. Provider pick is a Phase-C v0.2 deliverable (Postmark Inbound is the front-runner because it also handles the inbound parse).
+`lib/server/submission/email.ts` is Resend-compatible; falls back to a stub `<stub-...@appeals.parkingrabbit.com>` message id in dev. Provider pick is a Phase-C v0.2 deliverable (Postmark Inbound is the front-runner because it also handles the inbound parse).
 
 ## In-app toasts
 
-Snappeal doesn't use Sonner / react-hot-toast. The `WizardSheet` covers the "thing happened" UX — full-screen, focused, dismissible. For lighter feedback (network failure, "Saved ✓"), we use inline error/success boxes in each screen rather than a toast layer. Keeps the platform feel.
+ParkingRabbit doesn't use Sonner / react-hot-toast. The `WizardSheet` covers the "thing happened" UX — full-screen, focused, dismissible. For lighter feedback (network failure, "Saved ✓"), we use inline error/success boxes in each screen rather than a toast layer. Keeps the platform feel.
 
 ## Open work
 
 - `web-push` server library wired so `/api/inbound` actually fires notifications.
 - Per-user notification prefs editable in `/app/profile/notifications` (UI exists, persistence-to-user-record pending).
-- Email provider pick + DNS for `appeals.snappeal.ai`.
+- Email provider pick + DNS for `appeals.parkingrabbit.com`.
 - Apple Wallet pass updates (separate channel — see `architecture/apple-wallet.md` TBD).

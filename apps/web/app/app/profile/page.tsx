@@ -165,7 +165,7 @@ export default function ProfilePage() {
             <div className="flex-1">
               <p className="text-sm font-bold text-white">Open admin dashboard</p>
               <p className="text-xs text-white/70 mt-0.5">
-                Appeals · Councils · Submissions · MCP automation · Jobs · Users
+                Appeals · Councils · Submissions · Auto-Submit Agent · Jobs · Users
               </p>
             </div>
             <ChevronRight className="size-5 text-white/80" />
@@ -204,7 +204,7 @@ export default function ProfilePage() {
             <Sparkles className="size-5 text-white" />
           </span>
           <div className="flex-1">
-            <p className="text-sm font-bold">Snappeal Care Plan</p>
+            <p className="text-sm font-bold">ParkingRabbit Care Plan</p>
             <p className="text-xs text-white/80 mt-0.5 leading-relaxed">
               £9.99/mo · unlimited grounds-based appeals · 90% appeal-rate guarantee · roadside invoice recovery
             </p>
@@ -215,7 +215,7 @@ export default function ProfilePage() {
         </Link>
 
         <div className="text-center text-[11px] text-snappeal-muted py-2">
-          Snappeal · © 2026
+          ParkingRabbit · © 2026
         </div>
       </div>
     </>
@@ -305,7 +305,7 @@ function SignedInCard({ user }: { user: Me }) {
         {initial}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-base font-bold text-snappeal-navy">{user.displayName ?? "Snappeal user"}</p>
+        <p className="text-base font-bold text-snappeal-navy">{user.displayName ?? "ParkingRabbit user"}</p>
         <p className="text-xs text-snappeal-muted truncate">{user.email}</p>
         <span
           className={`mt-1.5 inline-flex items-center gap-1 rounded-full text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 ${

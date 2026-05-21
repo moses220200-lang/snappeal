@@ -1,17 +1,50 @@
 /**
- * Client-side session id + appeal-id helpers. Persists in localStorage so
- * a guest returning a week later still sees their case history.
+ * Client-side session helpers.
+ *
+ * Holds ONLY:
+ *   - `sessionId` — anonymous guest identity, used by every API call so the
+ *     server can attribute appeals before sign-in.
+ *   - `currentAppealId` — pointer to the in-flight draft, so the capture →
+ *     notes → paywall transitions all operate on the same row.
+ *   - `pcnPhoto` + `evidencePhotos` — large data URLs held in sessionStorage
+ *     until the paywall ships them to the server. Stays client-side until
+ *     Vercel Blob (or equivalent) is wired up — tracked in `wiki/docs/todo.md`.
+ *   - `serviceTier` — UX-only "what does the customer want to do?" preference
+ *     captured before an appeal exists (e.g. the home `Challenge a ticket`
+ *     hero sets it). Once the appeal is created the value is mirrored onto
+ *     `appeals.serviceTier` in the DB and reads should prefer that.
+ *
+ * Ticket fields, notes, and selected grounds USED to live in sessionStorage
+ * too; they've moved to the DB via `lib/client/draft.ts` so the cloud is the
+ * authoritative source and the customer never loses a draft on a tab close.
  */
 const KEY_SESSION = "snappeal.sessionId";
 const KEY_PCN = "snappeal.pcnPhoto";
 const KEY_EVIDENCE = "snappeal.evidencePhotos";
-const KEY_NOTES = "snappeal.notes";
 const KEY_APPEAL = "snappeal.currentAppealId";
-const KEY_TICKET = "snappeal.confirmedTicket";
+const KEY_TIER = "snappeal.serviceTier";
+
+// One-shot cleanup of the keys we used to store on first import in a
+// browser. Safe to call on every page load — does nothing once the keys
+// are already gone. Runs in module scope so any module that touches
+// session also flushes the legacy data.
+const LEGACY_KEYS = [
+  "snappeal.notes",
+  "snappeal.confirmedTicket",
+  "snappeal.selectedGrounds",
+];
+if (typeof window !== "undefined") {
+  for (const k of LEGACY_KEYS) {
+    try {
+      window.sessionStorage.removeItem(k);
+      window.localStorage.removeItem(k);
+    } catch {
+      /* private mode / quota — best effort */
+    }
+  }
+}
 
 export type ServiceTier = "buy_time" | "grounds" | "care_plan";
-
-const KEY_TIER = "snappeal.serviceTier";
 
 export function getServiceTier(): ServiceTier {
   if (typeof window === "undefined") return "grounds";
@@ -21,34 +54,6 @@ export function getServiceTier(): ServiceTier {
 
 export function setServiceTier(tier: ServiceTier) {
   window.localStorage.setItem(KEY_TIER, tier);
-}
-
-export interface ConfirmedTicket {
-  issuer?: string;
-  councilSlug?: string;
-  pcnRef?: string;
-  vehicleReg?: string;
-  contraventionCode?: string;
-  contraventionDescription?: string;
-  issuedAt?: string;
-  location?: string;
-  amountPence?: number;
-}
-
-export function setConfirmedTicket(ticket: ConfirmedTicket) {
-  window.sessionStorage.setItem(KEY_TICKET, JSON.stringify(ticket));
-}
-export function getConfirmedTicket(): ConfirmedTicket | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(KEY_TICKET);
-    return raw ? (JSON.parse(raw) as ConfirmedTicket) : null;
-  } catch {
-    return null;
-  }
-}
-export function clearConfirmedTicket() {
-  window.sessionStorage.removeItem(KEY_TICKET);
 }
 
 export function getOrCreateSessionId(): string {
@@ -88,40 +93,6 @@ export function clearEvidencePhotos() {
   window.sessionStorage.removeItem(KEY_EVIDENCE);
 }
 
-export function setNotes(text: string) {
-  window.sessionStorage.setItem(KEY_NOTES, text);
-}
-export function getNotes(): string {
-  if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem(KEY_NOTES) ?? "";
-}
-export function clearNotes() {
-  window.sessionStorage.removeItem(KEY_NOTES);
-}
-
-/* Selected ground-card IDs from the step-2 quiz. Stored as a JSON array
- * so the cards can be hydrated on back-navigation and so /api/generate
- * can be informed of the customer's chosen grounds before drafting. */
-const KEY_GROUNDS = "snappeal.selectedGrounds";
-export function setSelectedGrounds(cardIds: string[]) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(KEY_GROUNDS, JSON.stringify(cardIds));
-}
-export function getSelectedGrounds(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(KEY_GROUNDS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-export function clearSelectedGrounds() {
-  window.sessionStorage.removeItem(KEY_GROUNDS);
-}
-
 export function setCurrentAppealId(id: string) {
   window.localStorage.setItem(KEY_APPEAL, id);
 }
@@ -136,7 +107,22 @@ export function clearCurrentAppealId() {
 export function clearCaptureFlow() {
   clearPcnPhoto();
   clearEvidencePhotos();
-  clearNotes();
   clearCurrentAppealId();
-  clearConfirmedTicket();
+}
+
+/**
+ * Backwards-compat shape for `ConfirmedTicket` — kept so existing capture
+ * page typing still works while the form bridges into the cloud-PATCH
+ * helpers in `lib/client/draft.ts`. The DB column accepts the same fields.
+ */
+export interface ConfirmedTicket {
+  issuer?: string;
+  councilSlug?: string;
+  pcnRef?: string;
+  vehicleReg?: string;
+  contraventionCode?: string;
+  contraventionDescription?: string;
+  issuedAt?: string;
+  location?: string;
+  amountPence?: number;
 }

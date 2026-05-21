@@ -10,7 +10,7 @@
   - **Red Route** parking and waiting offences (red lines on TLRN roads).
   - **Bus lane** contraventions on TLRN roads.
   - **Moving traffic** contraventions (e.g. yellow box junctions) where TfL is the enforcement authority.
-  - (Separate regime) **Congestion Charge** and **ULEZ** charges — see notes below; **out of scope for Snappeal v0.1**.
+  - (Separate regime) **Congestion Charge** and **ULEZ** charges — see notes below; **out of scope for ParkingRabbit v0.1**.
 
 ## Where to send representations
 
@@ -31,7 +31,7 @@
 
 - TfL is the **second-largest single PCN issuer in London by income** — red-route PCN income alone reached **£83.4m in FY 2023-24**, up 57% over the previous five years[^1].
 - TfL also runs the **bus-lane PCN** regime on its roads; in FY 2023-24 it issued 22,604 bus-lane PCNs (FOI-1844-2425)[^2].
-- **Congestion Charge** and **ULEZ** appeals use a **different statutory regime** (the Greater London (Central Zone) Congestion Charging Order, separate to TMA 2004). These are out of scope for Snappeal v0.1 and v0.2 — see [feature matrix](../product/features.md). They are on the roadmap for v0.3.
+- **Congestion Charge** and **ULEZ** appeals use a **different statutory regime** (the Greater London (Central Zone) Congestion Charging Order, separate to TMA 2004). These are out of scope for ParkingRabbit v0.1 and v0.2 — see [feature matrix](../product/features.md). They are on the roadmap for v0.3.
 
 ## Submission method
 

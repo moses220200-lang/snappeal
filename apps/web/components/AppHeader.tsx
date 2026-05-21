@@ -5,23 +5,31 @@ import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { SnappealMark } from "@/components/Logo";
 
+/**
+ * Square Union Jack badge — used inside the UK pill. Drawn into a square
+ * viewBox so when the surrounding `<svg>` is rendered at e.g. 18×18 it
+ * stays a true circle (a 2:1 flag clipped with `rx=50%` produces a stadium
+ * shape, which is why the earlier version looked off).
+ */
 function UkFlag({ className = "" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 60 30" className={className} aria-hidden>
-      <clipPath id="snappeal-uk-clip">
-        <rect width="60" height="30" rx="15" />
-      </clipPath>
+    <svg viewBox="0 0 30 30" className={className} aria-hidden>
+      <defs>
+        <clipPath id="snappeal-uk-clip">
+          <circle cx="15" cy="15" r="15" />
+        </clipPath>
+      </defs>
       <g clipPath="url(#snappeal-uk-clip)">
-        <rect width="60" height="30" fill="#012169" />
-        <path d="M0,0 L60,30 M60,0 L0,30" stroke="#ffffff" strokeWidth="6" />
-        <path
-          d="M0,0 L60,30 M60,0 L0,30"
-          stroke="#C8102E"
-          strokeWidth="4"
-          clipPath="polygon(0 0, 50% 50%, 100% 0, 0 0)"
-        />
-        <path d="M30,0 v30 M0,15 h60" stroke="#ffffff" strokeWidth="10" />
-        <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" strokeWidth="6" />
+        {/* Navy field */}
+        <rect width="30" height="30" fill="#012169" />
+        {/* White diagonal saltire (St Andrew) */}
+        <path d="M0 0 L30 30 M30 0 L0 30" stroke="#ffffff" strokeWidth="6" />
+        {/* Red diagonal saltire (St Patrick) — thinner */}
+        <path d="M0 0 L30 30 M30 0 L0 30" stroke="#C8102E" strokeWidth="3" />
+        {/* White cross (St George) */}
+        <path d="M15 0 V30 M0 15 H30" stroke="#ffffff" strokeWidth="9" />
+        {/* Red cross (St George) — thinner */}
+        <path d="M15 0 V30 M0 15 H30" stroke="#C8102E" strokeWidth="5" />
       </g>
     </svg>
   );
@@ -33,7 +41,7 @@ function UkFlag({ className = "" }: { className?: string }) {
  * past its threshold. Matches the iOS 17+ "Liquid Glass" pattern so the
  * status bar never collides with content underneath.
  *
- * Brand block: a blue Snappeal "S" shield (same identity as the marketing
+ * Brand block: a blue ParkingRabbit "S" shield (same identity as the marketing
  * site) followed by the wordmark + tagline, then a small UK pill on the
  * right. Pages with their own back-arrow header (capture, notes, paywall,
  * letter, ticket detail, sign-in, sign-up, profile sub-pages) use the
@@ -67,13 +75,13 @@ export function AppHeader({
     >
       <div className="flex items-center justify-between gap-2">
         <Link href="/app" className="flex items-center gap-2.5 min-w-0 flex-1">
-          <SnappealMark size={34} variant="dark" className="drop-shadow-sm shrink-0" />
+          <SnappealMark size={46} variant="dark" className="shrink-0" />
           <div className="flex flex-col leading-tight min-w-0">
             <span className="text-[17px] font-bold text-snappeal-navy tracking-tight leading-none">
-              Snappeal
+              ParkingRabbit
             </span>
             <span className="text-[10.5px] text-snappeal-muted mt-1 leading-tight">
-              Challenge your parking ticket in minutes
+              Manage parking tickets quickly
             </span>
           </div>
         </Link>

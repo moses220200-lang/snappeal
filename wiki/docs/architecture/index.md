@@ -1,6 +1,6 @@
 # Architecture
 
-How Snappeal is built — services, data, models, infrastructure.
+How ParkingRabbit is built — services, data, models, infrastructure.
 
 - [System overview](system-overview.md) — the diagram everything else references.
 - **[Prototype state](prototype.md)** — what actually exists in `apps/web/` right now, file by file. *Start here if you're picking up the project fresh.*

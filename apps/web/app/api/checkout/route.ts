@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       amount: PRICE_PENCE,
       currency: CURRENCY,
       automatic_payment_methods: { enabled: true },
-      description: "Snappeal — automated London PCN appeal",
+      description: "ParkingRabbit — automated London PCN appeal",
       statement_descriptor_suffix: "SNAPPEAL APPEAL",
       receipt_email: body.email,
       metadata: {

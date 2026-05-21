@@ -20,6 +20,7 @@ const PatchBody = z.object({
   ticket: z.record(z.string(), z.unknown()).optional().nullable(),
   serviceTier: z.enum(["buy_time", "grounds", "care_plan"]).optional(),
   evidenceCount: z.number().int().min(0).max(6).optional(),
+  grounds: z.array(z.string().max(80)).max(50).optional(),
 });
 
 export async function GET(

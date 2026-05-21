@@ -1,5 +1,5 @@
 /**
- * Inbound mail processing for `<appeal-id>@appeals.snappeal.ai`.
+ * Inbound mail processing for `<appeal-id>@appeals.parkingrabbit.com`.
  *
  * Triggered by /api/inbound (a webhook from the transactional mail provider
  * — Postmark / Resend / SES). Each message is classified using a small
@@ -34,7 +34,7 @@ export interface InboundMessage {
   rawHeaders?: Record<string, unknown> | null;
 }
 
-const SYSTEM_PROMPT = `You are Snappeal's inbound-mail classifier. The user is
+const SYSTEM_PROMPT = `You are ParkingRabbit's inbound-mail classifier. The user is
 forwarding you the body of an email from a London council in response to a
 PCN appeal representation. Classify the council's position.
 
@@ -53,7 +53,7 @@ export async function processInboundMessage(msg: InboundMessage) {
   const db = getDb();
   if (!db) return { stored: false, classification: null };
 
-  // The recipient address encodes the appeal id: <ap_xxxx>@appeals.snappeal.ai
+  // The recipient address encodes the appeal id: <ap_xxxx>@appeals.parkingrabbit.com
   const localPart = msg.toAddr.split("@")[0]?.trim().toLowerCase() ?? "";
   const appealId = localPart.startsWith("ap_") ? localPart : null;
 

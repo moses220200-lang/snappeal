@@ -1,7 +1,7 @@
-site_name: Snappeal
-site_description: Appeal a London parking ticket in under five taps.
-site_author: Snappeal
-copyright: Copyright &copy; 2026 Snappeal
+site_name: ParkingRabbit
+site_description: Pay or challenge London parking tickets in minutes.
+site_author: ParkingRabbit
+copyright: Copyright &copy; 2026 ParkingRabbit
 
 theme:
   name: material
@@ -134,6 +134,7 @@ nav:
     - System overview: architecture/system-overview.md
     - Prototype state: architecture/prototype.md
     - Data model: architecture/data-model.md
+    - Appeal state machine: architecture/appeal-state-machine.md
     - AI pipeline: architecture/ai-pipeline.md
     - Submission engine: architecture/submission-engine.md
     - Job queue: architecture/job-queue.md

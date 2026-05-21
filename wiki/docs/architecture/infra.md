@@ -1,6 +1,6 @@
 # Infrastructure
 
-How Snappeal runs — locally today, on Vercel + a worker box in production.
+How ParkingRabbit runs — locally today, on Vercel + a worker box in production.
 
 ## Local dev (today)
 
@@ -19,7 +19,7 @@ The Next.js app runs natively on the host (not in Docker) so the Claude CLI can 
 docker compose up -d
 cd apps/web
 npm install
-npm run db:migrate   # apply all 9 Drizzle migrations (0000–0008)
+npm run db:migrate   # apply all 10 Drizzle migrations (0000–0009)
 npm run db:seed      # seed 7 councils
 npm run dev          # http://localhost:3001
 ```
@@ -113,7 +113,7 @@ Then provision **Neon Postgres** via the Vercel Marketplace, run migrations:
 ```bash
 DATABASE_URL=$NEON_URL npm run db:migrate
 DATABASE_URL=$NEON_URL npm run db:seed
-DATABASE_URL=$NEON_URL npm run admin:promote -- founder@snappeal.ai
+DATABASE_URL=$NEON_URL npm run admin:promote -- founder@parkingrabbit.com
 ```
 
 ## Deployment runbook (worker box, Fly.io example)
@@ -140,11 +140,11 @@ The worker entry script `scripts/worker.ts` (TBD — not committed yet) imports 
 
 | Subdomain | Service |
 |---|---|
-| `snappeal.ai` | Web tier (landing + app) |
-| `wiki.snappeal.ai` | Static MkDocs build (this wiki) |
-| `appeals.snappeal.ai` | Inbound mail — MX → Postmark / Resend → `/api/inbound` webhook |
-| `admin.snappeal.ai` *(optional)* | Direct subdomain to `/admin/*` for ops convenience |
-| `api.snappeal.ai` *(optional)* | Worker tier's HTTP entry, if we want separate observability |
+| `parkingrabbit.com` | Web tier (landing + app) |
+| `wiki.parkingrabbit.com` | Static MkDocs build (this wiki) |
+| `appeals.parkingrabbit.com` | Inbound mail — MX → Postmark / Resend → `/api/inbound` webhook |
+| `admin.parkingrabbit.com` *(optional)* | Direct subdomain to `/admin/*` for ops convenience |
+| `api.parkingrabbit.com` *(optional)* | Worker tier's HTTP entry, if we want separate observability |
 
 ## CDN / WAF / DDoS
 

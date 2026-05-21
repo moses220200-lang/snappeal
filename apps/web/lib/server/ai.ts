@@ -7,7 +7,7 @@ import { Ticket, TicketConfidence, PhotoCoach, Letter } from "./contracts";
  * show the user what we read from the photo so they can confirm/edit
  * before paying for the full draft. Same model, smaller prompt, no letter.
  */
-const EXTRACT_PROMPT = `You are Snappeal's PCN scanner. Extract the ticket
+const EXTRACT_PROMPT = `You are ParkingRabbit's PCN scanner. Extract the ticket
 fields from the attached London Penalty Charge Notice photograph.
 
 For each field, output what the photo actually shows. If a field is not
@@ -59,7 +59,7 @@ export async function extractTicket(input: {
  * extraction. Surfaces "try again" advice when the image is blurry / dark /
  * wrong subject. Same cost profile as a single cheap Claude call.
  */
-const COACH_PROMPT = `You are Snappeal's photo coach. The user has just taken a photo
+const COACH_PROMPT = `You are ParkingRabbit's photo coach. The user has just taken a photo
 of a London Penalty Charge Notice (PCN). Your job is to score the photo's legibility
 and give one short piece of "retake or proceed" advice.
 
@@ -99,7 +99,7 @@ export async function coachPhoto(input: {
  * polished, evidence-friendly paragraph that the drafter can later embed
  * in the letter. Never invents facts; only restructures.
  */
-const STRENGTHEN_PROMPT = `You are Snappeal's notes editor. The user has typed a few
+const STRENGTHEN_PROMPT = `You are ParkingRabbit's notes editor. The user has typed a few
 sentences describing what happened. Rewrite the notes into ONE concise paragraph
 (80–160 words) that:
 
@@ -152,7 +152,7 @@ export const GeneratedDraft = z.object({
 
 export type GeneratedDraft = z.infer<typeof GeneratedDraft>;
 
-const SYSTEM_PROMPT = `You are Snappeal's appeal drafter — a legally literate London PCN
+const SYSTEM_PROMPT = `You are ParkingRabbit's appeal drafter — a legally literate London PCN
 specialist working ONLY from the photographs and notes the user supplies.
 
 Your job is FOUR things in one response:
@@ -273,23 +273,55 @@ export async function generateDraft(input: {
    * uses these verbatim and re-extracts only what's missing. */
   confirmedTicket?: Partial<z.infer<typeof Ticket>>;
 }): Promise<GeneratedDraft & { modelUsed: string; costUsd: number | null }> {
+  // If the user has already confirmed the PCN fields on /app/capture (via
+  // /api/extract), don't make Claude re-OCR the ticket photo here. We just
+  // hand it the structured fields and skip attaching the PCN image —
+  // shaves ~10–25 s off the draft call by avoiding a second vision pass on
+  // the same notice. Evidence photos are still attached because Claude
+  // needs to read them to write the letter.
+  const required: Array<keyof z.infer<typeof Ticket>> = [
+    "issuer",
+    "pcnRef",
+    "vehicleReg",
+    "contraventionCode",
+    "location",
+    "issuedAt",
+    "amountPence",
+  ];
+  const ticket = input.confirmedTicket ?? {};
+  const ticketComplete =
+    required.every((k) => {
+      const v = (ticket as Record<string, unknown>)[k];
+      return v !== undefined && v !== null && v !== "";
+    });
+
   const promptParts = [
-    "Please extract the PCN fields and draft a representation letter for the attached PCN photo.",
+    ticketComplete
+      ? "Draft a representation letter for the PCN whose fields are provided below. The fields have already been OCR'd and confirmed by the user — do NOT re-extract or second-guess them. Use them verbatim in the letter."
+      : "Please extract the PCN fields from the attached PCN photo and draft a representation letter.",
     input.confirmedTicket && Object.keys(input.confirmedTicket).length > 0
-      ? `The user has already confirmed these ticket fields — use them verbatim and only re-OCR any missing/empty values:\n${JSON.stringify(input.confirmedTicket, null, 2)}`
+      ? `${ticketComplete ? "Confirmed" : "Partially confirmed"} ticket fields:\n${JSON.stringify(input.confirmedTicket, null, 2)}${
+          ticketComplete
+            ? ""
+            : "\n\nThe above fields are correct as-is; only fill any missing/empty values by reading the PCN photo."
+        }`
       : null,
     input.notes ? `User's note about what happened: ${input.notes}` : null,
     input.evidencePhotoDataUrls.length > 0
-      ? `${input.evidencePhotoDataUrls.length} evidence photo(s) of the scene are attached after the PCN. For each, give it a charitable, evidence-supportive reading in the letter — but never invent facts the photos do not show.`
+      ? `${input.evidencePhotoDataUrls.length} evidence photo(s) of the scene are attached. For each, give it a charitable, evidence-supportive reading in the letter — but never invent facts the photos do not show.`
       : null,
     "Respond with a single JSON object matching the provided schema. Do not wrap it in markdown.",
   ].filter(Boolean);
+
+  const images = ticketComplete
+    ? input.evidencePhotoDataUrls
+    : [input.pcnPhotoDataUrl, ...input.evidencePhotoDataUrls];
 
   const { value, modelUsed, costUsd } = await runStructured({
     prompt: promptParts.join("\n\n"),
     schema: GeneratedDraft,
     systemPrompt: SYSTEM_PROMPT,
-    imageDataUrls: [input.pcnPhotoDataUrl, ...input.evidencePhotoDataUrls],
+    imageDataUrls: images,
     timeoutMs: 120_000,
   });
 

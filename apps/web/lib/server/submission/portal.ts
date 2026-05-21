@@ -38,7 +38,7 @@ type CouncilRow = typeof schema.councils.$inferSelect;
  * Load the signed-in customer's profile (name + email + UK postal address +
  * phone) so the portal-automation prompt can fill the council's contact-
  * details form with real data instead of falling back to the "Foreign
- * address / C/o Snappeal" workaround. Returns null when the appeal is still
+ * address / C/o ParkingRabbit" workaround. Returns null when the appeal is still
  * anonymous (guest session — no userId yet).
  */
 async function loadCustomerProfile(userId: string | null): Promise<{
@@ -100,7 +100,7 @@ const ResultSchema = z.object({
  * are stored in the DB and edited via /admin/councils/<slug>/automation,
  * which is the source of truth.
  */
-const FALLBACK_SYSTEM_PROMPT = `You are Snappeal's council-portal submission agent.
+const FALLBACK_SYSTEM_PROMPT = `You are ParkingRabbit's council-portal submission agent.
 
 Your job:
 - Use the Playwright MCP tools to open the council's PCN challenge portal
@@ -167,7 +167,7 @@ export async function runPortalAutomation(opts: {
 ==================================================================
 🛑 STOP-AT-REVIEW SAFETY MODE — READ FIRST 🛑
 ==================================================================
-This run is operating in Snappeal's safety mode. You MUST drive the
+This run is operating in ParkingRabbit's safety mode. You MUST drive the
 council portal up to the FINAL REVIEW page (the screen that shows the
 filled letter + contact details + checkboxes, with a "Finish" / "Submit
 representation" button visible) — and then STOP. Do NOT click the final
@@ -182,7 +182,7 @@ Required behaviour:
    on any dialog that would lodge the representation.
 
 If you accidentally click Finish, that's a critical bug — log it in
-errorMessage. The Snappeal team enables safety mode while the agent is
+errorMessage. The ParkingRabbit team enables safety mode while the agent is
 under iteration; lodging a real PCN appeal here would harm the user.
 ==================================================================
 `
@@ -191,13 +191,13 @@ under iteration; lodging a real PCN appeal here would harm the user.
   // Load the signed-in customer's profile (name + signup email + UK postal
   // address + phone) so the agent fills the council's contact form with the
   // customer's real identity instead of falling back to "The Registered
-  // Keeper" + C/o Snappeal. We keep `appeal.replyEmail` as the council-
+  // Keeper" + C/o ParkingRabbit. We keep `appeal.replyEmail` as the council-
   // correspondence alias (forwards to inbound mail) so replies still land
-  // in the customer's Snappeal inbox.
+  // in the customer's ParkingRabbit inbox.
   const profile = await loadCustomerProfile(appeal.userId);
   const keeperName = profile?.name ?? "The Registered Keeper";
-  const keeperContactEmail = profile?.email ?? appeal.replyEmail ?? "no-reply@snappeal.ai";
-  const keeperReplyAlias = appeal.replyEmail ?? "no-reply@snappeal.ai";
+  const keeperContactEmail = profile?.email ?? appeal.replyEmail ?? "no-reply@parkingrabbit.com";
+  const keeperReplyAlias = appeal.replyEmail ?? "no-reply@parkingrabbit.com";
   const keeperAddress = profile
     ? [profile.addressLine1, profile.addressLine2, profile.city, profile.postcode]
         .filter(Boolean)

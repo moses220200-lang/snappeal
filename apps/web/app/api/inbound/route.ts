@@ -15,7 +15,7 @@ export const maxDuration = 60;
  * and let providers map to it via their dashboard config.
  *
  * Security: production should gate this on a shared secret in
- * `INBOUND_WEBHOOK_SECRET` (header `X-Snappeal-Webhook-Secret`).
+ * `INBOUND_WEBHOOK_SECRET` (header `X-ParkingRabbit-Webhook-Secret`).
  */
 const Body = z.object({
   from: z.string(),

@@ -18,7 +18,7 @@ const Schema = z.object({
   reasoning: z.string().max(500),
 });
 
-const PROMPT = `You are Snappeal's inbound-mail classifier. Classify the council's reply.
+const PROMPT = `You are ParkingRabbit's inbound-mail classifier. Classify the council's reply.
 
 - "cancelled" = council accepted the appeal, PCN cancelled.
 - "rejected" = representation rejected, PCN stands.

@@ -1,13 +1,13 @@
-# Snappeal
+# ParkingRabbit
 
-> Snappeal a London parking ticket in under five taps. **`apps/web` v0.1.5**.
+> Pay or challenge London parking tickets in minutes. **`apps/web` v0.2.1**.
 
-This repository hosts the **Snappeal** project — a London PCN appeal app at `snappeal.ai`.
+This repository hosts the **ParkingRabbit** project — a London PCN management app (pay, challenge, track) targeting the canonical domain `parkingrabbit.com`. *Local Docker stack still uses the legacy `snappeal-*` container + volume names from the pre-rebrand era; those are stateful identifiers and intentionally left alone.*
 
 **Source of truth for "what's shipped vs in-flight":** [`wiki/docs/handoff.md`](./wiki/docs/handoff.md). Read that first if you're picking this up cold.
 
 - **`wiki/`** — MkDocs Material documentation. Business plan, product spec, architecture, council KB, legal/user guides.
-- **`apps/web/`** — Next.js 16 + Tailwind v4 PWA with the **full real backend**: Postgres + Drizzle (11 tables, 9 migrations), email/password auth + JWT, Postgres-backed job queue, Claude+Playwright MCP portal-submission engine, inbound mail webhook, three-tier pricing, and a 13-page admin backend. (Earlier versions of this README framed it as a mock-data prototype — that hasn't been true since mid-May 2026.)
+- **`apps/web/`** — Next.js 16 + Tailwind v4 PWA with the **full real backend**: Postgres + Drizzle (11 tables, 10 migrations), email/password auth + JWT, Postgres-backed job queue, Claude+Playwright MCP portal-submission engine, inbound mail webhook, Stripe-ready pay-a-ticket + auto-submit-appeal payment flows, and a 13-page admin backend. (Earlier versions of this README framed it as a mock-data prototype — that hasn't been true since mid-May 2026.)
 - **`fixtures/mock-data.json`** — kept around for typed fixture parity in tests; the live app reads from Postgres.
 
 ## Prerequisites
@@ -18,8 +18,9 @@ This repository hosts the **Snappeal** project — a London PCN appeal app at `s
 ## Quick start
 
 ```bash
-# Docker stack — wiki + Cloudflare tunnel, all under the "snappeal"
-# project group in Docker Desktop.
+# Docker stack — Postgres + wiki + Cloudflare tunnel, all under the
+# legacy "snappeal" project group in Docker Desktop (kept as-is to
+# preserve the local Postgres volume across the v0.2.0 rebrand).
 docker compose up -d
 
 # Next.js prototype on http://localhost:3001
@@ -74,20 +75,20 @@ The Claude CLI is the live path for all AI reasoning (extract + draft + inbound 
 
 Then:
 
-- **Mockup / landing + app** — <http://localhost:3001> (and `/app` for the in-app screens).
-- **Wiki** — accessible via the central Caddy at `http://snappeal.theailab.dev/wiki/` (when DNS is in place), or directly on the docker network via `snappeal-wiki:8000`.
+- **Landing + app** — <http://localhost:3001> (and `/app` for the in-app screens).
+- **Wiki** — accessible via the central Caddy at `http://snappeal.theailab.dev/wiki/` (when DNS is in place), or directly on the docker network via `snappeal-wiki:8000`. *(Caddy host alias still says `snappeal` — it'll be re-pointed at `parkingrabbit.com` when production DNS is provisioned.)*
 - **Public URL** — `docker logs snappeal-tunnel | grep trycloudflare.com` prints the current Cloudflare Quick Tunnel URL pointing at the prototype.
 
 ## Ports & services
 
 | Service | Port | Notes |
 |---|---|---|
-| Snappeal Next.js dev | host `:3001` | `theoddstracker-app` owns `127.0.0.1:3000`, so we use `:3001` |
-| Snappeal Wiki | `snappeal-wiki:8000` (in-network only) | Served by main Caddy on `snappeal.theailab.dev/wiki/*` |
-| Snappeal Tunnel | n/a (egress only) | `cloudflare/cloudflared` proxying `host.docker.internal:3001` |
+| Next.js dev | host `:3001` | `theoddstracker-app` owns `127.0.0.1:3000`, so we use `:3001` |
+| Wiki (container `snappeal-wiki`) | `:8800` host → `:8000` container | Served by main Caddy on `snappeal.theailab.dev/wiki/*` |
+| Tunnel (container `snappeal-tunnel`) | n/a (egress only) | `cloudflare/cloudflared` proxying `host.docker.internal:3001` |
 | Main Caddy (host machine) | `:80`, `:443` | Pre-existing, at `~/Desktop/Caddy/Caddyfile` |
 
-The Compose project name is **`snappeal`** (set via `name: snappeal` in `docker-compose.yml`) — Docker Desktop groups all Snappeal containers under that name.
+The Compose project name is **`snappeal`** (set via `name: snappeal` in `docker-compose.yml`) — Docker Desktop groups all containers under that legacy name. The brand pivoted to ParkingRabbit on 2026-05-21 but the Docker project + Postgres volume names are intentionally left alone so the local dev DB survives the rebrand.
 
 ## Project layout
 
@@ -109,7 +110,7 @@ parkingappeal/                    # working dir (rename to snappeal/ — see bel
 │       ├── components/           # 31 client components (Logo, AppHeader,
 │       │                         #   BackHeader, AddressAutocomplete, OAuthButtons,
 │       │                         #   WizardOnboarding, BottomNav, GroundsCardQuiz, …)
-│       ├── drizzle/              # 9 migrations (0000–0008)
+│       ├── drizzle/              # 10 migrations (0000–0009)
 │       └── lib/server/           # auth, ai, appeals, jobs, submission, viewer, …
 ├── fixtures/
 │   └── mock-data.json            # typed fixture parity for tests
@@ -122,20 +123,9 @@ parkingappeal/                    # working dir (rename to snappeal/ — see bel
 └── README.md
 ```
 
-## Renaming the working directory to `snappeal/`
+## Working directory naming
 
-The Compose project name is already `snappeal` (so Docker Desktop groups everything correctly). The host directory is still `parkingappeal/` only because renaming requires closing all open handles. To rename:
-
-1. Stop the Next.js dev server (`Ctrl-C` in its terminal).
-2. `docker compose down`
-3. Close all editor / terminal sessions with the working dir set to `parkingappeal/`.
-4. In Explorer or PowerShell:
-   ```powershell
-   Rename-Item C:\Users\User\Desktop\ParkingAppeal C:\Users\User\Desktop\snappeal
-   ```
-5. Re-open in your editor at the new path.
-6. `docker compose up -d` and `npm run dev` (in `apps/web/`) to bring it back.
-7. The main Caddyfile + `git remote` are unaffected (no path-based config).
+The host directory is `parkingappeal/` for historical reasons (predates both the Snappeal and ParkingRabbit names). The Compose project name `snappeal` is independent and intentionally kept so the local Postgres volume survives the v0.2.0 brand pivot. No rename is required — the working dir is a local convenience and doesn't affect deploy.
 
 ## Roadmap
 

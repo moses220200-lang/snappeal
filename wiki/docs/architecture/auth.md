@@ -1,6 +1,6 @@
 # Auth
 
-Snappeal supports anonymous **guest** sessions and signed-in **users** side-by-side. The same flow works either way; signing in just adds cross-device sync, inbox parsing of council replies, and ownership claims on previously-anonymous appeals.
+ParkingRabbit supports anonymous **guest** sessions and signed-in **users** side-by-side. The same flow works either way; signing in just adds cross-device sync, inbox parsing of council replies, and ownership claims on previously-anonymous appeals.
 
 ## Status — what's actually live
 
@@ -92,8 +92,8 @@ token    = header + "." + payload + "." + sig
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/auth/sign-up` | POST | `{email, password, displayName?, phone?, addressLine1?, addressLine2?, addressCity?, addressPostcode?, sessionId?}` → creates user, sets cookie, claims guest appeals (only when sessionId matches `x-snappeal-session` header) |
-| `/api/auth/sign-in` | POST | `{email, password, sessionId?}` → verifies + sets cookie + claims (same header-match defence) |
+| `/api/auth/sign-up` | POST | `{email, password, displayName?, phone?, addressLine1?, addressLine2?, addressCity?, addressPostcode?, sessionId?}` → creates user, sets cookie, claims guest appeals. The `sessionId` body field is only honoured when it matches the **`x-snappeal-session` request header** (the same id the client always sends on guest API calls). Mismatch = claim is ignored, defending against a hostile signup attempting to inherit a guessed session's history. |
+| `/api/auth/sign-in` | POST | `{email, password, sessionId?}` → verifies + sets cookie + claims (same `x-snappeal-session` header-match defence). |
 | `/api/auth/sign-out` | POST | Clears cookie |
 | `/api/auth/me` | GET / PATCH | Returns `{ user }` from cookie; PATCH updates displayName |
 | `/api/auth/oauth/[provider]` | GET | Apple + Google entry point. Returns 503 with "configure these env vars" until OAuth credentials land. |
@@ -128,7 +128,7 @@ The wizard's Apple / Google buttons (`components/OAuthButtons.tsx`, also rendere
 
 ## CSRF + ownership
 
-JWT is in an httpOnly + SameSite=Lax cookie, which blocks cross-site request forgery for the dominant attack pattern. State-changing routes that are reachable from a different origin (`/api/inbound` webhook in particular) gate on a shared secret header instead (`X-Snappeal-Webhook-Secret`, REQUIRED in `NODE_ENV=production`).
+JWT is in an httpOnly + SameSite=Lax cookie, which blocks cross-site request forgery for the dominant attack pattern. State-changing routes that are reachable from a different origin (`/api/inbound` webhook in particular) gate on a shared secret header instead (`X-ParkingRabbit-Webhook-Secret`, REQUIRED in `NODE_ENV=production`).
 
 Appeal-scoped routes (`/api/appeals/[id]`, `/api/submit`, `/api/jobs/[id]`, `/api/submissions/[id]/progress`) use the helpers in `lib/server/viewer.ts` (`canViewAppeal`, `getRequestSessionId`) to gate access:
 

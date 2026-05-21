@@ -41,7 +41,7 @@ S98 1TU
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — Snappeal copies the drafted letter to the clipboard and opens `https://appeals.westminster.gov.uk/` in a new tab.
+- **v0.1 / v0.2**: manual — ParkingRabbit copies the drafted letter to the clipboard and opens `https://appeals.westminster.gov.uk/` in a new tab.
 - **v0.3 target**: automated via Playwright MCP (priority council — highest London PCN volume).
 - **Automation status**: `manual`
 

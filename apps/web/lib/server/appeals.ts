@@ -149,7 +149,7 @@ export async function createAppeal(input: CreateAppealInput): Promise<AppealReco
       ? { ...s, at: now.toISOString() }
       : s,
   );
-  const replyEmail = `${id}@appeals.snappeal.ai`;
+  const replyEmail = `${id}@appeals.parkingrabbit.com`;
   const [row] = await db()
     .insert(schema.appeals)
     .values({
@@ -276,12 +276,14 @@ export async function patchAppealDraft(
     ticket?: Partial<AppealView["ticket"]> | null;
     serviceTier?: "buy_time" | "grounds" | "care_plan";
     evidenceCount?: number;
+    grounds?: string[];
   },
 ): Promise<AppealRecord | null> {
   const updates: Partial<typeof schema.appeals.$inferInsert> = { updatedAt: new Date() };
   if (patch.notes !== undefined) updates.notes = patch.notes;
   if (patch.ticket !== undefined) updates.ticket = patch.ticket as AppealView["ticket"];
   if (patch.serviceTier !== undefined) updates.serviceTier = patch.serviceTier;
+  if (patch.grounds !== undefined) updates.grounds = patch.grounds;
   await db().update(schema.appeals).set(updates).where(eq(schema.appeals.id, appealId));
   return getAppealById(appealId);
 }

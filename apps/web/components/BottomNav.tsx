@@ -14,7 +14,7 @@ type Tab = {
 const TABS: readonly Tab[] = [
   { href: "/app", label: "Home", icon: Home },
   { href: "/app/tickets", label: "Tickets", icon: ReceiptText },
-  { href: "/app/capture", label: "Camera", icon: Camera, primary: true },
+  { href: "/app/capture", label: "Scan", icon: Camera, primary: true },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/profile", label: "Profile", icon: User },
 ];

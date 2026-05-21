@@ -48,7 +48,7 @@ Three phases, eight quarters, one product.
 - ✅ Landing page (hero + trust strip + how-it-works + download)
 - ✅ All in-app screens (Home, Capture extract+confirm + evidence grid, Notes, Paywall, Letter, Tickets list + detail, Inbox, Tips, Profile + 6 sub-pages)
 - ✅ 5-tab bottom nav (Home / Tickets / Camera-centered / Inbox / Profile)
-- ✅ AppHeader with shield + Snappeal wordmark + UK pill
+- ✅ AppHeader with shield + ParkingRabbit wordmark + UK pill
 - ✅ Red action CTA + iOS-blue navigation palette
 - ✅ Wizard onboarding (welcome → service-tier quiz → 3-question grounds quiz → permissions → OAuth/email upsell)
 - ✅ Branded 3-second splash animation
@@ -56,21 +56,22 @@ Three phases, eight quarters, one product.
 
 **Shipped — backend**
 
-- ✅ Postgres 16 in docker-compose, nine Drizzle migrations applied (0000–0008)
+- ✅ Postgres 16 in docker-compose, ten Drizzle migrations applied (0000–0009)
 - ✅ Claude CLI piped headlessly for all AI reasoning (extract + draft + inbound classify)
 - ✅ Postgres-backed job queue (`FOR UPDATE SKIP LOCKED`, exponential backoff, stale-lock recovery)
 - ✅ Worker pool boots via `instrumentation.ts`
 - ✅ Real submission engine — Claude+Playwright MCP for portal councils, email fallback (Resend-compatible)
 - ✅ Inbound mail webhook + LLM classification + auto status update
 - ✅ Email/password auth (pbkdf2-sha256, HS256 JWT in httpOnly cookie)
-- ✅ Free-to-draft pricing model: AI letter drafting is free and unlimited; £2.99 is charged only when the user auto-submits via the MCP portal agent. (Retires the legacy Buy Time / Full Appeal / Care Plan three-tier model — wizard tier picker removed 2026-05-20; the `appeals.serviceTier` column still exists but is no longer surfaced in the UI.)
+- ✅ Free-to-draft pricing model: AI letter drafting is free and unlimited; £2.99 is charged only when the user auto-submits via the **AI Auto-Submit Agent** (renamed from "MCP portal agent" for customer copy in v0.2.0). Retires the legacy Buy Time / Full Appeal / Care Plan three-tier model — wizard tier picker removed 2026-05-20; the `appeals.serviceTier` column still exists but is no longer surfaced in the UI.
+- ✅ **v0.2.0 ParkingRabbit pivot + v0.2.1 audit + v0.2.2 error guards & cloud-first drafts**: brand rename Snappeal → ParkingRabbit (logo, manifest, OG/Twitter cards, layout metadata, all customer copy, inbound-mail subdomain `appeals.parkingrabbit.com`, Stripe `appInfo`, every LLM system prompt). Product expanded from challenge-only to a parking-ticket management app. Home `/app` rebuilt as three navy `ActionHero` cards (`Deal with parking tickets` / `Challenge a ticket` / `Pay a ticket`) — pricing no longer shown on the cards; it surfaces in the paywall + `PaymentSheet`. Tickets list `/app/tickets` rebuilt to derive a `displayState` (`at_risk` / `due` / `appealed` / `resolved`) from `appeal.status` + the 14-day discount window; filter chips `All / To Pay / Challenging / Resolved` (Challenging covers both at_risk and appealed — reviewing options and being in flight are one customer journey); new purple `--color-snappeal-appealed-*` token scoped to ticket-list state semantics only. New `/app/pay` flow (PCN-details → review-and-authorise) with a Stripe-ready placeholder. Care Plan card removed from home (waitlist page retained). Branded `not-found.tsx` + global `error.tsx` boundaries; every `/app/*/[id]` page returns an actionable card instead of a spinner or stack trace. Draft persistence moved off `sessionStorage` — ticket fields, notes, grounds, and service tier now write straight to Postgres via `/api/appeals/[id]` PATCH (see `lib/client/draft.ts`); photo data URLs are the only remaining client-only payload, tracked as a deferred Blob-storage task.
 - ✅ Test-mode payment scaffold (Apple/Google/Card buttons that fake Stripe in dev)
 - ✅ In-process semaphore caps concurrent Claude subprocesses
 - ✅ Backend smoke tests: `npm run test:claude`, `npm run test:e2e:backend`
 
 **Scope decisions locked** (see [product/v0-1-mockup-audit.md](../product/v0-1-mockup-audit.md)):
 
-- Next.js 16 PWA, mobile-first; canonical domain `snappeal.ai`
+- Next.js 16 PWA, mobile-first; canonical domain `parkingrabbit.com`
 - 5-tab nav (revised from the original 4) — Inbox added once council reply tracking went live in v0.1
 - Photos step (PCN photo + auto-extract+confirm metadata + 0–6 evidence photos)
 - Notes step (tier-aware CTA: Free vs £2.99)
@@ -95,7 +96,7 @@ Three phases, eight quarters, one product.
 - Apple + Google OAuth providers (gated on Apple Developer Program + Google Cloud account)
 - Admin backend UI at `/admin` (gated by `role: 'admin'`) — appeals search, councils CRUD, submissions log + retry, inbound messages viewer, payments / refunds
 - Vercel deployment with the worker in a dedicated function + the web instances setting `SNAPPEAL_DISABLE_WORKER=1`
-- Inbound mail provider chosen + DNS/MX wired for `appeals.snappeal.ai`
+- Inbound mail provider chosen + DNS/MX wired for `appeals.parkingrabbit.com`
 - Stripe Subscription product for Care Plan + webhook
 - Per-council Playwright MCP recordings for the remaining 26 London authorities
 - Portal automation for the remaining 26 London authorities

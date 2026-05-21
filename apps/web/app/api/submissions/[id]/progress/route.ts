@@ -44,31 +44,34 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   // Ownership gate — the SSE stream re-broadcasts agent step text, "thoughts",
   // and screenshot URLs that quote letter content, so it absolutely cannot be
   // open. Resolve the job → appeal → viewer chain before we open the stream.
-  const job = await getJob(id);
-  if (!job) {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message: `Job ${id} not found` })}\n\n`, {
-      status: 404,
-      headers: { "content-type": "text/event-stream" },
+  //
+  // Why HTTP 200 on errors: EventSource silently discards the response body
+  // on any non-2xx status, so a 404/403 with a `data:` payload never reaches
+  // the client's `error` listener. We return 200 + a one-shot stream that
+  // emits the error frame and closes, which DOES reach the listener and
+  // lets the page surface a "submission not found" card.
+  const sseError = (message: string) =>
+    new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+      },
     });
-  }
+
+  const job = await getJob(id);
+  if (!job) return sseError(`Job ${id} not found`);
   if (job.appealId) {
     const appeal = await getAppealById(job.appealId);
     const viewer = await getViewer();
     const sessionId = getRequestSessionId(req);
     if (!appeal || !canViewAppeal(viewer, appeal, sessionId)) {
-      return new Response(`event: error\ndata: ${JSON.stringify({ message: "Forbidden" })}\n\n`, {
-        status: 403,
-        headers: { "content-type": "text/event-stream" },
-      });
+      return sseError("Forbidden");
     }
   } else {
     const viewer = await getViewer();
-    if (viewer.role !== "admin") {
-      return new Response(`event: error\ndata: ${JSON.stringify({ message: "Forbidden" })}\n\n`, {
-        status: 403,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }
+    if (viewer.role !== "admin") return sseError("Forbidden");
   }
 
   const encoder = new TextEncoder();

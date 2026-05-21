@@ -1,8 +1,8 @@
 # Business
 
-The business case for Snappeal — why this is a real opportunity, what we're building, how we'll make money, and what could go wrong.
+The business case for ParkingRabbit — why this is a real opportunity, what we're building, how we'll make money, and what could go wrong.
 
-- [Mission](mission.md) — why Snappeal exists.
+- [Mission](mission.md) — why ParkingRabbit exists.
 - [Vision](vision.md) — what we want to build over the next five years.
 - [Values](values.md) — how we work.
 - [Business plan](business-plan.md) — the executive summary in full.

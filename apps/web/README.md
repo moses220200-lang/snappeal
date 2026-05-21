@@ -1,6 +1,6 @@
-# Snappeal — apps/web
+# ParkingRabbit — apps/web
 
-The Snappeal Next.js 16 app: landing site + customer PWA + admin backend.
+The ParkingRabbit Next.js 16 app: landing site + customer PWA + admin backend.
 
 **Source of truth for project state:** [`wiki/docs/handoff.md`](../../wiki/docs/handoff.md). This README is intentionally short — anything beyond the dev quickstart belongs in the wiki.
 
@@ -10,7 +10,7 @@ The Snappeal Next.js 16 app: landing site + customer PWA + admin backend.
 docker compose up -d            # Postgres (127.0.0.1:5544), wiki, tunnel
 npm install
 cp .env.example .env.local      # then fill in AUTH_SECRET + ANTHROPIC_API_KEY at minimum
-npm run db:migrate              # apply all 9 Drizzle migrations
+npm run db:migrate              # apply all 10 Drizzle migrations
 npm run db:seed                 # seed 7 councils
 npm run dev                     # http://localhost:3001
 ```
@@ -54,7 +54,7 @@ lib/
 ├── client/                # Browser helpers (haptics, session id)
 ├── server/                # Server-only (auth, ai, appeals, jobs, submission, …)
 └── grounds-catalog.ts     # Customer-facing PCN appeal grounds
-drizzle/                   # 9 migrations + meta
+drizzle/                   # 10 migrations + meta
 scripts/                   # Seed + promote + smoke tests
 tests/                     # Playwright UI + API specs
 ```

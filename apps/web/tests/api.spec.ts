@@ -46,7 +46,7 @@ test.describe("API routes", () => {
       sessionId,
       status: "draft",
       step: "photos",
-      replyEmail: expect.stringContaining("@appeals.snappeal.ai"),
+      replyEmail: expect.stringContaining("@appeals.parkingrabbit.com"),
     });
   });
 
@@ -136,7 +136,7 @@ test.describe("API routes", () => {
   });
 
   test("POST /api/care-plan/waitlist accepts a valid email and is idempotent", async ({ request }) => {
-    const email = `wl-${Date.now()}@snappeal.test`;
+    const email = `wl-${Date.now()}@parkingrabbit.test`;
     const first = await request.post("/api/care-plan/waitlist", {
       data: { email, source: "test" },
     });

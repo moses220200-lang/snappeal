@@ -1,6 +1,6 @@
 # Product
 
-What Snappeal does, how the user moves through it, what we built and what we deliberately did not.
+What ParkingRabbit does, how the user moves through it, what we built and what we deliberately did not.
 
 - [Overview](overview.md) — the one-paragraph version.
 - [User flow](user-flow.md) — the five steps, screen by screen.

@@ -16,7 +16,7 @@ export default function AdminWikiPage() {
     <div className="flex-1 flex flex-col">
       <div className="border-b border-snappeal-border bg-white px-6 py-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold text-snappeal-navy">Snappeal Wiki</p>
+          <p className="text-sm font-bold text-snappeal-navy">ParkingRabbit Wiki</p>
           <p className="text-[11px] text-snappeal-muted">
             MkDocs Material build — business, product, architecture, councils, legal, users.
           </p>
@@ -33,7 +33,7 @@ export default function AdminWikiPage() {
       </div>
       <iframe
         src={WIKI_URL}
-        title="Snappeal Wiki"
+        title="ParkingRabbit Wiki"
         className="flex-1 w-full border-0"
         // Sandbox keeps the wiki's JS scoped — we trust our own MkDocs build
         // so allow scripts + same-origin so search + nav work normally.

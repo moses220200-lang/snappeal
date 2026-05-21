@@ -107,14 +107,14 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
       <div className="fixed inset-x-0 bottom-0 z-40 safe-bottom px-4 pb-3 pointer-events-none">
         <div
           role="dialog"
-          aria-label="Install Snappeal"
+          aria-label="Install ParkingRabbit"
           className="pointer-events-auto mx-auto max-w-2xl rounded-2xl bg-snappeal-navy text-white shadow-2xl shadow-black/30 border border-white/10 overflow-hidden animate-[install-slide-up_400ms_cubic-bezier(0.22,1,0.36,1)_both]"
         >
           <div className="flex items-center gap-4 px-5 py-4">
             <ShieldGlyph />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold leading-tight">
-                Install Snappeal
+                Install ParkingRabbit
               </p>
               <p className="text-xs text-white/65 mt-0.5">
                 Add to your home screen for one-tap access — or get the
@@ -148,7 +148,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
               onClick={triggerInstall}
               className="flex-1 rounded-xl bg-snappeal-primary text-white text-sm font-semibold py-2.5 hover:bg-snappeal-primary-600 transition"
             >
-              Install Snappeal
+              Install ParkingRabbit
             </button>
           </div>
         </div>
@@ -164,7 +164,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold leading-tight">Get the app</p>
           <p className="text-[11px] text-white/65 mt-0.5">
-            Snappeal lives best on your home screen.
+            ParkingRabbit lives best on your home screen.
           </p>
         </div>
         <button

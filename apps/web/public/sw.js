@@ -1,4 +1,4 @@
-// Snappeal service worker — Web Push receiver + basic offline shell.
+// ParkingRabbit service worker — Web Push receiver + basic offline shell.
 //
 // Push payload contract (sent by /api/inbound when the council replies):
 //   { title: string, body: string, url?: string, tag?: string }
@@ -21,9 +21,9 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data.json();
   } catch {
-    payload = { title: "Snappeal", body: event.data.text() };
+    payload = { title: "ParkingRabbit", body: event.data.text() };
   }
-  const title = payload.title || "Snappeal";
+  const title = payload.title || "ParkingRabbit";
   const options = {
     body: payload.body || "You have an update from the council.",
     icon: "/logo.svg",

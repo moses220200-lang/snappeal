@@ -1,6 +1,6 @@
 # Data model
 
-Postgres 16 in dev (Docker Compose) → Neon Postgres in production. Drizzle ORM. Migrations under `apps/web/drizzle/`. As of 2026-05-20 the live schema has **11 tables** and **9 migrations applied** (`0000`–`0008`).
+Postgres 16 in dev (Docker Compose) → Neon Postgres in production. Drizzle ORM. Migrations under `apps/web/drizzle/`. As of 2026-05-21 the live schema has **11 tables** and **10 migrations applied** (`0000`–`0009`).
 
 ## Entities
 
@@ -59,7 +59,7 @@ The full schema lives in [`apps/web/lib/server/db/schema.ts`](https://github.com
 
 ## Joins worth knowing
 
-- `inbound_messages.to_addr` encodes the appeal id (`<ap_xxx>@appeals.snappeal.ai`). `processInboundMessage()` parses the local part and joins to `appeals.id`.
+- `inbound_messages.to_addr` encodes the appeal id (`<ap_xxx>@appeals.parkingrabbit.com`). `processInboundMessage()` parses the local part and joins to `appeals.id`.
 - `appeals → councils` is the only nullable FK — guards against AI-invented slugs.
 - `jobs.appeal_id` is a soft pointer (no FK) so jobs survive appeal deletion. Cleanup is via a periodic sweep, not cascade.
 

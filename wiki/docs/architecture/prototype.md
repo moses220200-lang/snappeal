@@ -28,6 +28,8 @@ parkingappeal/                                    # working dir (rename to snapp
         ├── next.config.ts                        #   allowedDevOrigins for HMR over 127.0.0.1 / cloudflared
         ├── app/                                  # App Router
         │   ├── layout.tsx                        #     root layout — Splash + InstallBanner (landing-only) + no-zoom viewport
+        │   ├── not-found.tsx                     #     branded global 404 (any unmatched route, or `notFound()` from a server component)
+        │   ├── error.tsx                         #     branded global render-exception boundary — logs `error.digest` to console, shows Try again + Back to app
         │   ├── page.tsx                          #     /                landing
         │   ├── privacy/page.tsx                  #     /privacy         draft policy
         │   ├── terms/page.tsx                    #     /terms           draft ToS
@@ -35,12 +37,12 @@ parkingappeal/                                    # working dir (rename to snapp
         │   ├── sign-up/page.tsx                  #     /sign-up         email/password sign-up
         │   ├── app/                              #     /app/*           in-app routes (mobile-first)
         │   │   ├── layout.tsx                    #       shell: safe-top + max-w-md + BottomNav + WizardOnboarding
-        │   │   ├── page.tsx                      #       Home (header + Start hero + PricingTiers + capture shortcuts + latest ticket + how it works + tips)
+        │   │   ├── page.tsx                      #       Home (header + three navy `ActionHero` cards: Deal with parking tickets / Challenge a ticket / Pay a ticket + How-it-works + Deadline tip)
         │   │   ├── capture/page.tsx              #       Step 1 — Photos: rear-camera/upload PCN + auto-extract+confirm metadata + 6-slot evidence grid
         │   │   ├── notes/page.tsx                #       Step 2 — Notes (tier-aware CTA: free vs £2.99)
-        │   │   ├── paywall/page.tsx              #       Step 3 — Pay (Buy Time = free button; Grounds = fake-pay row or real Stripe)
-        │   │   ├── letter/[id]/page.tsx          #       Step 4 — drafted letter, real /api/appeals/[id], submit-then-poll
-        │   │   ├── tickets/page.tsx              #       Tickets list (filter tabs: All / In Progress / Awaiting / Won / Lost + Most Recent badge)
+        │   │   ├── paywall/page.tsx              #       Step 3 — free drafting (calls /api/generate-stream, no payment here)
+        │   │   ├── letter/[id]/page.tsx          #       Step 4 — drafted letter; Submit opens PaymentSheet → /api/submit → /app/submitting/<jobId>
+        │   │   ├── tickets/page.tsx              #       Tickets list — filter tabs All / To Pay / Challenging / Resolved (Challenging covers both at_risk and appealed); cards derive a `displayState` from `appeal.status` + `ticket.issuedAt` + 14-day discount window (at_risk / due / appealed / resolved) and render one amount+state line + one timing chip + NEXT STEP + two-button row. No top-right status pill, no per-card horizontal timeline.
         │   │   ├── tickets/[id]/page.tsx         #       Ticket detail (timeline + summary + linked letter)
         │   │   ├── inbox/page.tsx                #       Chat-style sent + received thread per appeal
         │   │   ├── tips/page.tsx                 #       Tips library
@@ -61,9 +63,11 @@ parkingappeal/                                    # working dir (rename to snapp
         │       ├── jobs/[id]/route.ts            #       GET  → job status polling
         │       ├── checkout/route.ts             #       POST → Stripe PaymentIntent (£2.99) — real Stripe path
         │       └── stripe/webhook/route.ts       #       POST → signature-verified webhook
-        ├── components/                           # 16 components — see "Components" below
+        ├── components/                           # 34 components — see "Components" below
         ├── lib/
-        │   ├── client/session.ts                 # localStorage/sessionStorage helpers (sessionId, photos, notes, tier, ticket)
+        │   ├── client/session.ts                 # Identity + transient flow state — `sessionId`, `currentAppealId` pointer, photo data URLs (deferred until Blob storage is wired), `serviceTier` UX preference. NO ticket/notes/grounds data — those moved to the cloud (see `client/draft.ts`).
+        │   ├── client/draft.ts                   # Cloud-first draft helpers — `ensureCurrentAppeal()` / `patchCurrentAppeal()` / `debouncedPatch()` / `getAppeal()`. PATCHes /api/appeals/[id] on every keystroke so the draft is never client-only.
+        │   ├── client/sse.ts                     # `consumeSSE()` — tiny SSE parser over `fetch().body` (EventSource can't POST a JSON body, so the paywall stream uses this).
         │   ├── id.ts                             # nanoid-style id generator
         │   ├── mock-data.ts                      # typed fixtures — kept only for landing page demo
         │   ├── stripe-client.ts                  # singleton loadStripe() for the Payment Element
@@ -132,16 +136,17 @@ parkingappeal/                                    # working dir (rename to snapp
 
 | Route | Notes |
 |---|---|
-| `/app` | Home — hero + pricing tiers + capture + latest ticket + tips |
-| `/app/capture` | **Unified Step 1.** Either PCN photo OR manual-entry data triggers the field grid + 6-slot evidence upload. Banner shown when arriving from manual flow. |
+| `/app` | Home — three navy-gradient `ActionHero` cards (Deal with parking tickets → `/app/capture?from=review` · Challenge a ticket → `/app/capture` (sets `serviceTier=grounds`) · Pay a ticket → `/app/pay`), each with title + subtitle + blue CTA + right-side illustration (scan-line PCN / appeal letter / receipt with £ badge + green shield) + How-it-works + Deadline tip. No pricing shown on cards. |
+| `/app/capture` | **Unified Step 1.** Either PCN photo OR manual-entry data triggers the field grid + 6-slot evidence upload. Banner shown when arriving from manual flow. When entered via `?from=review` (free Review-my-ticket card on `/app`), after OCR completes a `ReviewRecommendation` panel renders instead of the linear "Continue to notes" CTA — three explicit next-step buttons: **Challenge this ticket** (£2.99 → `/app/notes`), **Pay this ticket** (→ `/app/pay`), **Set deadline reminders** (Coming-soon placeholder, no scheduling backend yet). |
 | `/app/manual-entry` | Council → PCN → reg → review → routes back to `/app/capture?from=manual` |
 | `/app/notes` | **Step 2** — card-quiz of UK PCN appeal grounds (6 categories × ~25 cards from `lib/grounds-catalog.ts`) + optional collapsible notes textarea |
-| `/app/paywall` | **Step 3** — free for `buy_time`; £2.99 fake-pay or Stripe for `grounds` |
-| `/app/letter/[id]` | **Step 4** — drafted letter; Submit redirects to `/app/submitting/[jobId]` |
+| `/app/pay` | **New (v0.2.0)** — Pay-a-ticket flow. Two-step form: (1) PCN reference + vehicle reg + issuer + amount due + optional discount/final deadlines; (2) review with `ticket amount + £1.99 ParkingRabbit service fee = total`, an explicit "I authorise ParkingRabbit to pay this ticket on my behalf" checkbox gating the Pay button, and a Stripe-ready placeholder surface (`createStripeCheckoutSession` TODO at the integration point — no real charge until keys land). |
+| `/app/paywall` | **Step 3 of the challenge flow** — free drafting. Fires `/api/generate-stream` and routes to `/app/tickets/[id]` (where the drafted letter, Submit + `PaymentSheet`, and `LetterActions` all now live). |
+| `/app/letter/[id]` | **Legacy** — kept as a `redirect()` stub to `/app/tickets/[id]` so push notifications / email links / paywall redirects from before the merge still resolve. |
 | `/app/submitting/[id]` | Live gamified view — slideshow of agent screenshots, milestone ladder, activity log, queue position, terminal "Submission complete" badge |
 | `/app/watch/[appealId]` | Server-side redirect to the latest job's `/app/submitting/[id]` |
-| `/app/tickets` | Filter tabs + cards with persistent **"Snappeal AI — Watch the AI submission"** CTA strip |
-| `/app/tickets/[id]` | Detail + timeline + same AI CTA |
+| `/app/tickets` | Filter chips (All / To Pay / Challenging / Resolved). The `Challenging` chip covers both reviewing (`at_risk`) and in-flight (`appealed`) cards — they're one journey from the customer's POV. Each ticket card renders one **amount + state line** ("£X at risk" blue / "£X due" red / "£X appealed" purple / "Cancelled £X" green or "Closed £X" slate), a **single right-side timing chip** ("Decide in N days" / "Discount ends in N days" / "Council reply expected" with "Submitted N days ago" sub-line / "Closed on …"), a compact **NEXT STEP** strip, and a two-button row (`Review options` / `Pay ticket` / `Track appeal` paired with `View details`). Resolved cards collapse to a chevron row. The **"ParkingRabbit AI — Watch the AI submission"** strip persists on cards in the `appealed` state. |
+| `/app/tickets/[id]` | **Step 4 — final destination for a challenge**. Ticket header + council badge + structured PCN fields + timeline + the AI-drafted letter body + a "Recommended next step" Submit card. Submit opens `PaymentSheet` (Apple Pay / Google Pay / card via Stripe `<PaymentElement>`); on success `/api/submit` fires with the real PaymentIntent id and routes to `/app/submitting/[jobId]`. After submission the card flips to a green "Submitted to the council" confirmation. Polls `/api/appeals/<id>` every 2 s until the draft body lands. (Replaces the old standalone `/app/letter/<id>` route.) |
 | `/app/inbox` | Chat-style sent + received per appeal |
 | `/app/tips` | Tips library (now with `BackHeader`) |
 | `/app/profile` | Signed-in/guest cards + 6 sub-pages (care-plan, help, notifications, payment-methods, personal-details, vehicles); Sign-in/up moved to top |
@@ -183,24 +188,25 @@ parkingappeal/                                    # working dir (rename to snapp
 | `/api/admin/inbound/classify` | Sandbox classifier |
 | `/api/health` | Reports claudeCli / db / stripe / submissionEngine / aiModel (reads `SNAPPEAL_SUBMISSION_LIVE !== "0"` — matches the engine). |
 
-## Components (33)
+## Components (34)
 
 | Component | Where | What |
 |---|---|---|
 | `Logo` | landing nav + footer + sign-in + sign-up + splash + apple-icon + OG | **Canonical source.** Exports `SnappealMark` (shield only) + `SnappealLogo` (shield + wordmark) with `dark`/`light` variants. Backward-compat: `ShieldLogo`, `Wordmark` aliases. |
 | `AppHeader` | /app, /app/tickets, /app/inbox, /app/profile | Sticky glass header using `SnappealMark` + wordmark + UK pill |
+| `ActionHero` | /app home (×3) | **New (v0.2.1).** Reusable navy-radial-gradient hero card: title + subtitle + blue CTA + right-side illustration. Used three times on the home — Deal with parking tickets / Challenge a ticket / Pay a ticket. Inline `ScanIllustration`, `ChallengeIllustration`, `PayIllustration` provide the right-side art (PCN with scan line / appeal letter with signature / receipt with £ badge + green shield). |
 | `BackHeader` | every other /app sub-page + sign-in/up | Sticky glass back-arrow header. No negative margin — reserves full height including safe-area inset. |
 | `PhoneMockup` | landing hero | In-app preview with timeline |
 | `WindscreenBackdrop` | landing hero | CSS-only PCN-on-windscreen scene |
 | `StoreBadges` | landing download section | App Store + Google Play |
-| `BottomNav` | /app shell | 5-tab nav: Home / Tickets / Camera● / Inbox / Profile |
+| `BottomNav` | /app shell | 5-tab nav: Home / Tickets / Scan● / Inbox / Profile |
 | `AppealCard` | (legacy — replaced by inline `TicketCard`) | Status pill + summary + step progress |
 | `Timeline` | ticket detail | Vertical timeline (Apple-style dots) |
-| `HorizontalTimeline` | /app home + tickets list | Horizontal stepper |
 | `CaptureMethods` | (subsumed into /app/capture) | Real `<input capture="environment">` for camera + library |
-| `LetterActions` | /app/letter | Copy / share / Track link |
-| `StripePaymentForm` | /app/paywall | `<Elements>` + `<PaymentElement>` themed to brand |
-| `FakePaymentButtons` | /app/paywall | Apple/Google/Card fake buttons in dev |
+| `LetterActions` | /app/letter | Copy / share (Track removed — superseded by the post-submit confirmation card) |
+| `PaymentSheet` | /app/letter | **New.** Bottom-modal opened by Submit. Two-phase mount so Stripe `<Elements>` only loads when open. Hosts either `StripePaymentForm` or `FakePaymentButtons`; on success, forwards the real PaymentIntent id to `/api/submit`. |
+| `StripePaymentForm` | inside `PaymentSheet` | `<Elements>` + `<PaymentElement layout="tabs">` themed to brand. Stripe auto-renders Apple Pay / Google Pay tabs on supported browsers. |
+| `FakePaymentButtons` | inside `PaymentSheet` (when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`) | Apple/Google/Card fake buttons; returns `pi_test_<method>_<rand>` to the parent. |
 | `GeneratingOverlay` | /app/paywall | Event-driven (read → ground → draft → done) milestone ladder + live letter preview with typing caret |
 | `SnappealSplash` | root layout | 3-second branded splash (sessionStorage-gated) |
 | `WizardOnboarding` | /app shell | First-launch: welcome → service tier quiz → grounds quiz → permissions → OAuth/email upsell; OAuth buttons now wire to `/api/auth/oauth/<provider>` |
@@ -236,18 +242,22 @@ parkingappeal/                                    # working dir (rename to snapp
 | `--snappeal-border` | `#E5E5EA` | Apple system gray 5 (deference) |
 | `--snappeal-danger` | `#FF3B30` | Errors |
 | `--snappeal-warning` | `#FF9500` | Test-mode banner |
+| `--snappeal-appealed` | `#7C3AED` | **Tickets-list-scoped purple** for the "appealed" state — purple is intentionally avoided on brand surfaces but used on the tickets list to clearly separate the in-flight appeal state from the at-risk (blue) / due (red) / resolved (green) states. |
 
 Action red was introduced to match the mockups — gives the primary CTA the visual weight financial-services patterns demand. iOS blue stays for navigational + secondary actions.
 
-## Pricing tiers (the marketing mix)
+## Pricing tiers (v0.2.0 — ParkingRabbit positioning)
 
-| Tier | Price | What's included | Status |
+The product is now a parking-ticket management app (pay, challenge, track), not just an appeal tool. The home `/app` surfaces three actions:
+
+| Action | Price | What's included | Status |
 |---|---|---|---|
-| **Buy Time** | Free | Quick holding challenge to protect the 14-day discount window | ✅ live |
-| **Full Appeal** | £2.99 one-off | AI-drafted grounds-based representation + tracked submission | ✅ live (test mode) |
-| **Care Plan** | £9.99/mo | **Unlimited grounds-based appeals** + 90% appeal-rate guarantee + roadside invoice recovery + priority support | 🟡 coming soon (Stripe subscription scaffold pending) |
+| **Review my ticket** | Free | Scan the PCN, OCR the fields, present pay / challenge / reminders recommendation | ✅ live |
+| **Pay a ticket** | Ticket amount + **£1.99** ParkingRabbit service fee | We pay the council on the user's behalf after explicit authorisation. UI + flow live at `/app/pay`; Stripe checkout is a placeholder until keys land. | 🟡 Stripe-ready (placeholder surface, TODOs at `createStripeCheckoutSession`) |
+| **Challenge a ticket** | **£2.99** per auto-submit | AI-drafted grounds-based representation + AI Auto-Submit Agent files via the council portal. Drafting itself is free. £2.99 is charged at submit time via `PaymentSheet`. | ✅ live (test Stripe via PaymentSheet on `/app/tickets/<id>`) |
+| **Care Plan** | £9.99/mo | Unlimited auto-submissions + roadside invoice recovery + priority support | 🟡 scaffold only — **no longer surfaced on `/app` home in v0.2.0**; waitlist page at `/app/profile/care-plan` remains until the Subscription product + webhook ship |
 
-Tier selection happens in the wizard's Service step. Stored client-side at `localStorage["snappeal.serviceTier"]`. Paywall reads it and routes Free → no-payment confirm button, Grounds → Stripe (fake in dev) → /api/generate.
+The legacy "Buy Time / Full Appeal / Care Plan" wizard tier picker is retired. `appeals.serviceTier` is still in the schema (default `"grounds"`) but no longer surfaced; safe to remove in a future migration once nothing reads it.
 
 ## What's wired vs mocked
 
@@ -268,7 +278,7 @@ Tier selection happens in the wizard's Service step. Stored client-side at `loca
 | **Email/password auth (JWT)** | ✅ wired | pbkdf2-sha256 hashing, HS256 JWT in httpOnly cookie, /sign-in + /sign-up pages, sign-out button on Profile. Guest appeals claim onto the user on sign-in. |
 | **OAuth (Apple / Google)** | 🟡 designed | Wizard auth step + branded buttons in place; routes redirect to email sign-up until Developer accounts clear and Clerk/our own provider is wired. |
 | **Job queue + worker** | ✅ wired | `jobs` table, FOR UPDATE SKIP LOCKED claim, exponential backoff, stale-lock recovery. Worker boots from `instrumentation.ts`. |
-| **Care Plan subscription** | 🟡 UI only | "Coming Soon" pill on the upsell cards. Needs Stripe Subscription product + webhook. |
+| **Care Plan subscription** | 🟡 scaffold | Removed from `/app` home in v0.2.0; the `/app/profile/care-plan` waitlist page is all that remains. Needs Stripe Subscription product + webhook before it can re-surface. |
 | **Admin backend** | ⛔ not started | `role: 'admin'` is on the users table; UI is the next deliverable. |
 
 ## Backend architecture (in two paragraphs)
@@ -301,7 +311,7 @@ The `test:e2e` suite is being rewritten for the real API surface (see [#8 in tod
 4. **Wizard staging** — split the monolithic first-launch wizard into per-moment interventions (camera-tab first-press, grounds quiz inline on Notes, post-success upsell).
 5. **Steve-Jobs polish** — win-rate ring, confetti on cancellation, streak badges, MCP a11y audit.
 6. **Playwright E2E suite refresh** — current suite assumes mock-data; needs rewriting against the real API.
-7. **Inbound mail DNS + MX** for `appeals.snappeal.ai` once a provider (Postmark / Resend / SES) is picked.
+7. **Inbound mail DNS + MX** for `appeals.parkingrabbit.com` once a provider (Postmark / Resend / SES) is picked.
 
 ## How to verify everything works locally
 

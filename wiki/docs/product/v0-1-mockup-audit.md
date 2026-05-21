@@ -10,7 +10,7 @@ Comparison of the wiki as written against the [v0.1 home screen mockup](mockups.
 
 | # | Question | Decision |
 |---|---|---|
-| A1 | Name | **Snappeal** (canonical domain `snappeal.ai`) |
+| A1 | Name | **ParkingRabbit** (canonical domain `parkingrabbit.com`; pivoted from `Snappeal` / `snappeal.ai` on 2026-05-21) |
 | A2 | Geographic scope | **London-only** for v0.1 (no UK-wide pivot) |
 | B4 | Auth in v0.1 | **Scope down** — Profile tab = Settings/Help/Privacy, no accounts |
 | C1 | Voice | **"We draft"** — no "experts" framing |
@@ -20,17 +20,17 @@ Comparison of the wiki as written against the [v0.1 home screen mockup](mockups.
 
 ## A. Brand identity
 
-### A1. ✅ Name decided — **Snappeal**
+### A1. ✅ Name decided — **ParkingRabbit**
 - **Original wiki working name**: "Appeal".
 - **Mockup**: "Park Appeal UK".
-- **Decision (2026-05-19)**: **Snappeal** in app chrome and conversation; *"Snappeal — Park Appeal UK"* as the long form for App Store listing and SEO landing page. Global rename completed across `mkdocs.yml`, `index.md`, `brand.md`, `README.md`, `docker-compose.yml`, `logo.svg`, `extra.css` and every product reference in the wiki body.
-- **Why Snappeal**: portmanteau of *snap* (photo-first capture) and *appeal* (the delivered service); short, verbable, mobile-native. Carries the entire UX in one word.
+- **Decision (2026-05-19)**: **ParkingRabbit** in app chrome and conversation; *"ParkingRabbit — Park Appeal UK"* as the long form for App Store listing and SEO landing page. Global rename completed across `mkdocs.yml`, `index.md`, `brand.md`, `README.md`, `docker-compose.yml`, `logo.svg`, `extra.css` and every product reference in the wiki body.
+- **Why ParkingRabbit**: portmanteau of *snap* (photo-first capture) and *appeal* (the delivered service); short, verbable, mobile-native. Carries the entire UX in one word.
 
 ### A2. ✅ Geographic scope decided — **London-only for v0.1**
 - **Decision (2026-05-19)**: ship London-only. No UK rollout in v0.1, no Scotland/Wales/NI scoping work, no `Park Appeal UK` long form.
 - **Mockup consequence**: the `UK` location pill in the mockup header reads **`London`** in our build spec.
 - **Wiki consequence**: the current London-shaped content (`market.md`, `councils/`, `legal/`) is correct and stays. No new legal pages for TPT / Scotland / Wales / NI. The mid-tier borough volume data gap stays priority; UK-wide rollout deferred indefinitely.
-- **Brand consequence**: drop the "Snappeal — Park Appeal UK" long form. Replaced with "Snappeal — appeal a London parking ticket" as the App Store descriptor.
+- **Brand consequence**: drop the "ParkingRabbit — Park Appeal UK" long form. Replaced with "ParkingRabbit — appeal a London parking ticket" as the App Store descriptor.
 
 ### A3. 🟡 Brand colour
 - **Wiki** (`brand.md`, `extra.css`): single accent — London-blue `#2563eb`.
@@ -149,7 +149,7 @@ All five high-severity decisions are now made (A1, A2, B4, C1, C2). The remainin
 |---|---|---|
 | A3 | Brand colour tokens (navy + red CTA) | 🟡 pending — update `extra.css` + `brand.md` |
 | A4 | Logo (replace placeholder "A" with finalised "S" mark) | 🟢 placeholder in place, needs design pass |
-| A5 | Tagline / voice reconciliation (mockup says "Challenge"; we say "Snappeal") | 🟢 minor |
+| A5 | Tagline / voice reconciliation (mockup says "Challenge"; we say "ParkingRabbit") | 🟢 minor |
 | B1 | Manual PCN entry as first-class path | 🟡 refactor `user-flow.md` + `ai-pipeline.md` |
 | B2 | Evidence photos move to step 2 (post-capture) | 🟡 refactor `user-flow.md` |
 | B3/D4 | Appeal state machine + status timeline | 🟡 new `architecture/appeal-state-machine.md` |
@@ -165,7 +165,7 @@ All five high-severity decisions are now made (A1, A2, B4, C1, C2). The remainin
 A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mockups.md) #1). It largely confirms the visual direction (purple brand, shield logo, 4-step "How it works", phone-on-PCN hero, app store badges) but introduces **five fresh conflicts** with locked decisions. Captured here to flag for user reconciliation; the [homepage spec](screens/homepage.md) renders the safe interpretation pending user confirmation.
 
 ### F1. ✅ Visual direction — adopted
-- **Decision (2026-05-19 evening)**: adopt the homepage mockup's visual structure for `snappeal.ai`.
+- **Decision (2026-05-19 evening)**: adopt the homepage mockup's visual structure for the landing page (then `snappeal.ai`, now `parkingrabbit.com`).
 - Purple primary `#007aff` replaces the earlier blue placeholder ([brand.md](../product/brand.md) updated).
 - Navy shield with white **S** is the logo silhouette ([logo.svg](../assets/logo.svg) regenerated).
 - Hero structure: 🇬🇧 pill → headline with purple-highlighted noun → body → two CTAs → Trustpilot block.
@@ -176,7 +176,7 @@ A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mo
 
 ### F2. ✅ *"Expert Appeal Writers"* — adopt safe interpretation (no "experts" framing)
 - **Conflict**: Reintroduces the "experts" framing locked out by C1 (see above). DoNotPay-style FTC exposure risk.
-- **Action**: In the homepage spec we render the trust card as **"AI-Drafted Appeals"** with the body *"Snappeal drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."*
+- **Action**: In the homepage spec we render the trust card as **"AI-Drafted Appeals"** with the body *"ParkingRabbit drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."*
 - **Needs user confirmation** if you want to override C1.
 
 ### F3. ✅ *"No Win, No Fee"* — adopt safe interpretation (£2.99 non-refundable stays)
@@ -196,7 +196,7 @@ A second mockup arrived: the **desktop marketing homepage** (see [mockups.md](mo
 
 ### F6. ✅ Pre-launch Trustpilot — omit in v0.1, surface real reviews from v0.2
 - **Conflict**: We can't show a Trustpilot rating before users have rated us. Showing one fabricated is a regulatory + reputational risk (ASA UK rules on misleading claims).
-- **Action**: Homepage spec omits the Trustpilot block in v0.1. Re-add in v0.2+ once we have real Trustpilot reviews. *"Thousands of London drivers trust Snappeal"* badge similarly replaced with *"Built for London drivers"* until real volume justifies the claim.
+- **Action**: Homepage spec omits the Trustpilot block in v0.1. Re-add in v0.2+ once we have real Trustpilot reviews. *"Thousands of London drivers trust ParkingRabbit"* badge similarly replaced with *"Built for London drivers"* until real volume justifies the claim.
 - No user reconciliation needed — this is a compliance call.
 
 ### F7. ✅ *"We Fight. You Win."* — soften to honest voice ("We draft and submit")

@@ -7,4 +7,4 @@ The legal scaffolding around London PCNs — written in plain English, sourced w
 - [Representations & appeals](representations-and-appeals.md) — the stages, the deadlines, who decides what.
 
 !!! warning "Not legal advice"
-    These pages summarise the law as the Snappeal team understands it. They are not a substitute for legal advice from a solicitor. Where a deadline or right is referenced, always confirm against the council's own correspondence and the [London Tribunals](https://www.londontribunals.gov.uk/) guidance.
+    These pages summarise the law as the ParkingRabbit team understands it. They are not a substitute for legal advice from a solicitor. Where a deadline or right is referenced, always confirm against the council's own correspondence and the [London Tribunals](https://www.londontribunals.gov.uk/) guidance.

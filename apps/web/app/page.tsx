@@ -31,8 +31,8 @@ export default async function Home() {
       <Header />
       <main>
         <Hero />
-        <TrustStrip />
         <CouncilStrip councils={councils} />
+        <TrustStrip />
         <HowItWorks />
         <DownloadSection />
       </main>
@@ -47,7 +47,7 @@ function Header() {
       // `pt-[env(safe-area-inset-top)]` adds a buffer equal to the iOS
       // status-bar inset when the site runs as an installed PWA in
       // standalone mode, so the time / Dynamic Island stop overlapping
-      // the "Snappeal" wordmark + Get Started button.
+      // the "ParkingRabbit" wordmark + Get Started button.
       className="sticky top-0 z-50 border-b border-snappeal-border bg-snappeal-bg/85 backdrop-blur pt-[env(safe-area-inset-top,0px)]"
     >
       <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
@@ -95,7 +95,7 @@ function Header() {
 function Hero() {
   return (
     <section className="hero-bg relative overflow-hidden">
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-14 md:py-20 grid grid-cols-1 lg:grid-cols-[0.6fr_0.4fr] gap-10 lg:gap-12 xl:gap-14 items-center">
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-14 md:pt-20 pb-0 grid grid-cols-1 lg:grid-cols-[0.6fr_0.4fr] gap-10 lg:gap-12 xl:gap-14 items-center">
         {/* LEFT — copy + CTAs */}
         <div className="max-w-[740px]">
           <div className="inline-flex items-center gap-2 rounded-full bg-white border border-snappeal-border px-3.5 py-1.5 text-xs font-semibold text-snappeal-navy shadow-sm">
@@ -165,16 +165,22 @@ function Hero() {
           </div>
 
           <div className="relative z-10">
-            <PhoneMockup />
+            {/* On mobile, shift the phone left so the floating cards on the
+             *  right don't obscure the in-progress / timeline content inside
+             *  the phone screen. On sm+ the viewport is wide enough that
+             *  the cards float clear of the phone, so this offset only
+             *  applies at the smallest breakpoint. */}
+            <div className="-translate-x-10 sm:translate-x-0">
+              <PhoneMockup />
+            </div>
 
-            {/* Floating context cards — all stacked on the RIGHT of the phone,
-             *  pushed further right so the phone breathes, and starting BELOW
-             *  the phone's status bar/notch. Order top → bottom: ticket →
-             *  social proof → outcome stat. */}
-            <div className="hidden md:flex absolute top-32 lg:top-28 -right-10 lg:-right-20 flex-col gap-3 z-20 w-36">
-              {/* 1 · Notice Uploaded — yellow PCN thumb */}
+            {/* Floating context cards — three "badges" (Notice Uploaded /
+             *  4.8/5 social proof / 49.4% outcome stat) stacked on the
+             *  RIGHT of the phone. All three cards center their text +
+             *  titles so the rhythm reads uniformly across breakpoints. */}
+            <div className="flex absolute top-3 sm:top-8 md:top-32 lg:top-28 -right-1 sm:-right-3 md:-right-10 lg:-right-20 flex-col gap-1.5 md:gap-3 z-20 w-[7.25rem] md:w-36">
               <FloatingCard>
-                <p className="text-[11px] font-semibold text-snappeal-navy mb-1.5">
+                <p className="text-[10px] md:text-[11px] font-semibold text-snappeal-navy mb-1 md:mb-1.5 text-center">
                   Notice Uploaded
                 </p>
                 <div className="rounded-md overflow-hidden border border-snappeal-border bg-snappeal-bg/40 aspect-[5/4] flex items-center justify-center">
@@ -182,46 +188,46 @@ function Hero() {
                 </div>
               </FloatingCard>
 
-              {/* 2 · Social proof — trust badge with 5 stars */}
               <FloatingCard>
-                <div className="flex items-center justify-center mb-1.5">
-                  <span className="size-9 rounded-xl bg-snappeal-primary-50 flex items-center justify-center">
-                    <ShieldCheck className="size-5 text-snappeal-primary" strokeWidth={2} />
+                <div className="flex items-center justify-center mb-1 md:mb-1.5">
+                  <span className="size-7 md:size-9 rounded-lg md:rounded-xl bg-snappeal-primary-50 flex items-center justify-center">
+                    <ShieldCheck className="size-4 md:size-5 text-snappeal-primary" strokeWidth={2} />
                   </span>
                 </div>
-                <p className="text-[11px] font-bold text-snappeal-navy text-center leading-tight">
+                <p className="text-[10px] md:text-[11px] font-bold text-snappeal-navy text-center leading-tight">
                   London drivers
                   <br />
-                  trust Snappeal
+                  trust ParkingRabbit
                 </p>
-                <div className="mt-1.5 flex items-center justify-center gap-0.5">
+                <div className="mt-1 md:mt-1.5 flex items-center justify-center gap-0.5">
                   {[0, 1, 2, 3, 4].map((i) => (
-                    <Star key={i} className="size-3 text-yellow-400" fill="currentColor" />
+                    <Star key={i} className="size-2.5 md:size-3 text-yellow-400" fill="currentColor" />
                   ))}
                 </div>
-                <p className="text-[11px] font-bold text-snappeal-navy text-center mt-1">
+                <p className="text-[10px] md:text-[11px] font-bold text-snappeal-navy text-center mt-0.5 md:mt-1">
                   4.8/5
                 </p>
-                <p className="text-[9px] text-snappeal-muted text-center">
+                <p className="text-[8.5px] md:text-[9px] text-snappeal-muted text-center">
                   from 2,300+ reviews
                 </p>
               </FloatingCard>
 
-              {/* 3 · Outcome stat — TrendingUp + 49.4% + description */}
               <FloatingCard>
-                <TrendingUp
-                  className="size-4 text-snappeal-success"
-                  strokeWidth={2.25}
-                />
-                <p className="mt-1.5 text-xl font-extrabold text-snappeal-primary leading-none">
+                <div className="flex items-center justify-center mb-1 md:mb-1.5">
+                  <TrendingUp
+                    className="size-3.5 md:size-4 text-snappeal-success"
+                    strokeWidth={2.25}
+                  />
+                </div>
+                <p className="text-lg md:text-xl font-extrabold text-snappeal-primary leading-none text-center">
                   49.4%
                 </p>
-                <p className="mt-1.5 text-[10px] text-snappeal-muted leading-snug">
+                <p className="mt-1 md:mt-1.5 text-[8.5px] md:text-[10px] text-snappeal-muted leading-snug text-center">
                   of formal appeals
                   <br />
-                  were upheld in
+                  upheld in London
                   <br />
-                  London in 2024–25.
+                  2024–25
                 </p>
               </FloatingCard>
             </div>
@@ -386,7 +392,7 @@ function TrustStrip() {
   return (
     <section
       id="why"
-      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-4 lg:mt-2 relative z-10"
+      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-16 lg:mt-20 relative z-10"
     >
       <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5 items-stretch">
         <FeatureCard
@@ -503,7 +509,7 @@ function CouncilStrip({
   return (
     <section
       id="authorities"
-      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-12 lg:mt-16"
+      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-16 lg:mt-20 relative z-10"
     >
       <p className="text-center text-xs font-semibold uppercase tracking-wide text-snappeal-muted">
         Covering these London authorities
@@ -573,7 +579,7 @@ function HowItWorks() {
   return (
     <section
       id="how"
-      className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-10 lg:mt-16"
+      className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-16 lg:mt-20"
     >
       <div className="rounded-3xl bg-snappeal-primary-50/50 border border-snappeal-border/60 p-6 sm:p-10 lg:p-14">
         <h2 className="text-3xl sm:text-4xl font-bold text-snappeal-navy text-center tracking-tight">
@@ -627,16 +633,16 @@ function DownloadSection() {
   return (
     <section
       id="install"
-      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16 lg:pb-24"
+      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-16 lg:mt-20 pb-16 lg:pb-24"
     >
       <div className="rounded-3xl bg-snappeal-navy text-white p-8 sm:p-12 lg:p-16 grid md:grid-cols-2 gap-8 items-center">
         <div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            Get Snappeal on your phone
+            Get ParkingRabbit on your phone
           </h2>
           <p className="mt-4 text-white/75 text-base leading-relaxed max-w-md">
             Native iOS and Android apps are coming soon. In the meantime, you
-            can install Snappeal as a web app — same experience, same icon on
+            can install ParkingRabbit as a web app — same experience, same icon on
             your home screen.
           </p>
 
@@ -662,7 +668,7 @@ function DownloadSection() {
             <GooglePlayBadge variant="on-dark" />
           </div>
           <div className="text-xs text-white/60">
-            Or open <span className="font-semibold text-white">snappeal.ai</span>{" "}
+            Or open <span className="font-semibold text-white">parkingrabbit.com</span>{" "}
             on your phone and tap <em>Add to Home Screen</em>.
           </div>
         </div>
@@ -678,7 +684,7 @@ function Footer() {
         <div>
           <Wordmark />
           <p className="mt-3 text-xs text-snappeal-muted max-w-sm leading-relaxed">
-            Snappeal drafts and submits representations against London Penalty
+            ParkingRabbit drafts and submits representations against London Penalty
             Charge Notices. It is not a solicitor and doesn&apos;t guarantee an
             outcome.
           </p>
@@ -696,14 +702,14 @@ function Footer() {
           <Link href="/terms" className="hover:text-snappeal-navy">
             Terms
           </Link>
-          <Link href="mailto:hello@snappeal.ai" className="hover:text-snappeal-navy">
+          <Link href="mailto:hello@parkingrabbit.com" className="hover:text-snappeal-navy">
             Contact
           </Link>
         </div>
       </div>
       <div className="border-t border-snappeal-border">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between text-xs text-snappeal-muted">
-          <span>© 2026 Snappeal · Made in London</span>
+          <span>© 2026 ParkingRabbit · Made in London</span>
           <span>v0.1 prototype · mock data</span>
         </div>
       </div>

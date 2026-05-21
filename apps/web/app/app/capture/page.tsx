@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Bell,
   Camera,
   CheckCircle2,
+  CreditCard,
   Image as ImageIcon,
   Keyboard,
   Loader2,
   Plus,
+  Scale,
   Scan,
   ShieldCheck,
   Sparkles,
@@ -20,16 +23,17 @@ import {
   ConfirmedTicket,
   clearEvidencePhotos,
   clearPcnPhoto,
-  getConfirmedTicket,
+  getCurrentAppealId,
   getEvidencePhotos,
   getPcnPhoto,
   getOrCreateSessionId,
-  setConfirmedTicket,
   setEvidencePhotos,
   setPcnPhoto,
 } from "@/lib/client/session";
+import { debouncedPatch, getAppeal, patchCurrentAppeal } from "@/lib/client/draft";
 import { haptic } from "@/lib/client/haptics";
 import { WizardSheet } from "@/components/WizardSheet";
+import { Check } from "lucide-react";
 
 interface PhotoCoachResult {
   legible: boolean;
@@ -62,6 +66,22 @@ const FIELDS: Array<{ key: keyof ConfirmedTicket; label: string; placeholder: st
 
 export default function CapturePage() {
   const router = useRouter();
+  // `?from=review` enters the free "Review my ticket" flow from the home
+  // page. The page still captures + OCRs the PCN, but after the scan
+  // resolves we show a recommendation panel (pay / challenge / reminders)
+  // instead of pushing the user straight into the appeal flow. We read
+  // the param via window.location inside an effect so the static prerender
+  // doesn't need a Suspense boundary around `useSearchParams`.
+  const [fromReview, setFromReview] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    // Read the param via window.location (not useSearchParams) so the static
+    // prerender doesn't need a Suspense boundary. Hydration starts with the
+    // default `false`; this effect upgrades it once on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFromReview(params.get("from") === "review");
+  }, []);
   const [pcn, setPcn] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<string[]>([]);
   const [ticket, setTicket] = useState<ConfirmedTicket | null>(null);
@@ -76,14 +96,30 @@ export default function CapturePage() {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const evidenceInputRef = useRef<HTMLInputElement>(null);
 
+  // Debounced PATCH for field edits — typing in the ticket-confirm inputs
+  // batches a single trailing write to /api/appeals/[id] rather than firing
+  // one PATCH per keystroke.
+  const patchTicketDebounced = useMemo(() => debouncedPatch(600), []);
+
   useEffect(() => {
-    // Hydrate from sessionStorage so navigating away/back is non-destructive.
+    // Photos stay client-side for now (large data URLs; Blob storage pending).
+    // Ticket fields hydrate from the cloud appeal row if there's an in-flight
+    // draft from a previous session — otherwise we start blank.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPcn(getPcnPhoto());
-     
     setEvidence(getEvidencePhotos());
-     
-    setTicket(getConfirmedTicket());
+
+    let alive = true;
+    const id = getCurrentAppealId();
+    if (!id) return;
+    void (async () => {
+      const appeal = await getAppeal(id).catch(() => null);
+      if (!alive || !appeal?.ticket) return;
+      setTicket(appeal.ticket as ConfirmedTicket);
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const readFile = async (file: File): Promise<string> => {
@@ -145,7 +181,9 @@ export default function CapturePage() {
     clearPcnPhoto();
     setPcn(null);
     setTicket(null);
-    setConfirmedTicket({} as ConfirmedTicket);
+    // Null out the cloud copy too so re-extraction starts fresh. Fire and
+    // forget — the user can't observe this PATCH directly.
+    void patchCurrentAppeal({ ticket: null }).catch(() => {});
   };
 
   const runExtract = async (photo: string) => {
@@ -161,7 +199,10 @@ export default function CapturePage() {
       if (!res.ok) throw new Error(json?.error?.message ?? `Extract failed (${res.status})`);
       const extracted = json.ticket as ConfirmedTicket;
       setTicket(extracted);
-      setConfirmedTicket(extracted);
+      // Persist immediately — the OCR result is the first piece of customer
+      // data worth keeping, so it goes straight to the cloud (creating the
+      // draft appeal on first call if one doesn't exist yet).
+      void patchCurrentAppeal({ ticket: extracted }).catch(() => {});
       setConfidence(json.confidence ?? {});
       if (json.coach) {
         setCoach(json.coach as PhotoCoachResult);
@@ -175,7 +216,22 @@ export default function CapturePage() {
         haptic("success");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Extraction failed");
+      // OCR failures (network blip, unreadable image, Claude timeout) are
+      // never just a quiet inline error any more — surface the same retake
+      // sheet the photo coach uses, so the user always has a clear next step.
+      const message = err instanceof Error ? err.message : "Extraction failed";
+      setError(message);
+      setCoach({
+        legible: false,
+        quality: "poor",
+        issues: [
+          "ParkingRabbit couldn't read the PCN from this photo.",
+          message,
+        ],
+        advice:
+          "Try retaking the photo with better lighting, less blur, and the whole ticket in frame.",
+      });
+      setShowCoach(true);
       haptic("error");
     } finally {
       setExtracting(false);
@@ -185,7 +241,8 @@ export default function CapturePage() {
   const updateField = (key: keyof ConfirmedTicket, value: string) => {
     const next: ConfirmedTicket = { ...(ticket ?? {}), [key]: value };
     setTicket(next);
-    setConfirmedTicket(next);
+    // Debounced PATCH so each keystroke doesn't fire its own request.
+    patchTicketDebounced({ ticket: next });
   };
 
   // A ticket counts as "manually filled" when we have at least the PCN ref
@@ -199,6 +256,7 @@ export default function CapturePage() {
 
   return (
     <>
+      {extracting && <ReadingPcnOverlay />}
       <BackHeader
         title="Add your parking ticket"
         subtitle="Step 1 of 4 · Ticket details"
@@ -384,10 +442,9 @@ export default function CapturePage() {
                     value={ticket?.amountPence ? (ticket.amountPence / 100).toFixed(2) : ""}
                     onChange={(e) => {
                       const pence = Math.round(parseFloat(e.target.value || "0") * 100);
-                      updateField("amountPence" as unknown as keyof ConfirmedTicket, String(pence));
                       const next = { ...(ticket ?? {}), amountPence: pence };
                       setTicket(next);
-                      setConfirmedTicket(next);
+                      patchTicketDebounced({ ticket: next });
                     }}
                     placeholder={extracting ? "…" : "160.00"}
                     className="w-full bg-snappeal-bg/60 border border-transparent focus:border-snappeal-primary focus:bg-white rounded-lg px-2 py-1.5 text-snappeal-navy font-semibold outline-none transition text-xs"
@@ -453,15 +510,26 @@ export default function CapturePage() {
             )}
           </section>
 
-          <div className="flex flex-col gap-2.5 mt-1">
-            <button
-              type="button"
-              onClick={() => router.push("/app/notes")}
-              disabled={!canContinue}
-              className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-40 disabled:shadow-none"
-            >
-              Continue to notes
-            </button>
+          {/* Review-mode recommendation panel. Shown when the user came in
+           *  from the "Review my ticket" home card AND we have OCR data to
+           *  reason about. Replaces the linear "Continue to notes" CTA with
+           *  three explicit next-step options so the customer never feels
+           *  funneled. */}
+          {fromReview && canContinue ? (
+            <ReviewRecommendation
+              onPay={() => router.push("/app/pay")}
+              onChallenge={() => router.push("/app/notes")}
+            />
+          ) : (
+            <div className="flex flex-col gap-2.5 mt-1">
+              <button
+                type="button"
+                onClick={() => router.push("/app/notes")}
+                disabled={!canContinue}
+                className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-40 disabled:shadow-none"
+              >
+                Continue to notes
+              </button>
             <button
               type="button"
               onClick={() => {
@@ -475,7 +543,8 @@ export default function CapturePage() {
             >
               Start over
             </button>
-          </div>
+            </div>
+          )}
         </>
       )}
 
@@ -554,6 +623,274 @@ export default function CapturePage() {
         </WizardSheet>
       )}
     </>
+  );
+}
+
+/**
+ * Full-page blocker shown while `/api/extract` is running. Locks out every
+ * other tap on the capture page and runs a timer-driven percentage + a
+ * field-by-field checklist so the wait feels purposeful. Claude actually
+ * returns the whole ticket at once — the per-field ticking is a deliberate
+ * UX simulation tuned to the typical ~6 s OCR call. On a poor or failed
+ * extraction the WizardSheet ("Let's try again") slides in on top of this
+ * once the OCR settles.
+ */
+function ReadingPcnOverlay() {
+  const FIELDS = [
+    { label: "PCN reference", hint: "the WE / WC code on top" },
+    { label: "Vehicle registration", hint: "the number plate" },
+    { label: "Contravention code", hint: "what they fined you for" },
+    { label: "Location", hint: "where the ticket was issued" },
+    { label: "Issue date & time", hint: "the timestamp on the notice" },
+    { label: "Penalty amount", hint: "the £ you'd owe today" },
+  ];
+  const STEP_MS = 900; // each field becomes "active" then "done" over this
+  const TARGET_MS = STEP_MS * FIELDS.length; // ~5.4 s of visible work
+
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = performance.now();
+    const id = window.setInterval(() => setElapsed(performance.now() - start), 60);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Index of the field currently being "read". Once we run past the list
+  // (because the API is taking longer than the simulation budget), park on
+  // the last field with a "double-checking" status so it never looks frozen.
+  const activeIndex = Math.min(FIELDS.length - 1, Math.floor(elapsed / STEP_MS));
+  // Cap at 95 % until the real API returns — the parent will unmount us at
+  // that point. The curve is a soft ease so the number doesn't sprint to 95.
+  const percent = Math.min(
+    95,
+    Math.round(95 * (1 - Math.exp(-elapsed / 2200))),
+  );
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Reading your PCN — please wait"
+      className="fixed inset-0 z-[120] bg-snappeal-navy/95 backdrop-blur-md flex flex-col items-center justify-center overflow-hidden px-6 py-10"
+    >
+      {/* Subtle dotted grid */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-15"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+          backgroundSize: "28px 28px",
+        }}
+      />
+      {/* Soft radial */}
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(60% 50% at 50% 40%, rgba(0,122,255,0.28) 0%, transparent 70%)",
+        }}
+      />
+
+      <div className="relative w-full max-w-sm flex flex-col items-center text-center gap-6">
+        {/* Percentage tile */}
+        <div className="relative size-32 rounded-3xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center overflow-hidden shadow-2xl shadow-black/40">
+          <span className="text-5xl font-extrabold tabular-nums leading-none relative z-10">
+            {percent}
+            <span className="text-2xl font-bold align-top ml-0.5">%</span>
+          </span>
+          {/* Scan line strip — reuses the keyframe from the generating overlay */}
+          <span className="absolute inset-x-0 h-1.5 rounded-full snappeal-generating-line bg-gradient-to-b from-transparent via-snappeal-primary to-transparent" />
+        </div>
+
+        <div>
+          <p className="text-xl font-bold text-white tracking-tight">
+            Reading your PCN
+          </p>
+          <p className="text-[13px] text-white/70 mt-1">
+            ParkingRabbit AI is pulling each field from your photo.
+          </p>
+        </div>
+
+        {/* Field-by-field checklist */}
+        <ul className="w-full flex flex-col gap-2 text-left">
+          {FIELDS.map((f, i) => {
+            const done = i < activeIndex;
+            const active = i === activeIndex;
+            const lastField = activeIndex === FIELDS.length - 1;
+            return (
+              <li
+                key={f.label}
+                className={`flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 transition-colors ${
+                  done
+                    ? "bg-snappeal-success/15 border-snappeal-success/30"
+                    : active
+                      ? "bg-snappeal-primary/15 border-snappeal-primary/40"
+                      : "bg-white/5 border-white/10"
+                }`}
+              >
+                <span
+                  className={`size-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                    done
+                      ? "bg-snappeal-success text-white"
+                      : active
+                        ? "bg-snappeal-primary text-white"
+                        : "bg-white/10 text-white/40"
+                  }`}
+                >
+                  {done ? (
+                    <Check className="size-4" strokeWidth={3} />
+                  ) : active ? (
+                    <span className="size-2 rounded-full bg-white animate-pulse" />
+                  ) : (
+                    <span className="size-2 rounded-full bg-white/30" />
+                  )}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-[13px] font-semibold leading-tight ${
+                      done || active ? "text-white" : "text-white/55"
+                    }`}
+                  >
+                    {f.label}
+                  </p>
+                  <p
+                    className={`text-[10.5px] leading-tight mt-0.5 ${
+                      active ? "text-snappeal-primary-200" : "text-white/45"
+                    }`}
+                  >
+                    {done
+                      ? "captured"
+                      : active
+                        ? lastField && elapsed > TARGET_MS
+                          ? "double-checking…"
+                          : "reading…"
+                        : f.hint}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Recommendation panel shown after a free "Review my ticket" scan has
+ * resolved. Three explicit next-step buttons so the customer isn't
+ * funnelled into either action — they can pay, challenge, or set
+ * deadline reminders. Reminders is intentionally a placeholder for now
+ * (no scheduling backend yet) — surfaced via a "Coming soon" badge so
+ * we don't promise something we haven't built.
+ */
+function ReviewRecommendation({
+  onPay,
+  onChallenge,
+}: {
+  onPay: () => void;
+  onChallenge: () => void;
+}) {
+  const [remindersOpen, setRemindersOpen] = useState(false);
+  return (
+    <section className="rounded-3xl bg-white border border-snappeal-border p-5 mt-1 flex flex-col gap-3">
+      <div>
+        <p className="text-sm font-bold text-snappeal-navy">
+          Your ticket is ready — what next?
+        </p>
+        <p className="text-[11.5px] text-snappeal-muted mt-1 leading-snug">
+          The scan is free. Pick the path that suits you — you stay in control,
+          nothing is charged unless you opt in.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onChallenge}
+        className="relative rounded-2xl bg-snappeal-primary-50/60 border-2 border-snappeal-primary p-4 flex items-center gap-3 text-left transition active:scale-[0.99] shadow-md shadow-snappeal-primary/15"
+      >
+        <span className="size-11 rounded-xl bg-snappeal-primary text-white flex items-center justify-center shrink-0">
+          <Scale className="size-5" strokeWidth={2} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-bold text-snappeal-navy">
+            Challenge this ticket
+          </p>
+          <p className="text-[11.5px] text-snappeal-muted mt-0.5 leading-snug">
+            £2.99 · We draft your appeal and help you submit it
+          </p>
+        </div>
+        <ChevronRightIcon />
+      </button>
+
+      <button
+        type="button"
+        onClick={onPay}
+        className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-center gap-3 text-left transition active:scale-[0.99] hover:border-snappeal-primary/40"
+      >
+        <span className="size-11 rounded-xl bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center shrink-0">
+          <CreditCard className="size-5" strokeWidth={2} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-bold text-snappeal-navy">
+            Pay this ticket
+          </p>
+          <p className="text-[11.5px] text-snappeal-muted mt-0.5 leading-snug">
+            From £1.99 · We help you pay your PCN securely
+          </p>
+        </div>
+        <ChevronRightIcon />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setRemindersOpen((v) => !v)}
+        aria-expanded={remindersOpen}
+        className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-center gap-3 text-left transition active:scale-[0.99] hover:border-snappeal-primary/40"
+      >
+        <span className="size-11 rounded-xl bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center shrink-0">
+          <Bell className="size-5" strokeWidth={2} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-bold text-snappeal-navy flex items-center gap-1.5">
+            Set deadline reminders
+            <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5">
+              Coming soon
+            </span>
+          </p>
+          <p className="text-[11.5px] text-snappeal-muted mt-0.5 leading-snug">
+            We&apos;ll nudge you before the discount window + final deadline.
+          </p>
+        </div>
+        <ChevronRightIcon />
+      </button>
+
+      {remindersOpen && (
+        <p className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-[11px] text-amber-900 leading-snug">
+          Reminders aren&apos;t live yet — we&apos;ll email you when this drops.
+          For now your ticket is saved to your inbox so you won&apos;t lose
+          track of the deadlines.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg
+      className="size-4 text-snappeal-muted shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
   );
 }
 

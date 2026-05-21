@@ -161,7 +161,7 @@ function mockSubmission(
     channel: method,
     status: "submitted",
     councilReference: ref,
-    messageId: method === "email" ? `<${ref}@appeals.snappeal.ai>` : null,
+    messageId: method === "email" ? `<${ref}@appeals.parkingrabbit.com>` : null,
     screenshotUrl: null,
     lastError: warning,
     submittedAt: new Date(),

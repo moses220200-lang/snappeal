@@ -288,7 +288,7 @@ function MiniWestminsterPCN() {
       <rect width="220" height="300" rx="8" fill="url(#wizardPcnSheen)" />
 
       <rect x="22" y="42" width="176" height="240" fill="url(#wizardPcnDiamondHatch)" />
-      <rect x="36" y="56" width="148" height="212" fill="#fdd420" />
+      <rect x="29" y="49" width="162" height="226" fill="#fdd420" />
 
       <text x="110" y="98" textAnchor="middle" fontFamily="Helvetica Neue, Helvetica, Arial, sans-serif" fontSize="20" fontWeight={900} fill="#0a0a0a" letterSpacing={-0.4}>
         PENALTY
@@ -345,9 +345,9 @@ function PlanStep({
     {
       id: "auto_submit",
       icon: Send,
-      title: "Snappeal submits for me",
+      title: "ParkingRabbit submits for me",
       pitch:
-        "Same AI draft, plus our MCP agent files it through your council's portal end-to-end. Pay only when you use it.",
+        "Same AI draft, plus our AI Auto-Submit Agent files it through your council's portal end-to-end. Pay only when you use it.",
       badge: "£2.99 per submission",
     },
     {
@@ -462,7 +462,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
   return (
     <StepShell
       badge="Step 2 of 2"
-      title="Get the most from Snappeal"
+      title="Get the most from ParkingRabbit"
       subtitle="Two quick permissions. You can change either anytime in your phone settings."
       footer={
         <>
@@ -531,7 +531,7 @@ function PermissionRow({
               : "bg-white text-snappeal-navy hover:bg-white/90"
         }`}
       >
-        {state === "granted" ? "On" : state === "denied" ? "Off" : "Allow"}
+        {state === "granted" ? "On" : state === "denied" ? "Off" : "Tap to allow"}
       </button>
     </div>
   );

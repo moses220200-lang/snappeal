@@ -51,7 +51,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <ProfileSubPage title="Notification preferences" subtitle="Choose how Snappeal pings you about council activity.">
+    <ProfileSubPage title="Notification preferences" subtitle="Choose how ParkingRabbit pings you about council activity.">
       <div className="flex flex-col gap-3">
         <Toggle
           icon={Mail}

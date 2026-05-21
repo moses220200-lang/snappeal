@@ -28,12 +28,12 @@
 
 ## Notes
 
-- RBKC operates **Chatbot Max** as the first-line challenge route. Snappeal's submission engine (v0.3) needs to handle the chatbot conversation flow rather than a traditional form.
-- The portal **times out after 60 minutes**, so the council advises drafting the letter in a separate editor and pasting it in. Snappeal already does this by drafting locally and copying to clipboard.
+- RBKC operates **Chatbot Max** as the first-line challenge route. ParkingRabbit's submission engine (v0.3) needs to handle the chatbot conversation flow rather than a traditional form.
+- The portal **times out after 60 minutes**, so the council advises drafting the letter in a separate editor and pasting it in. ParkingRabbit already does this by drafting locally and copying to clipboard.
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — Snappeal copies the letter to clipboard and opens the RBKC help-hub URL.
+- **v0.1 / v0.2**: manual — ParkingRabbit copies the letter to clipboard and opens the RBKC help-hub URL.
 - **v0.3 target**: automated via Playwright MCP — needs Chatbot Max conversation handler.
 - **Automation status**: `manual`
 

@@ -5,7 +5,7 @@
  * / SES — TBD per todo.md "Transactional email"). Local dev: returns a
  * deterministic stub so the flow is exercisable without DNS/MX wired up.
  *
- * The outbound message uses the per-appeal `<appeal-id>@appeals.snappeal.ai`
+ * The outbound message uses the per-appeal `<appeal-id>@appeals.parkingrabbit.com`
  * as the `Reply-To` so council responses route to the inbound webhook
  * (lib/server/inbound.ts).
  */
@@ -32,7 +32,7 @@ export async function sendCouncilEmail(opts: {
   const provider = process.env.EMAIL_PROVIDER ?? "stub";
   if (provider === "stub" || !process.env.RESEND_API_KEY) {
     // Deterministic stub: pretend we sent it; record a fake message id.
-    const messageId = `<stub-${appeal.id}@appeals.snappeal.ai>`;
+    const messageId = `<stub-${appeal.id}@appeals.parkingrabbit.com>`;
     return { delivered: true, messageId, error: null };
   }
 
@@ -46,7 +46,7 @@ export async function sendCouncilEmail(opts: {
         authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: `Snappeal Appeals <${appeal.replyEmail ?? "no-reply@appeals.snappeal.ai"}>`,
+        from: `ParkingRabbit Appeals <${appeal.replyEmail ?? "no-reply@appeals.parkingrabbit.com"}>`,
         to: [council.appealEmail],
         reply_to: appeal.replyEmail ?? undefined,
         subject,
@@ -58,7 +58,7 @@ export async function sendCouncilEmail(opts: {
       return { delivered: false, messageId: null, error: `resend ${res.status}: ${body}` };
     }
     const json = (await res.json()) as { id?: string };
-    return { delivered: true, messageId: json.id ? `<${json.id}@appeals.snappeal.ai>` : null, error: null };
+    return { delivered: true, messageId: json.id ? `<${json.id}@appeals.parkingrabbit.com>` : null, error: null };
   } catch (err) {
     return { delivered: false, messageId: null, error: err instanceof Error ? err.message : String(err) };
   }

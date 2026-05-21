@@ -116,7 +116,7 @@ export default function PersonalDetailsPage() {
     return (
       <ProfileSubPage title="Personal details" subtitle="Sign in to manage your details.">
         <p className="text-sm text-snappeal-muted">
-          You&apos;re using Snappeal as a guest right now. Create an account or sign in to add a display name and lock your appeals to your email.
+          You&apos;re using ParkingRabbit as a guest right now. Create an account or sign in to add a display name and lock your appeals to your email.
         </p>
       </ProfileSubPage>
     );

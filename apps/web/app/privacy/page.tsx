@@ -50,7 +50,7 @@ export default function PrivacyPage() {
           />
           <Block
             title="Your rights (UK GDPR)"
-            body="You can ask us to show you what data we hold about you, correct it, or delete it. Email hello@snappeal.ai (placeholder) and we'll respond within 30 days."
+            body="You can ask us to show you what data we hold about you, correct it, or delete it. Email hello@parkingrabbit.com (placeholder) and we'll respond within 30 days."
           />
           <Block
             title="Our promises"
@@ -61,10 +61,10 @@ export default function PrivacyPage() {
         <footer className="mt-12 pt-6 border-t border-snappeal-border text-xs text-snappeal-muted">
           Questions?{" "}
           <Link
-            href="mailto:hello@snappeal.ai"
+            href="mailto:hello@parkingrabbit.com"
             className="text-snappeal-primary font-semibold"
           >
-            hello@snappeal.ai
+            hello@parkingrabbit.com
           </Link>
         </footer>
       </main>

@@ -1,23 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Check, Copy, Send, Share2 } from "lucide-react";
+import { Check, Copy, Share2 } from "lucide-react";
 
 type Props = {
-  appealId: string;
   letterBody: string;
   letterSubject: string;
 };
 
 /**
  * Native action row for the letter screen.
- *   - Copy   → navigator.clipboard.writeText (with a tactile "Copied!" beat)
- *   - Share  → Web Share API (navigator.share). Falls back to Copy on
- *              browsers without it (Safari desktop, older Firefox).
- *   - Track  → routes to the appeal's case-detail page.
+ *   - Copy  → navigator.clipboard.writeText (with a tactile "Copied!" beat)
+ *   - Share → Web Share API (navigator.share). Falls back to Copy on
+ *             browsers without it (Safari desktop, older Firefox).
+ *
+ * The primary Submit action lives one row above as the big blue button on
+ * the letter page; tracking after submission is handled by the green
+ * "Submitted to the council" confirmation card.
  */
-export function LetterActions({ appealId, letterBody, letterSubject }: Props) {
+export function LetterActions({ letterBody, letterSubject }: Props) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -26,7 +27,6 @@ export function LetterActions({ appealId, letterBody, letterSubject }: Props) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Fallback for browsers blocking clipboard
       window.prompt("Copy your letter:", letterBody);
     }
   };
@@ -41,7 +41,6 @@ export function LetterActions({ appealId, letterBody, letterSubject }: Props) {
         await navigator.share(payload);
         return;
       } catch (err) {
-        // User cancelled or share failed — fall through to clipboard
         if (err instanceof Error && err.name === "AbortError") return;
       }
     }
@@ -49,7 +48,7 @@ export function LetterActions({ appealId, letterBody, letterSubject }: Props) {
   };
 
   return (
-    <section className="grid grid-cols-3 gap-2">
+    <section className="grid grid-cols-2 gap-2">
       <button
         type="button"
         onClick={handleCopy}
@@ -75,13 +74,6 @@ export function LetterActions({ appealId, letterBody, letterSubject }: Props) {
         <Share2 className="size-4 text-snappeal-primary" />
         Share
       </button>
-      <Link
-        href={`/app/tickets/${appealId}`}
-        className="rounded-xl bg-snappeal-primary text-white py-3 flex flex-col items-center gap-1 text-xs font-semibold hover:bg-snappeal-primary-600 transition shadow-lg shadow-snappeal-primary/30"
-      >
-        <Send className="size-4" />
-        Track
-      </Link>
     </section>
   );
 }

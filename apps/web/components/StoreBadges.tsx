@@ -18,7 +18,7 @@ export function AppStoreBadge({ variant = "default" }: { variant?: BadgeVariant 
   return (
     <Link
       href={COMING_SOON ? "#install" : "https://apps.apple.com/gb/app/snappeal"}
-      aria-label="Download Snappeal on the App Store"
+      aria-label="Download ParkingRabbit on the App Store"
       className="group relative inline-flex"
     >
       <div className={wrapperClass}>
@@ -58,7 +58,7 @@ export function GooglePlayBadge({ variant = "default" }: { variant?: BadgeVarian
           ? "#install"
           : "https://play.google.com/store/apps/details?id=com.snappeal"
       }
-      aria-label="Get Snappeal on Google Play"
+      aria-label="Get ParkingRabbit on Google Play"
       className="group relative inline-flex"
     >
       <div className={wrapperClass}>

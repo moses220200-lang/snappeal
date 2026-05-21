@@ -45,7 +45,7 @@ flowchart TD
 
 ## Step 3 — Pay
 
-**Screen prompt:** "Snappeal this PCN for £2.99."
+**Screen prompt:** "ParkingRabbit this PCN for £2.99."
 
 - Stripe Payment Element.
 - Apple Pay button on iOS Safari; Google Pay button on Android Chrome; card form as fallback.
@@ -103,4 +103,4 @@ Total taps from app launch to "appeal sent" — target ceiling:
 | Portal opens; user pastes/submits | 1 |
 | **Total** | **9 taps** |
 
-The marketing claim is "five-tap appeal". The two numbers differ because the marketing claim excludes the photo captures (counted as a single capture event in the user's head) and the portal-side submit (counted as council-side, not Snappeal-side). Both reductions are defensible.
+The marketing claim is "five-tap appeal". The two numbers differ because the marketing claim excludes the photo captures (counted as a single capture event in the user's head) and the portal-side submit (counted as council-side, not ParkingRabbit-side). Both reductions are defensible.

@@ -10,7 +10,7 @@ export default async function AdminOverviewPage() {
       <div>
         <h1 className="text-3xl font-bold text-snappeal-navy">Overview</h1>
         <p className="text-sm text-snappeal-muted mt-1">
-          Live snapshot of the Snappeal backend. All counts are unfiltered.
+          Live snapshot of the ParkingRabbit backend. All counts are unfiltered.
         </p>
       </div>
 

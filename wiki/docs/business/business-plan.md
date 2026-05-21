@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-**Snappeal is a mobile app that turns a Penalty Charge Notice into a five-tap automated appeal.** A Londoner photographs their PCN, takes a few photos of the car and the scene, writes one or two sentences about what happened, pays £2.99, and Snappeal drafts a representation letter citing the correct statutory ground and contravention code — and submits it directly to the council's online portal (or by email when the portal is unavailable).
+**ParkingRabbit is a mobile app that turns a Penalty Charge Notice into a five-tap automated appeal.** A Londoner photographs their PCN, takes a few photos of the car and the scene, writes one or two sentences about what happened, pays £2.99, and ParkingRabbit drafts a representation letter citing the correct statutory ground and contravention code — and submits it directly to the council's online portal (or by email when the portal is unavailable).
 
 **The opportunity is large and visibly under-served.** London authorities issued **9,462,185 PCNs in 2024-25**, up 13.5% year-on-year[^1]. Yet only **47,935 — 0.45% — reached the London Tribunals stage**, of which **49.4% were upheld in the motorist's favour**[^1]. Almost half of the PCNs that get formally challenged are wrong, but only one in 200 motorists ever challenges. The friction between "this isn't fair" and "I successfully appealed" is enormous, and it is solvable with software.
 
@@ -58,7 +58,7 @@ This assumes v0.1 unit economics, which are conservative — Phase B onward we e
 
 ## Go-to-market
 
-See [go-to-market.md](go-to-market.md). Three channels at launch: search ("appeal a PCN"-style intent), TikTok (short-form "I got a ticket, here's what I did" content), and council-specific SEO (one Snappeal landing page per borough, ranking for "appeal a Camden PCN" etc).
+See [go-to-market.md](go-to-market.md). Three channels at launch: search ("appeal a PCN"-style intent), TikTok (short-form "I got a ticket, here's what I did" content), and council-specific SEO (one ParkingRabbit landing page per borough, ranking for "appeal a Camden PCN" etc).
 
 ## Team
 

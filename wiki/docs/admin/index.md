@@ -1,6 +1,6 @@
 # Admin
 
-Operational documentation for the Snappeal admin backend (Phase B). The admin app itself ships in Phase B; these pages will be filled in when it does.
+Operational documentation for the ParkingRabbit admin backend (Phase B). The admin app itself ships in Phase B; these pages will be filled in when it does.
 
 - [Managing councils](managing-councils.md) — how to add a council, verify portal URLs, edit form schemas.
 - [Managing users](managing-users.md) — how to create admin accounts, assign roles, audit changes.

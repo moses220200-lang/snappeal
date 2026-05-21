@@ -1,6 +1,6 @@
 # AI pipeline
 
-All AI reasoning in Snappeal pipes through the headless **Claude Code CLI** (`claude -p`) — not directly through the Anthropic SDK or AI Gateway. This keeps every prompt, model, tool surface, and cost path consistent between the simple structured calls (extract a PCN, classify an inbound email) and the agentic calls (Playwright MCP portal submission).
+All AI reasoning in ParkingRabbit pipes through the headless **Claude Code CLI** (`claude -p`) — not directly through the Anthropic SDK or AI Gateway. This keeps every prompt, model, tool surface, and cost path consistent between the simple structured calls (extract a PCN, classify an inbound email) and the agentic calls (Playwright MCP portal submission).
 
 ## Why Claude CLI and not the SDK?
 
@@ -66,7 +66,7 @@ Every `submit_appeal` job streams its progress to the customer in real time:
 - A directory watcher polls both the agent's workDir AND `process.cwd()` (because `@playwright/mcp` ignores `--output-dir` on Windows) and forwards new PNGs to `public/submissions/<jobId>/`, emitting `screenshot` events.
 - `/api/submissions/[id]/progress` (SSE) streams events to the client every ~750 ms. Closes on terminal status.
 - `/app/submitting/[id]` renders the live UI — light glass header, milestone ladder (6 outlined-icon steps), latest screenshot pane with caption + URL chip, activity log.
-- Ticket card shows a navy "Snappeal AI is filing your appeal" strip when `status=submitting`; tapping routes to `/app/watch/<appealId>` which redirects to the latest job's page.
+- Ticket card shows a navy "ParkingRabbit AI is filing your appeal" strip when `status=submitting`; tapping routes to `/app/watch/<appealId>` which redirects to the latest job's page.
 
 ## Headed-mode toggle
 

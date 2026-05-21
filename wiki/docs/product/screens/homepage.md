@@ -1,22 +1,22 @@
 # Homepage (desktop / tablet)
 
-The public-facing **landing page** at `snappeal.ai/`. **It is the gateway *before* the app — not the app itself.** Its job is to convince a visitor to install Snappeal, and to route them to the right install path:
+The public-facing **landing page** at `parkingrabbit.com/`. **It is the gateway *before* the app — not the app itself.** Its job is to convince a visitor to install ParkingRabbit, and to route them to the right install path:
 
 - **iPhone Safari** → tap *Get Started* → App Store badge (when native wrapper ships, v0.3) or PWA install prompt (v0.1/v0.2).
 - **Android Chrome** → Play Store badge or PWA install prompt.
 - **Desktop Chrome/Edge** → PWA install prompt; falls back to *"Open the web app on your phone"* with a QR code.
 - **Already-installed users** → *Open app* deep-link.
 
-Responsive — designed for desktop, scales down to tablet and mobile via container queries. The app itself (Home / Cases / Camera / Profile tabs) lives at `app.snappeal.ai` (or the installed PWA chrome).
+Responsive — designed for desktop, scales down to tablet and mobile via container queries. The app itself (Home / Tickets / Scan / Inbox / Profile tabs) lives at `/app` (or the installed PWA chrome).
 
-Reference: [mockup #1 in mockups.md](../mockups.md#1-marketing-homepage-received-2026-05-19-evening). Implementation copy follows the mockup; brand is rendered as **Snappeal** (the mockup's "AppealMate" wordmark is a designer working name only).
+Reference: [mockup #1 in mockups.md](../mockups.md#1-marketing-homepage-received-2026-05-19-evening). Implementation copy follows the mockup; brand is rendered as **ParkingRabbit** (the mockup's "AppealMate" wordmark is a designer working name only).
 
 ## Layout (desktop, 1280×800+)
 
 ```
 ┌─ NAV ────────────────────────────────────────────────────────────────────────┐
-│ Shield-S logo + Snappeal + "We fight your parking tickets"                   │
-│                  How it works  Why Snappeal?  Success stories  Pricing  FAQ  │
+│ Shield-S logo + ParkingRabbit + "We fight your parking tickets"                   │
+│                  How it works  Why ParkingRabbit?  Success stories  Pricing  FAQ  │
 │                                                          Log in   [Get Started] │
 ├─ HERO (left col)  ────────────────────────── │ ─ HERO VISUAL (right col) ────┤
 │ 🇬🇧 Made for drivers in London  [pill]      │ Phone mockup on PCN photo:    │
@@ -24,10 +24,10 @@ Reference: [mockup #1 in mockups.md](../mockups.md#1-marketing-homepage-received
 │ Don't pay that **parking ticket** [purple].  │ • Purple in-progress card     │
 │ Let us help you appeal.                      │ • 4-step progress timeline    │
 │                                              │ • Need help / Contact Support │
-│ Snappeal makes it easy to appeal parking     │                               │
+│ ParkingRabbit makes it easy to appeal parking     │                               │
 │ tickets in London. We guide you step-by-step │ Floating shield badge:        │
 │ and create powerful appeals tailored to      │ "Thousands of London drivers  │
-│ your case.                                   │  trust Snappeal"              │
+│ your case.                                   │  trust ParkingRabbit"              │
 │                                              │                               │
 │ [Start Your Appeal]  [▶ How It Works]        │                               │
 │                                              │                               │
@@ -51,7 +51,7 @@ Reference: [mockup #1 in mockups.md](../mockups.md#1-marketing-homepage-received
 │ Download on the App Store ●   Get it on Google Play ●                       │
 │ (greyed / "coming soon" until v0.3 native wrappers ship)                    │
 ├─ FOOTER ────────────────────────────────────────────────────────────────────┤
-│ Pricing · FAQ · Privacy · Terms · Contact      © 2026 Snappeal              │
+│ Pricing · FAQ · Privacy · Terms · Contact      © 2026 ParkingRabbit              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,25 +61,25 @@ Reference: [mockup #1 in mockups.md](../mockups.md#1-marketing-homepage-received
 
 ### Top nav
 
-- **Identity (left)**: shield-S logo, navy. Wordmark "Snappeal" in Inter 700 navy. Sub-line *"We fight your parking tickets"* in Inter 400 muted — note: this tagline implies a combative "fight" voice that conflicts with the locked "we draft, honest service" voice in [values.md](../../business/values.md). **Pending user reconciliation** — see audit.
-- **Centre nav (5 items)**: How it works · Why Snappeal? · Success stories · Pricing · FAQ. Each link is in-page anchor (smooth scroll) or sub-route.
+- **Identity (left)**: shield-S logo, navy. Wordmark "ParkingRabbit" in Inter 700 navy. Sub-line *"We fight your parking tickets"* in Inter 400 muted — note: this tagline implies a combative "fight" voice that conflicts with the locked "we draft, honest service" voice in [values.md](../../business/values.md). **Pending user reconciliation** — see audit.
+- **Centre nav (5 items)**: How it works · Why ParkingRabbit? · Success stories · Pricing · FAQ. Each link is in-page anchor (smooth scroll) or sub-route.
 - **Right CTAs**: *Log in* (text-link only on hover; hidden when no accounts shipped — v0.1 has no auth, so this slot becomes empty or moved to v0.2). *Get Started* (filled purple button, deep-links into the install/Camera flow).
 
 ### Hero
 
 - **Pill (top of hero)**: 🇬🇧 *Made for drivers in London*. Locked **London-only** per A2 decision — not "the UK" as the mockup shows.
 - **Headline (h1)**: *Don't pay that **parking ticket**. Let us help you appeal.* — "parking ticket" rendered in `--snappeal-primary` (purple).
-- **Body**: *"Snappeal makes it easy to appeal parking tickets in London. We guide you step-by-step and create powerful appeals tailored to your case."*
+- **Body**: *"ParkingRabbit makes it easy to appeal parking tickets in London. We guide you step-by-step and create powerful appeals tailored to your case."*
 - **Primary CTA**: **Start Your Appeal** — filled purple, deep-links into Camera tab in the PWA.
 - **Secondary CTA**: **How It Works** with ▶ play icon — outlined purple, scrolls to "How it works" section or opens a 30-second explainer video.
 - **Trustpilot block** ⚠: *"Excellent · 4.7 out of 5 on Trustpilot"* with green star block. **Not appropriate at launch** — we have no Trustpilot rating until users review. Mockup shows the long-run target. v0.1 placeholder: omit the Trustpilot block entirely. v0.2+: surface real Trustpilot reviews once we've earned them.
-- **Hero visual (right col)**: phone mockup overlaid on the real PCN-on-windscreen photo. Phone shows the in-app home with "Hello, Alex 👋" (placeholder name only — no real account in v0.1), purple "Your appeal is in progress" card, 4-step timeline, "Need help?" support card. Floating shield badge: *"Thousands of London drivers trust Snappeal"* — replace with *"Built for London drivers"* until real volume justifies the claim.
+- **Hero visual (right col)**: phone mockup overlaid on the real PCN-on-windscreen photo. Phone shows the in-app home with "Hello, Alex 👋" (placeholder name only — no real account in v0.1), purple "Your appeal is in progress" card, 4-step timeline, "Need help?" support card. Floating shield badge: *"Thousands of London drivers trust ParkingRabbit"* — replace with *"Built for London drivers"* until real volume justifies the claim.
 
 ### Trust strip (4 cards)
 
 Below the hero, full-width container with four icon-led cards:
 
-1. **AI-Drafted Appeals** (was "Expert Appeal Writers" ⚠) — *"Snappeal drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."* Renamed to avoid the "experts" framing locked out by C1.
+1. **AI-Drafted Appeals** (was "Expert Appeal Writers" ⚠) — *"ParkingRabbit drafts your appeal from your photos and notes — clear, formal, and tailored to the contravention."* Renamed to avoid the "experts" framing locked out by C1.
 2. **High Success Rate** ⚠ — *"49.4% of formal appeals in London were upheld in 2024-25\*"* with an asterisk linking to the source (London Councils statistics). **Cannot claim our own success rate until we have outcome data** — use the public benchmark.
 3. **No Win, No Fee** ⚠ — **CONFLICTS** with locked £2.99 non-refundable pricing. Either reverse the pricing decision or change this card to *"Pay only £2.99 — one-off, non-refundable"*. **Pending user decision.**
 4. **Secure & Private** — *"Your data is encrypted, never sold, and deleted 90 days after your appeal resolves."*
@@ -104,7 +104,7 @@ Below How It Works, a centred row with two badges:
 
 ### Footer
 
-Standard: Pricing · FAQ · Privacy · Terms · Contact · *© 2026 Snappeal*. Plus a "Made in London" line and a tiny shield logo.
+Standard: Pricing · FAQ · Privacy · Terms · Contact · *© 2026 ParkingRabbit*. Plus a "Made in London" line and a tiny shield logo.
 
 ## Responsive breakpoints
 

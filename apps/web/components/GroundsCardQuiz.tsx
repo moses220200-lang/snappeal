@@ -8,10 +8,8 @@ import {
   type GroundCategory,
   getCardById,
 } from "@/lib/grounds-catalog";
-import {
-  getSelectedGrounds,
-  setSelectedGrounds,
-} from "@/lib/client/session";
+import { getCurrentAppealId } from "@/lib/client/session";
+import { getAppeal, patchCurrentAppeal } from "@/lib/client/draft";
 import { haptic } from "@/lib/client/haptics";
 
 /**
@@ -20,9 +18,9 @@ import { haptic } from "@/lib/client/haptics";
  * browse-by-category surface so customers don't need to know UK PCN appeal
  * grounds to pick the right one — the cards do the translation.
  *
- * State lives in sessionStorage so back-navigation doesn't wipe selections,
- * and so /api/generate can read the canonical ground IDs (mapped from the
- * customer's card picks) when drafting the appeal letter.
+ * State is persisted to the appeals row in Postgres (cloud-first) — back
+ * navigation hydrates from the DB, and /api/generate-stream reads the
+ * canonical ground IDs from the appeal record when drafting the letter.
  */
 export function GroundsCardQuiz({
   onChange,
@@ -32,17 +30,23 @@ export function GroundsCardQuiz({
   onChange?: (selectedCardIds: string[]) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [openCategory, setOpenCategory] = useState<string | null>(
-    GROUND_CATEGORIES[0]?.id ?? null,
-  );
+  // All categories collapsed by default — surfacing "Signs & markings" pre-
+  // expanded was nudging users to that ground even when it didn't apply.
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
 
-  // Hydrate from sessionStorage on mount.
+  // Hydrate from the cloud appeal row on mount (if a draft already exists).
   useEffect(() => {
-    const saved = getSelectedGrounds();
-    if (saved.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelected(new Set(saved));
-    }
+    let alive = true;
+    void (async () => {
+      const id = getCurrentAppealId();
+      if (!id) return;
+      const appeal = await getAppeal(id).catch(() => null);
+      if (!alive || !appeal?.grounds?.length) return;
+      setSelected(new Set(appeal.grounds));
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const toggle = (cardId: string) => {
@@ -56,7 +60,9 @@ export function GroundsCardQuiz({
     }
     setSelected(next);
     const ids = Array.from(next);
-    setSelectedGrounds(ids);
+    void patchCurrentAppeal({ grounds: ids }).catch(() => {
+      /* card stays toggled visually; next interaction will retry */
+    });
     onChange?.(ids);
   };
 

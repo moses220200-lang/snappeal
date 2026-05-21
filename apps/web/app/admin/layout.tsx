@@ -29,7 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin" className="flex items-center gap-2">
             <ShieldP />
             <div>
-              <p className="text-base font-bold">Snappeal Admin</p>
+              <p className="text-base font-bold">ParkingRabbit Admin</p>
               <p className="text-[11px] text-white/60">{user.email}</p>
             </div>
           </Link>
@@ -55,7 +55,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <header className="md:hidden bg-snappeal-navy text-white px-5 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
             <AdminMobileNav email={user.email} />
-            <p className="text-base font-bold">Snappeal Admin</p>
+            <p className="text-base font-bold">ParkingRabbit Admin</p>
           </div>
           <Link href="/app" className="text-xs text-white/70">
             ← App

@@ -1,15 +1,18 @@
 # Pricing
 
-> **2026-05-20 — model simplified.** The previous three-tier model (Buy Time free / Full Appeal £2.99 / Care Plan £9.99/mo) has been retired in favour of a simpler two-line model: **drafting an appeal letter is free and unlimited; £2.99 is charged only when the user opts to auto-submit the letter via the MCP portal-automation agent.** All copy below describing "£2.99 buys the work / appeal we deliver" should be read as describing only the auto-submission line — the drafting itself is now a free product. The £2.99 still buys "work, not outcome" (the work being the portal submission). Refund logic is unchanged.
+> **2026-05-21 (v0.2.0) — ParkingRabbit pivot.** The previous three-tier model (Buy Time / Full Appeal / Care Plan) has been retired. The product is now a parking-ticket management app (pay, challenge, track), surfaced as three actions on `/app` home. The "MCP agent" name no longer appears in customer copy; user-facing language is **"AI Auto-Submit Agent"**.
 
 ## Headline
 
-**Free to draft. £2.99 per auto-submission. One-off, non-refundable.**
+**Three actions, two paid lines.**
 
-- **Drafting the appeal letter (vision OCR, grounds picker, AI-drafted representation, saved to inbox)** → free, unlimited. No card on file.
-- **Auto-submitting that letter through the council's portal via the MCP agent** → £2.99 per submission, opt-in on the letter review screen.
+- **Review my ticket** → Free. Scan the PCN, OCR the fields, see Pay / Challenge / Reminders options. No card.
+- **Pay a ticket** (`/app/pay`) → **Ticket amount + £1.99 ParkingRabbit service fee**. The user authorises us via an explicit checkbox; we pay the council on their behalf. Stripe-ready surface, real Stripe keys pending.
+- **Challenge a ticket** → **Free to draft. £2.99 per auto-submission. One-off, non-refundable.**
+  - Drafting the appeal letter (vision OCR, grounds picker, AI-drafted representation, saved to inbox) → free, unlimited. No card on file.
+  - Auto-submitting that letter through the council's portal via the **AI Auto-Submit Agent** → £2.99 per submission, opt-in on the ticket-detail screen via `PaymentSheet`.
 
-£2.99 buys the **submission work** — the MCP agent operating the council portal on your behalf — not the **outcome**. We're priced like a service, not a wager: you pay for the submission we deliver, not for whether the council says yes.
+£2.99 buys the **submission work** — the AI Auto-Submit Agent operating the council portal on your behalf — not the **outcome**. We're priced like a service, not a wager: you pay for the submission we deliver, not for whether the council says yes.
 
 **One service-failure exception**: if our system fails to deliver the appeal (e.g., AI generation fails on retry, the council portal is unreachable for an extended period, payment is taken but no letter is produced), we issue an exceptional refund. That is a service-quality remedy — not an outcome refund.
 

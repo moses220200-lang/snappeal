@@ -32,12 +32,12 @@ export default function TermsPage() {
 
         <section className="mt-8 space-y-6">
           <Block
-            title="What Snappeal is"
-            body="Snappeal is a software tool that drafts a representation against a London Penalty Charge Notice (PCN) from photos and notes you provide, and submits it to the issuing council on your behalf via the council's portal or email."
+            title="What ParkingRabbit is"
+            body="ParkingRabbit is a software tool that drafts a representation against a London Penalty Charge Notice (PCN) from photos and notes you provide, and submits it to the issuing council on your behalf via the council's portal or email."
           />
           <Block
-            title="What Snappeal isn't"
-            body="Snappeal is not a solicitor, barrister, claims-management company, or regulated legal service. We don't provide legal advice. We don't represent you at oral tribunal hearings. We can't and don't guarantee any outcome."
+            title="What ParkingRabbit isn't"
+            body="ParkingRabbit is not a solicitor, barrister, claims-management company, or regulated legal service. We don't provide legal advice. We don't represent you at oral tribunal hearings. We can't and don't guarantee any outcome."
           />
           <Block
             title="What you pay"
@@ -53,7 +53,7 @@ export default function TermsPage() {
           />
           <Block
             title="Council decisions"
-            body="The council, not Snappeal, decides the appeal. We facilitate the representation; we don't decide it. Statistics about appeal success rates in this app refer to historical London Tribunal outcomes — they don't predict your case."
+            body="The council, not ParkingRabbit, decides the appeal. We facilitate the representation; we don't decide it. Statistics about appeal success rates in this app refer to historical London Tribunal outcomes — they don't predict your case."
           />
           <Block
             title="If you change your mind"
@@ -61,7 +61,7 @@ export default function TermsPage() {
           />
           <Block
             title="Liability"
-            body="Snappeal's total liability for any claim related to your use of the service is limited to the amount you paid us for the relevant appeal. Nothing in these terms excludes liability for things UK law doesn't allow us to exclude (e.g. death or personal injury caused by negligence)."
+            body="ParkingRabbit's total liability for any claim related to your use of the service is limited to the amount you paid us for the relevant appeal. Nothing in these terms excludes liability for things UK law doesn't allow us to exclude (e.g. death or personal injury caused by negligence)."
           />
           <Block
             title="Governing law"
@@ -72,10 +72,10 @@ export default function TermsPage() {
         <footer className="mt-12 pt-6 border-t border-snappeal-border text-xs text-snappeal-muted">
           Questions?{" "}
           <Link
-            href="mailto:hello@snappeal.ai"
+            href="mailto:hello@parkingrabbit.com"
             className="text-snappeal-primary font-semibold"
           >
-            hello@snappeal.ai
+            hello@parkingrabbit.com
           </Link>
         </footer>
       </main>

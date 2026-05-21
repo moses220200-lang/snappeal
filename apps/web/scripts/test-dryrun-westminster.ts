@@ -34,10 +34,10 @@ async function main() {
       location: "Test Lane, W1U 1AA",
       issuedAt: new Date().toISOString(),
       grounds: ["signage-unclear"],
-      replyEmail: "dry-run@appeals.snappeal.ai",
+      replyEmail: "dry-run@appeals.parkingrabbit.com",
       letterSubject: `Representation against PCN ${pcnRef}`,
       letterBody: [
-        "This is a SNAPPEAL DRY RUN. NO APPEAL is being submitted.",
+        "This is a PARKINGRABBIT DRY RUN. NO APPEAL is being submitted.",
         "",
         "The agent should stop at the review page and screenshot it.",
         "",

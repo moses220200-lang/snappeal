@@ -51,6 +51,13 @@
   --color-snappeal-warning: #ff9500;
   --color-snappeal-danger: #ff3b30;
 
+  /* Appealed — purple status semantics (scoped to ticket-list status only;
+   * brand surfaces remain purple-free per the hero comment above). */
+  --color-snappeal-appealed: #7c3aed;
+  --color-snappeal-appealed-50: #f5f3ff;
+  --color-snappeal-appealed-100: #ede9fe;
+  --color-snappeal-appealed-700: #5b21b6;
+
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui,
     sans-serif;
 }
@@ -205,10 +212,13 @@ html {
 }
 
 @keyframes splash-ticket-in {
-  0%   { opacity: 0; transform: translateY(-40px) rotate(30deg) scale(0.6); }
-  18%  { opacity: 1; transform: translateY(8px) rotate(-12deg) scale(1.05); }
-  28%  { transform: translateY(0) rotate(-8deg) scale(1); }
-  100% { opacity: 1; transform: translateY(0) rotate(-8deg) scale(1); }
+  /* Lands straight (rotate 0). Earlier passes used a -8° resting tilt for
+   * "casual photo on dashboard" feel — feedback was that it just reads as
+   * crooked, especially under the square viewfinder brackets. */
+  0%   { opacity: 0; transform: translateY(-40px) rotate(18deg) scale(0.6); }
+  18%  { opacity: 1; transform: translateY(8px) rotate(-4deg) scale(1.05); }
+  28%  { transform: translateY(0) rotate(0deg) scale(1); }
+  100% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
 }
 
 @keyframes splash-flash {

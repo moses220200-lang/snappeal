@@ -4,7 +4,7 @@
 import OgImage from "./opengraph-image";
 
 export const runtime = "edge";
-export const alt = "Snappeal — challenge your London parking ticket";
+export const alt = "ParkingRabbit — pay or challenge your London parking ticket";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

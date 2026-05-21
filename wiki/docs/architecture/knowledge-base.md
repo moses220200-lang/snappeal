@@ -1,6 +1,6 @@
 # Knowledge base
 
-The council knowledge base is the single most-edited data in Snappeal after the appeals themselves. It governs which council is matched, what letter address is used, what portal URL the user is sent to, and (in v0.2) what form fields the Playwright MCP agent expects to fill.
+The council knowledge base is the single most-edited data in ParkingRabbit after the appeals themselves. It governs which council is matched, what letter address is used, what portal URL the user is sent to, and (in v0.2) what form fields the Playwright MCP agent expects to fill.
 
 This page is the **schema** that Phase B's admin CRUD targets.
 

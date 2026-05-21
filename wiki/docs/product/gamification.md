@@ -1,6 +1,6 @@
 # Gamification
 
-Gamification in Snappeal is **light, earned, and never coercive**. Users come to fight a parking ticket — not to grind XP. The goal is to make the wins feel like wins and to surface honest progress.
+Gamification in ParkingRabbit is **light, earned, and never coercive**. Users come to fight a parking ticket — not to grind XP. The goal is to make the wins feel like wins and to surface honest progress.
 
 ## What's live today
 
@@ -26,7 +26,7 @@ Three-in-a-row wins should earn a "Streak: 3" badge on the Home hero. Schema for
 ## What we will do
 
 - **Honest progress.** The win-rate ring is honest math, even when it makes us look bad. If a user's win rate is 33%, that's what they see.
-- **Pro-social proof.** Anonymised community win-rate per council ("Westminster appeals via Snappeal win 64%") on the paywall — backed by the actual data (planned, see [roadmap #3](../business/roadmap.md)).
+- **Pro-social proof.** Anonymised community win-rate per council ("Westminster appeals via ParkingRabbit win 64%") on the paywall — backed by the actual data (planned, see [roadmap #3](../business/roadmap.md)).
 - **Earned celebrations.** Confetti only on actual `cancelled`. Never on submission, never on a tier purchase. Wins are wins.
 
 ## Open work

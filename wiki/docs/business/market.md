@@ -38,7 +38,7 @@ A conservative SAM treats the remaining **~30%** of PCNs as potentially appeal-r
 
 ## SOM — Serviceable obtainable (3-year)
 
-If Snappeal captures **5% of the SAM** by Year 3:
+If ParkingRabbit captures **5% of the SAM** by Year 3:
 
 **SOM (Year 3) = ~£425k ARR**
 
@@ -78,7 +78,7 @@ A separate but adjacent market is **private parking operators** (ParkingEye, NCP
 
 - **~15.9 million private parking tickets issued in the UK in the year to September 2025** — up 17% YoY from 13.6m[^8].
 - Industry-side data sourced via Press Association from DVLA records.
-- Currently **out of scope** for Snappeal v0.1/v0.2 (different evidence regime, different appeal body) — revisited post-v0.3 per the [roadmap](roadmap.md).
+- Currently **out of scope** for ParkingRabbit v0.1/v0.2 (different evidence regime, different appeal body) — revisited post-v0.3 per the [roadmap](roadmap.md).
 
 If we expanded into private parking, the addressable market roughly **doubles** vs councils alone.
 

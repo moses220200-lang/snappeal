@@ -1,5 +1,5 @@
 /**
- * API request/response contracts for the Snappeal backend.
+ * API request/response contracts for the ParkingRabbit backend.
  *
  * All API routes parse incoming JSON through these zod schemas and return
  * typed JSON. The shapes match the mock-data fixture (fixtures/mock-data.json)

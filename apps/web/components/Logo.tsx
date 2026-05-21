@@ -1,5 +1,5 @@
 /**
- * Canonical Snappeal logo system.
+ * Canonical ParkingRabbit logo system.
  *
  *   <SnappealMark  size={n} variant="dark|light" />     // shield only
  *   <SnappealLogo  size={n} variant="dark|light" layout="horizontal|stacked" />
@@ -22,46 +22,31 @@ type MarkProps = {
   title?: string;
 };
 
-const SHIELD_PATH =
-  // 80×80 viewBox. Rounded-rectangle shield with a soft pointed base —
-  // matches the brand reference (navy rounded shield silhouette, slightly
-  // taller than wide so it reads as a shield rather than a tile).
-  "M40 4 C 24 4, 14 6, 10 10 C 8 12, 8 16, 8 24 V 44 C 8 58, 18 68, 40 76 C 62 68, 72 58, 72 44 V 24 C 72 16, 72 12, 70 10 C 66 6, 56 4, 40 4 Z";
-
-const CHECK_PATH =
-  // Hollow check / tick centred in the shield. Drawn as a stroked
-  // polyline (rounded caps + joins) so it matches the brand reference
-  // rather than rendering as a filled glyph.
-  "M24 42 L 35 53 L 56 30";
-
+/**
+ * ParkingRabbit logo mark. Renders the canonical PNG (navy shield + white
+ * rabbit silhouette) from `public/logo.png`. The same file backs the
+ * favicon (`app/icon.png`), Apple touch icon (`app/apple-icon.png`), and
+ * the in-app brand surfaces — so the identity is pixel-identical
+ * everywhere. The `variant="light"` flag applies a CSS invert so the mark
+ * reads cleanly when laid over dark hero sections; the source PNG itself
+ * stays in its dark form.
+ */
 export function SnappealMark({
   size = 40,
   variant = "dark",
   className = "",
-  title = "Snappeal",
+  title = "ParkingRabbit",
 }: MarkProps) {
-  const shieldFill = variant === "dark" ? "#0b1f44" : "#ffffff";
-  const checkStroke = variant === "dark" ? "#ffffff" : "#0b1f44";
   return (
-    <svg
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/logo.png"
+      alt={title}
       width={size}
       height={size}
-      viewBox="0 0 80 80"
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-      aria-label={title}
-      className={`shrink-0 ${className}`}
-    >
-      <path d={SHIELD_PATH} fill={shieldFill} />
-      <path
-        d={CHECK_PATH}
-        fill="none"
-        stroke={checkStroke}
-        strokeWidth="9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      className={`shrink-0 ${variant === "light" ? "invert" : ""} ${className}`}
+      draggable={false}
+    />
   );
 }
 
@@ -93,7 +78,7 @@ export function SnappealLogo({
         <span
           className={`${wordmarkSize} font-bold tracking-tight ${wordmarkColor}`}
         >
-          Snappeal
+          ParkingRabbit
         </span>
         {tagline && (
           <span className={`text-[11px] ${taglineColor}`}>{tagline}</span>
@@ -109,7 +94,7 @@ export function SnappealLogo({
         <span
           className={`${wordmarkSize} font-bold tracking-tight ${wordmarkColor}`}
         >
-          Snappeal
+          ParkingRabbit
         </span>
         {tagline && (
           <span className={`text-[11px] ${taglineColor}`}>{tagline}</span>
@@ -119,21 +104,14 @@ export function SnappealLogo({
   );
 }
 
-/* ─── backward-compat aliases ───
- * Old callsites (app/page.tsx, app/terms, app/privacy) imported
- * `ShieldLogo` + `Wordmark`. Keep the names so nothing breaks; they map
- * to the canonical components above. */
-
-export function ShieldLogo({
-  size = 40,
-  className = "",
-}: {
-  size?: number;
-  className?: string;
-}) {
-  return <SnappealMark size={size} variant="dark" className={className} />;
-}
-
+/* ─── backward-compat alias ───
+ * `app/page.tsx`, `app/terms`, and `app/privacy` import `Wordmark` (the
+ * full lockup with the "we draft & submit your parking-ticket appeal"
+ * tagline). Keep the name so those callsites don't churn — it maps to
+ * the canonical `SnappealLogo` above.
+ *
+ * The sibling `ShieldLogo` alias was removed 2026-05-21 (zero importers).
+ */
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <SnappealLogo

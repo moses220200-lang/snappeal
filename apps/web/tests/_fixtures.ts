@@ -1,7 +1,7 @@
 import { test as base, expect } from "@playwright/test";
 
 /**
- * Snappeal test fixtures.
+ * ParkingRabbit test fixtures.
  *
  * Pre-seeds `sessionStorage` and `localStorage` so:
  *   - The 3-second splash animation never runs (flag set to "1").

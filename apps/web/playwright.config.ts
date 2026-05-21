@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Snappeal E2E test suite — runs against the local Next.js dev server.
+ * ParkingRabbit E2E test suite — runs against the local Next.js dev server.
  *
  * In CI, the dev server is started by Playwright (`webServer.command`).
  * Locally, if a dev server is already running on :3001 we reuse it

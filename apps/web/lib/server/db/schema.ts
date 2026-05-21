@@ -1,5 +1,5 @@
 /**
- * Drizzle ORM schema for the Snappeal Postgres database.
+ * Drizzle ORM schema for the ParkingRabbit Postgres database.
  *
  * Activated when DATABASE_URL is set (Neon Postgres via Vercel Marketplace
  * in production). Until then the app runs in mock-data mode and never
@@ -233,7 +233,7 @@ export type JobProgressEvent =
   | { ts: string; kind: "screenshot"; step: number; url: string; caption?: string };
 
 /**
- * Inbound mail from councils. Per-appeal alias is `<appeal-id>@appeals.snappeal.ai`;
+ * Inbound mail from councils. Per-appeal alias is `<appeal-id>@appeals.parkingrabbit.com`;
  * the email-relay webhook lands here. Parsing happens in lib/server/inbound.ts.
  */
 export const inboundMessages = pgTable(

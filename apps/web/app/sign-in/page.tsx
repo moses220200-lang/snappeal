@@ -69,7 +69,7 @@ function SignInInner() {
   };
 
   return (
-    <AuthShell title="Welcome back" subtitle="Sign in to Snappeal to sync your tickets across devices.">
+    <AuthShell title="Welcome back" subtitle="Sign in to ParkingRabbit to sync your tickets across devices.">
       <OAuthButtons next={next} />
       <div className="flex items-center gap-3 my-5">
         <span className="flex-1 h-px bg-snappeal-border" />
@@ -127,7 +127,7 @@ function AuthShell({ title, subtitle, children }: { title: string; subtitle: str
       <div className="w-full max-w-sm">
         <Link href="/app" className="flex items-center gap-2.5 mb-6 justify-center">
           <SnappealMark size={36} variant="dark" />
-          <span className="text-xl font-bold text-snappeal-navy tracking-tight">Snappeal</span>
+          <span className="text-xl font-bold text-snappeal-navy tracking-tight">ParkingRabbit</span>
         </Link>
         <div className="rounded-3xl bg-white border border-snappeal-border p-6">
           <h1 className="text-2xl font-bold text-snappeal-navy">{title}</h1>

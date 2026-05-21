@@ -1,6 +1,6 @@
 /**
  * Server-side viewer resolver — single source for "who is making this
- * request". Returns null userId for guests, the Snappeal userId from the
+ * request". Returns null userId for guests, the ParkingRabbit userId from the
  * session JWT for signed-in users. OAuth providers add tokens with the
  * same shape so this resolver stays unchanged.
  *

@@ -26,7 +26,7 @@ interface AuthGateProps {
 /**
  * Wraps a sensitive action (pay, submit) behind a signed-in check.
  *
- * Guests see a friendly "Create your free Snappeal account" card with
+ * Guests see a friendly "Create your free ParkingRabbit account" card with
  * `?next=` honouring redirect to wherever they came from. Signed-in users
  * see the slotted children unmodified.
  */
@@ -40,7 +40,7 @@ export function AuthGate(props: AuthGateProps) {
 }
 
 function AuthGateInner({
-  title = "Create your free Snappeal account",
+  title = "Create your free ParkingRabbit account",
   subtitle = "You'll need an account to file an appeal — even the free Buy Time tier. Your tickets sync across devices, council replies land in your inbox, and you can pick up where you left off on any phone.",
   benefits = [
     "Free Buy Time appeals — protect your 14-day discount window",

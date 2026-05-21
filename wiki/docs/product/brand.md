@@ -4,27 +4,27 @@ The visual and verbal system. Used by the wiki, the admin panel, and the custome
 
 ## Name
 
-**Snappeal.**
+**ParkingRabbit.**
 
-One word. Portmanteau of *snap* (capture the ticket in a photo) and *appeal* (what the product delivers). Captures the entire UX in seven letters — photo-first, action-led, mobile-native. Capital S in prose, lowercase in domains and code (`snappeal.ai`, `snappeal`, `snappeal-wiki`, etc.).
+One word, camel-case. *Parking* anchors the category (so the brand never has to spell out what it's for) and *Rabbit* signals speed + agility — hopping past the bureaucratic friction councils throw at PCN recipients. Reads naturally in both customer copy ("ParkingRabbit drafted my appeal in 30 seconds") and code (component prefix `ParkingRabbit*`, CSS tokens stay `snappeal-*` for legacy reasons — see Implementation note below).
 
-The verb framing matters: a user can *snappeal* a ticket the same way they *google* something or *uber* somewhere. Verb-brands compound — every conversation about parking fines becomes a chance for the brand to surface as a verb.
+> **History.** The brand was renamed from `Snappeal` on 2026-05-21 (v0.2.0 pivot) when the product scope widened from "challenge a ticket" to a parking-ticket management app (pay, challenge, track). Earlier docs may still reference the old name; the rename was repo-wide for user-visible strings but intentionally left CSS tokens (`--color-snappeal-*`), component identifiers (`SnappealMark` / `SnappealLogo` / `SnappealSplash`), and the `snappeal-*` Tailwind aliases in place to keep the diff small.
 
-**Canonical domain**: `snappeal.ai`. The `.ai` TLD signals what the app does (AI-drafted appeals) and is short enough to drop into TikTok captions and shareable links. We do not use `.com` / `.app` / `.uk` aliases for the product itself; redirect any incidental traffic to `snappeal.ai`.
+**Canonical domain**: `parkingrabbit.com`. Inbound mail for per-appeal aliases is `<appeal-id>@appeals.parkingrabbit.com`. DNS provisioning is still pending — see `architecture/deployment.md`.
 
-For App Store listings and SEO landing pages we may use the longer descriptor *"Snappeal — appeal a London parking ticket"* to capture high-intent searches. In the app chrome itself and in conversation, just **Snappeal**.
+For App Store listings and SEO landing pages we may use the longer descriptor *"ParkingRabbit — pay or challenge a London parking ticket"* to capture high-intent searches. In the app chrome itself and in conversation, just **ParkingRabbit**.
 
 ## Form factor
 
-Snappeal is a **responsive PWA** — installable on iOS and Android home screens, and also rendered as a desktop / tablet experience for the same domain. The product itself is mobile-first, but the public marketing surface (homepage, pricing, FAQ, success stories) is designed-for-desktop and downsizes responsively. From v0.3 the PWA is wrapped via Capacitor for App Store + Play Store.
+ParkingRabbit is a **responsive PWA** — installable on iOS and Android home screens, and also rendered as a desktop / tablet experience for the same domain. The product itself is mobile-first, but the public marketing surface (homepage, pricing, FAQ, success stories) is designed-for-desktop and downsizes responsively. From v0.3 the PWA is wrapped via Capacitor for App Store + Play Store.
 
 See [screens/homepage.md](screens/homepage.md) for the desktop home spec.
 
 ## Tagline
 
-**Appeal a London parking ticket in under five taps.**
+**Pay or challenge London parking tickets in minutes.**
 
-Use the full tagline on the homepage, app store listings, and the first marketing fold. Shortened forms (*"Appeal in five taps."*, *"Upload. Appeal. Win."*) are permitted for ad creatives where character counts are tight, but never drop "London" — the geography is a credibility signal. (When the v0.1 scope decision moves to UK-wide, the geography token shifts but the tagline shape stays.)
+Used in the in-app header subtitle and the layout `<meta description>`. Shortened forms (*"Pay or challenge — in minutes."*, *"Don't pay until you've checked."*) are permitted for ad creatives where character counts are tight, but never drop "London" — the geography is a credibility signal. (When the v0.1 scope decision moves to UK-wide, the geography token shifts but the tagline shape stays.)
 
 ## Colour
 
@@ -70,12 +70,12 @@ Heading scale (MkDocs follows the same):
 
 ## Logo
 
-A **System Blue shield** containing a white **S** in the same Inter typeface as the wordmark. The shield (rather than a rounded square) gives the brand a "protect / defend" reading, consistent with appealing on the user's behalf. Vector source: `wiki/docs/assets/logo.svg`. Two preferred presentations:
+A **navy shield containing a white rabbit silhouette**, served as a raster master from `apps/web/public/logo.png` (also reused as `app/icon.png` favicon and `app/apple-icon.png` for iOS home-screen). The shield (rather than a rounded square) gives the brand a "protect / defend" reading, consistent with intervening between the driver and the council on the driver's behalf.
 
 - **App icon** — 1024×1024 master, no padding; OS rounding handles the corner.
-- **Wordmark** — shield to the left of "Snappeal" set in Inter 700, navy on light backgrounds.
+- **Wordmark** — shield to the left of "ParkingRabbit" set in Inter 700, navy on light backgrounds. Component: `SnappealLogo` (kept as an identifier alias for the brand pivot — every callsite still resolves).
 
-The shield silhouette matches both mockups (originally with a "P" in the designer's working name; we render the same shield with an "S" for Snappeal).
+The earlier System-Blue "S" shield was retired in the v0.2.0 rebrand; legacy assets under `wiki/docs/assets/logo.svg` may still show it.
 
 Never:
 - Stretch or skew.
@@ -97,12 +97,15 @@ Tone references: GOV.UK service writing, Monzo error copy, Apple's pre-2020 prod
 
 Reference strings — keep these consistent across surfaces:
 
-- Home CTA: **Start Your Appeal**
+- Landing CTAs: **Get Started** (header), **Free Appeal** (hero), **See How It Works** (hero secondary).
+- `/app` home action heroes — left to right: **Start now** (Deal with parking tickets), **Start appeal** (Challenge a ticket), **Pay now** (Pay a ticket).
+- Tickets list filter chips: **All** / **To Pay** / **Challenging** / **Resolved**. (`Challenging` covers both reviewing options and in-flight appeals — one journey.)
+- Tickets list amount+state line — one of: **£X at risk** (blue, draft/ready inside the discount window), **£X due** (red, last 4 days of the discount window), **£X appealed** (purple, in-flight with the council), **Cancelled £X** (green, won), **Closed £X** (slate, rejected).
 - Photos step CTA: **Continue**
 - Notes step CTA: **Generate letter**
-- Paywall CTA: **Start Your Appeal — £2.99**
-- Letter step actions: **Copy** · **Share** · **Submit**
-- Status pills: **Draft** / **Ready to send** / **Sent** / **Resolved**
-- Pricing line: **£2.99 — one-off, non-refundable.**
+- Paywall CTA: **Generate my appeal** (drafting is free; the £2.99 charge moves to the `PaymentSheet` on Submit).
+- Letter step actions: **Copy** · **Share** · **Submit appeal to council** (opens `PaymentSheet`).
+- Pricing line (challenge path): **£2.99 — one-off, non-refundable.**
+- Pricing line (pay path): **Ticket amount + £1.99 ParkingRabbit service fee.**
 - Pricing rationale line: **You're paying for the appeal we draft and submit, not for the outcome.**
-- Disclaimer line: **Snappeal drafts and submits representations. It is not a solicitor and doesn't guarantee an outcome.**
+- Disclaimer line: **ParkingRabbit drafts and submits representations. It is not a solicitor and doesn't guarantee an outcome.**

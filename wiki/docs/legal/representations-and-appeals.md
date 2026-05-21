@@ -19,7 +19,7 @@ flowchart LR
 
 **When**: After the PCN is issued and before the 14-day discount window closes.
 
-**Where**: Council's online portal or correspondence address (email or post). Each council differs — Snappeal's knowledge base routes you to the right channel.
+**Where**: Council's online portal or correspondence address (email or post). Each council differs — ParkingRabbit's knowledge base routes you to the right channel.
 
 **Who decides**: A council parking-services officer at their discretion. They can cancel on mitigating circumstances alone (medical emergency, loading, Blue Badge, etc.), without you needing to cite a statutory ground.
 
@@ -29,7 +29,7 @@ flowchart LR
 - **Cancelled** — PCN withdrawn entirely.
 - **Rejected** — proceed to stage 2 once the council issues a Notice to Owner.
 
-**Snappeal's role**: drafts the informal representation letter, identifies the right ground given your evidence, addresses it to the correct council channel.
+**ParkingRabbit's role**: drafts the informal representation letter, identifies the right ground given your evidence, addresses it to the correct council channel.
 
 ## Stage 2 — Formal representations (within 28 days of Notice to Owner)
 
@@ -48,7 +48,7 @@ flowchart LR
 - **Rejected, with right to appeal** — Notice of Rejection issued. You have 28 days to escalate to the Tribunal.
 - **Reduced charge offer** — some councils offer to reinstate the 50% discount if you pay within 14 days of the Notice of Rejection. Reading this offer carefully is important.
 
-**Snappeal's role**: drafts the formal representation citing the appropriate statutory ground from TMA 2004 Schedule 1.
+**ParkingRabbit's role**: drafts the formal representation citing the appropriate statutory ground from TMA 2004 Schedule 1.
 
 ## Stage 3 — London Tribunals (within 28 days of Notice of Rejection)
 
@@ -68,11 +68,11 @@ flowchart LR
 
 Source: [London Councils, *Enforcement and appeals statistics 2024-25*](https://www.londoncouncils.gov.uk/news-and-press-releases/2025/london-councils-enforcement-and-appeals-statistics-2024-25).
 
-**Snappeal's role (v0.1)**: drafts the Tribunal appeal letter. We do not represent at oral hearings — for that, see London Tribunals' self-representation guidance.
+**ParkingRabbit's role (v0.1)**: drafts the Tribunal appeal letter. We do not represent at oral hearings — for that, see London Tribunals' self-representation guidance.
 
 ## Stage 4 — Statutory declaration / witness statement (limited)
 
-Only relevant if the motorist did **not** receive any of the prior notices (e.g., genuinely moved house and the council still sent correspondence to the DVLA address). The motorist can apply to **revoke the order for recovery** at the Traffic Enforcement Centre at Northampton County Court via a statutory declaration. Out of scope for Snappeal v0.1 — we direct affected users to the [TEC guidance](https://www.gov.uk/parking-tickets/challenge-a-parking-ticket).
+Only relevant if the motorist did **not** receive any of the prior notices (e.g., genuinely moved house and the council still sent correspondence to the DVLA address). The motorist can apply to **revoke the order for recovery** at the Traffic Enforcement Centre at Northampton County Court via a statutory declaration. Out of scope for ParkingRabbit v0.1 — we direct affected users to the [TEC guidance](https://www.gov.uk/parking-tickets/challenge-a-parking-ticket).
 
 ## Critical dates summary
 
@@ -82,4 +82,4 @@ Only relevant if the motorist did **not** receive any of the prior notices (e.g.
 | 28 days to respond to Notice to Owner (formal rep) | NtO issue date |
 | 28 days to appeal to Tribunal | Notice of Rejection date |
 
-Miss any of these and you escalate to the next stage automatically — usually at higher cost. **Snappeal's home screen tracks these dates per appeal and shows the days remaining**, so users don't accidentally lose the discount or the right to appeal.
+Miss any of these and you escalate to the next stage automatically — usually at higher cost. **ParkingRabbit's home screen tracks these dates per appeal and shows the days remaining**, so users don't accidentally lose the discount or the right to appeal.

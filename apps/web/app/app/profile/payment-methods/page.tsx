@@ -8,7 +8,7 @@ import { getOrCreateSessionId } from "@/lib/client/session";
 import type { AppealRecord } from "@/lib/server/appeals";
 
 /**
- * v0.1 payment-methods view. Snappeal doesn't store cards — payments go
+ * v0.1 payment-methods view. ParkingRabbit doesn't store cards — payments go
  * through Stripe and authorise per appeal. This page surfaces the
  * payment history (Apple Pay / Google Pay / card per appeal) and the
  * upcoming Care Plan subscription.
@@ -39,7 +39,7 @@ export default function PaymentMethodsPage() {
   return (
     <ProfileSubPage
       title="Payment methods"
-      subtitle="Snappeal authorises payment per appeal — we never store your card."
+      subtitle="ParkingRabbit authorises payment per appeal — we never store your card."
     >
       <section className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-start gap-3">
         <span className="size-10 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">

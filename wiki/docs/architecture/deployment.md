@@ -4,11 +4,11 @@ Production deploy plan. Live deploy hasn't shipped yet — this is the runbook t
 
 ## Pre-flight checklist
 
-- [ ] Domain `snappeal.ai` registered (see [todo.md](../todo.md)).
+- [ ] Domain `parkingrabbit.com` registered (see [todo.md](../todo.md)).
 - [ ] DNS managed in Cloudflare / Vercel — depending on which provider wins.
 - [ ] Neon Postgres provisioned via Vercel Marketplace, EU region.
 - [ ] Stripe UK account verified, Care Plan product + price created.
-- [ ] Postmark / Resend account live, `appeals.snappeal.ai` MX + DKIM verified.
+- [ ] Postmark / Resend account live, `appeals.parkingrabbit.com` MX + DKIM verified.
 - [ ] Apple Developer Program enrolment complete (for Apple Wallet pass + Apple OAuth).
 - [ ] Google Cloud project + OAuth client created.
 - [ ] VAPID key pair generated (`npx web-push generate-vapid-keys`).
@@ -34,7 +34,7 @@ Set every env var from `.env.example` in the Vercel dashboard. Critical ones:
 | `INBOUND_WEBHOOK_SECRET` | random 32 chars | Header gate on `/api/inbound` |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | from `web-push` | Browser subscribe |
 | `VAPID_PRIVATE_KEY` | from `web-push` | Worker side, send |
-| `NEXT_PUBLIC_APP_URL` | `https://snappeal.ai` | Used in Stripe success_url etc. |
+| `NEXT_PUBLIC_APP_URL` | `https://parkingrabbit.com` | Used in Stripe success_url etc. |
 | `SNAPPEAL_DISABLE_WORKER` | `1` | The worker runs on a separate box |
 | `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT` | unset / `0` | Real Stripe takes over |
 | `SNAPPEAL_SKIP_PAYMENT_CHECK` | unset / `0` | Production must verify |
@@ -52,7 +52,7 @@ From a local terminal with the production `DATABASE_URL` exported:
 cd apps/web
 DATABASE_URL="<neon-url>" npm run db:migrate
 DATABASE_URL="<neon-url>" npm run db:seed
-DATABASE_URL="<neon-url>" npm run admin:promote -- founder@snappeal.ai
+DATABASE_URL="<neon-url>" npm run admin:promote -- founder@parkingrabbit.com
 ```
 
 ## Step 3 — Worker tier (Fly.io recommended)
@@ -117,32 +117,32 @@ One worker handles dozens of jobs/hour. Scale up as volume grows.
 
 ## Step 4 — Inbound mail (Postmark example)
 
-1. Create a Postmark **Inbound Stream** for `appeals.snappeal.ai`.
-2. Set the webhook URL: `https://snappeal.ai/api/inbound`.
-3. Add the `INBOUND_WEBHOOK_SECRET` as a custom header in the Postmark UI (the route validates `X-Snappeal-Webhook-Secret`).
+1. Create a Postmark **Inbound Stream** for `appeals.parkingrabbit.com`.
+2. Set the webhook URL: `https://parkingrabbit.com/api/inbound`.
+3. Add the `INBOUND_WEBHOOK_SECRET` as a custom header in the Postmark UI (the route validates `X-ParkingRabbit-Webhook-Secret`).
 4. DNS:
-   - `MX 10 inbound.postmarkapp.com.` on `appeals.snappeal.ai`
+   - `MX 10 inbound.postmarkapp.com.` on `appeals.parkingrabbit.com`
    - SPF + DKIM as Postmark prescribes
-5. Send a test email to `ap_test@appeals.snappeal.ai` — check `/admin/inbound` for the row.
+5. Send a test email to `ap_test@appeals.parkingrabbit.com` — check `/admin/inbound` for the row.
 
 ## Step 5 — Stripe webhook + Care Plan
 
-1. Stripe → Webhooks → Add endpoint `https://snappeal.ai/api/stripe/webhook`. Subscribe to `payment_intent.succeeded`, `customer.subscription.*`.
+1. Stripe → Webhooks → Add endpoint `https://parkingrabbit.com/api/stripe/webhook`. Subscribe to `payment_intent.succeeded`, `customer.subscription.*`.
 2. Copy the signing secret → `STRIPE_WEBHOOK_SECRET`.
-3. Stripe → Products → Create "Snappeal Care Plan", recurring £9.99/mo GBP. Copy the Price id → `STRIPE_CARE_PLAN_PRICE_ID`.
+3. Stripe → Products → Create "ParkingRabbit Care Plan", recurring £9.99/mo GBP. Copy the Price id → `STRIPE_CARE_PLAN_PRICE_ID`.
 
 ## Step 6 — Smoke tests
 
 ```bash
 # Health
-curl https://snappeal.ai/api/health | jq
+curl https://parkingrabbit.com/api/health | jq
 
 # Auth
-curl -X POST https://snappeal.ai/api/auth/sign-up -H 'content-type: application/json' \
-  -d '{"email":"smoke@snappeal.ai","password":"long-enough-password","sessionId":"smoke"}'
+curl -X POST https://parkingrabbit.com/api/auth/sign-up -H 'content-type: application/json' \
+  -d '{"email":"smoke@parkingrabbit.com","password":"long-enough-password","sessionId":"smoke"}'
 
 # Backend E2E (point the script at the prod URL — guard against firing in CI)
-SNAPPEAL_BASE=https://snappeal.ai npm run test:e2e:backend
+SNAPPEAL_BASE=https://parkingrabbit.com npm run test:e2e:backend
 ```
 
 ## Rollback

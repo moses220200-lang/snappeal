@@ -16,7 +16,7 @@ No "contravention code". No "TMA 2004". No "statutory grounds". In the UI we say
 
 ## 4. Honesty is a feature
 
-The pricing screen says "£2.99 — one-off, non-refundable. You're paying for the appeal we draft and submit, not for the outcome." The letter screen says "drafted by Snappeal, not a solicitor." The submit screen says "your appeal isn't sent until the council confirms." We never use words like "guaranteed", "win", or "expert".
+The pricing screen says "£2.99 — one-off, non-refundable. You're paying for the appeal we draft and submit, not for the outcome." The letter screen says "drafted by ParkingRabbit, not a solicitor." The submit screen says "your appeal isn't sent until the council confirms." We never use words like "guaranteed", "win", or "expert".
 
 ## 5. Show the work
 
@@ -28,7 +28,7 @@ Anything that takes more than a second streams. The letter generation streams to
 
 ## 7. The empty state is the design
 
-The user's first launch — no appeals yet — is the most-seen screen in the product. It must (a) explain what Snappeal does in one sentence, (b) show the £2.99 price honestly, (c) put the "Start Your Appeal" CTA exactly where the thumb is.
+The user's first launch — no appeals yet — is the most-seen screen in the product. It must (a) explain what ParkingRabbit does in one sentence, (b) show the £2.99 price honestly, (c) put the "Start Your Appeal" CTA exactly where the thumb is.
 
 ## 8. Mobile-first means mobile-only-second
 

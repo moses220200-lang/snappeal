@@ -12,7 +12,7 @@ Drafting a PCN representation is **not** currently a "reserved legal activity" u
 ### R2. Solicitor Regulation Authority intervention
 **Likelihood: Very low. Impact: Medium.**
 The SRA could in principle assert that AI-generated representation letters are "holding out as a solicitor" if our marketing implies legal advice. **DoNotPay's FTC settlement in January 2025 is the cautionary tale**[^2].
-**Mitigation**: every screen says "drafted by Snappeal, not a solicitor"; we never use the words "lawyer", "legal advice", or "guaranteed outcome"; the [values](values.md) page is the brand guardrail.
+**Mitigation**: every screen says "drafted by ParkingRabbit, not a solicitor"; we never use the words "lawyer", "legal advice", or "guaranteed outcome"; the [values](values.md) page is the brand guardrail.
 
 ### R3. UK GDPR / ICO action
 **Likelihood: Low. Impact: High.**
@@ -40,12 +40,12 @@ Stripe Apple Pay requires merchant domain verification + Apple Developer Account
 
 ### R7. A high-profile lost appeal
 **Likelihood: Medium. Impact: Medium.**
-A user appeals via Snappeal, loses, then writes a viral Twitter thread.
-**Mitigation**: clear pre-purchase copy that we charge for the work, not the outcome (consistent with our [pricing](pricing.md)); an in-app post-mortem ("here's why we think this was rejected") helps users feel respected; honest copy ("Snappeal helps you contest — it doesn't guarantee you win") set the expectation up front.
+A user appeals via ParkingRabbit, loses, then writes a viral Twitter thread.
+**Mitigation**: clear pre-purchase copy that we charge for the work, not the outcome (consistent with our [pricing](pricing.md)); an in-app post-mortem ("here's why we think this was rejected") helps users feel respected; honest copy ("ParkingRabbit helps you contest — it doesn't guarantee you win") set the expectation up front.
 
 ### R8. Council pushback
 **Likelihood: Medium. Impact: Medium.**
-A borough publicly criticises Snappeal for "encouraging frivolous appeals" or flagging our submissions as low-quality.
+A borough publicly criticises ParkingRabbit for "encouraging frivolous appeals" or flagging our submissions as low-quality.
 **Mitigation**: per-letter quality bar (the [values](values.md) commitment); proactive outreach to top-volume councils' parking ops teams in v0.2; willingness to suppress weak appeals at our end rather than dump them on councils.
 
 ## Financial

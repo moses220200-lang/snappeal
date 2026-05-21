@@ -1,6 +1,6 @@
 # Job queue
 
-Snappeal uses a **Postgres-backed work queue** for everything that's either expensive (Claude CLI subprocess), long-running (Playwright MCP submission, multi-minute), or that must survive a server restart. No Redis, no SQS, no external broker — just one `jobs` table and `FOR UPDATE SKIP LOCKED`.
+ParkingRabbit uses a **Postgres-backed work queue** for everything that's either expensive (Claude CLI subprocess), long-running (Playwright MCP submission, multi-minute), or that must survive a server restart. No Redis, no SQS, no external broker — just one `jobs` table and `FOR UPDATE SKIP LOCKED`.
 
 ## Why a queue and not inline?
 

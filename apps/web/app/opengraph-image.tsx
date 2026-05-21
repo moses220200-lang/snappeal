@@ -3,10 +3,10 @@ import { ImageResponse } from "next/og";
 /**
  * 1200×630 social-share image. Generated at request time via @vercel/og so
  * we don't have to commit a binary. Layout mirrors the landing-page hero:
- * Snappeal shield + headline left, yellow ticket-stub right.
+ * ParkingRabbit shield + headline left, yellow ticket-stub right.
  */
 export const runtime = "edge";
-export const alt = "Snappeal — challenge your London parking ticket";
+export const alt = "ParkingRabbit — pay or challenge your London parking ticket";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -31,7 +31,7 @@ export default function OgImage() {
         {/* LEFT — wordmark + headline */}
         <div style={{ display: "flex", flexDirection: "column", maxWidth: 640 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            {/* Canonical Snappeal shield — mirrors components/Logo.tsx so
+            {/* Canonical ParkingRabbit shield — mirrors components/Logo.tsx so
                 the OG card uses the same mark as the favicon + app. */}
             <svg
               width="76"
@@ -43,14 +43,14 @@ export default function OgImage() {
                 d="M40 4 C 24 4, 14 6, 10 10 C 8 12, 8 16, 8 24 V 44 C 8 58, 18 68, 40 76 C 62 68, 72 58, 72 44 V 24 C 72 16, 72 12, 70 10 C 66 6, 56 4, 40 4 Z"
                 fill="#0b1f44"
               />
-              <path
-                d="M24 42 L 35 53 L 56 30"
-                fill="none"
-                stroke="#ffffff"
-                strokeWidth="9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+              <g fill="#ffffff">
+                <path d="M33 14 C 30 16 28.5 22 29 30 C 29.5 36 32 39 35 38 C 37 34 37.5 25 36 18 C 35.3 14.5 34 13.5 33 14 Z" />
+                <path d="M45 16 C 47 15 48.5 16.5 49 20 C 49.5 26 49 32 47.5 35.5 C 45.5 38 43 36 42.5 32 C 42 26 43 19.5 45 16 Z" />
+                <circle cx="38" cy="42" r="8" />
+                <path d="M22 58 C 22 49 28 43 38 43 C 52 43 58 51 58 60 C 58 68 50 71 40 71 C 30 71 24 66 22 58 Z" />
+                <ellipse cx="29" cy="67" rx="4.5" ry="3.5" />
+                <circle cx="55" cy="62" r="3" />
+              </g>
             </svg>
             <div
               style={{
@@ -60,7 +60,7 @@ export default function OgImage() {
                 color: "#0a1929",
               }}
             >
-              Snappeal
+              ParkingRabbit
             </div>
           </div>
           <div

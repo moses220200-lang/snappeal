@@ -21,7 +21,7 @@ The full official list is maintained by London Councils' Traffic Enforcement Cen
 | **47** | Stopped on a restricted bus stop or stand | Genuine stopped-for-loading (where exempt); medical/emergency |
 | **99** | Stopped on a pedestrian crossing or zigzag markings | Medical emergency; vehicle broken down |
 
-## How Snappeal uses these codes
+## How ParkingRabbit uses these codes
 
 When you photograph a PCN, the vision model extracts the contravention code. The drafted letter then:
 

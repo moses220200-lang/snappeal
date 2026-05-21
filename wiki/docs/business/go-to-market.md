@@ -33,7 +33,7 @@ PCN-related content is a well-established TikTok genre (#parkingticket, #PCN, "I
 Strategy:
 - Founder-led explanation videos: *"You probably didn't know you can appeal a PCN if the signage is hidden by a tree. Here's how."*
 - Borough-specific guides: *"How to win a Westminster PCN appeal."*
-- Outcome content (with user consent): *"This is how Snappeal got me £160 back."*
+- Outcome content (with user consent): *"This is how ParkingRabbit got me £160 back."*
 
 Cost: founder time (initially) plus £2k/mo paid ads to amplify best-performing content from month 2.
 
@@ -54,7 +54,7 @@ This is the long-term defensible channel. We will not be the cheapest paid adver
 
 | Week | Milestone |
 |---|---|
-| **v0.1 launch (beta)** | Soft launch via TikTok founder content; link to PWA at `snappeal.ai`; manual user-acquisition cap at 200/week to ensure quality monitoring. |
+| **v0.1 launch (beta)** | Soft launch via TikTok founder content; link to PWA at `parkingrabbit.com`; manual user-acquisition cap at 200/week to ensure quality monitoring. |
 | **+4 weeks** | First Google Ads campaign on top 20 highest-intent keywords. |
 | **+8 weeks** | Per-borough landing-page SEO push (already wiki-resident; submit sitemap). |
 | **+12 weeks** | If unit economics hold, scale paid acquisition to 5,000 appeals/month run-rate. |
