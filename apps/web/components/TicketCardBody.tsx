@@ -14,38 +14,33 @@
  *   validating / drafting / submitting all render as a quiet status row
  *   inside the card body — no full-page overlay.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Accessibility,
   AlertOctagon,
   AlertTriangle,
   ArrowRight,
-  BadgeCheck,
   Calendar,
   Camera,
-  CalendarX,
-  Cctv,
   Check,
   CheckCircle2,
-  ChevronRight,
-  FileWarning,
-  HandCoins,
+  ChevronDown,
   Loader2,
   Lock,
-  MessageCircle,
-  Receipt,
-  Search,
+  Mic,
+  Plus,
   ShieldCheck,
-  Signpost,
   Sparkles,
-  Star,
+  X,
 } from "lucide-react";
 import { LetterPreview } from "@/components/LetterPreview";
 import type { LucideIcon } from "lucide-react";
-import { DictationPanel } from "@/components/DictationPanel";
 import { EvidenceCarousel } from "@/components/EvidenceCarousel";
-import { getEvidencePhotos, type OcrHandoff } from "@/lib/client/session";
+import {
+  getEvidencePhotos,
+  setEvidencePhotos,
+  type OcrHandoff,
+} from "@/lib/client/session";
 import { ReviewRecommendation } from "@/components/ReviewRecommendation";
 import type { AppealRecord } from "@/lib/server/appeals";
 import type { CardState } from "@/lib/deriveCardState";
@@ -771,161 +766,199 @@ function InlineStatusRow({
  * notes + step sentinel atomically and fires /api/generate-stream;
  * evidence photos ride along from sessionStorage.
  */
-/* ──────────── Build appeal — recommended grounds picker ────────────
+/* ──────────── Build appeal — conversational reason picker (v0.3.4) ────────────
  *
- * The customer-facing "pick your appeal reason" surface. Replaces the
- * dense accordion that previously fronted all 75 cards in the
- * grounds-catalog: most users only need a single, decisive prompt and
- * Rabbit can route from there. The catalog still drives the data
- * model — each recommended reason maps to a small handful of canonical
- * card IDs from `grounds-catalog.ts`, so the AI drafter receives the
- * same shape it always has.
+ * The customer-facing "build your appeal" surface, rebuilt as a calm,
+ * ChatGPT-style experience instead of a ranked card list:
  *
- * Layout, top to bottom:
- *   - Title + subtitle
- *   - Search field + filter chips (Recommended / All / Signs / Permit)
- *   - Top 3 ranked recommended cards (single-select, rank-numbered)
- *   - "More reasons" pill row + "See all (N)" to expand the full picker
- *   - Step 2: Add evidence (collapsible)
- *   - Step 3: Tell us what happened (collapsible)
- *   - Continue CTA + reassurance line
+ *   1. "What happened?" — a single premium composer where the user
+ *      describes the problem in their own words (type, dictate, or attach
+ *      a photo). This free text is the `notes` the drafter reads.
+ *   2. "Common reasons" — wrapped pills (flex-wrap, no horizontal scroll).
+ *      Tapping one selects it (blue, slightly raised — never green) and
+ *      expands an inline explainer with the evidence that helps most.
+ *   3. Evidence — three premium tiles (Camera / Upload / Voice).
  *
- * `confidence` percentages are UI signal only — not legal guarantees.
- * Hardcoded for now; structure leaves room to inject real ranking
- * later (e.g. from contravention code + portal verdict).
+ * Each reason still maps to a small handful of canonical card IDs from
+ * `grounds-catalog.ts`, so the AI drafter receives the same `grounds`
+ * shape it always has.
  */
 
-interface RecommendedGround {
+interface CommonReason {
   id: string;
+  /** Short pill label. */
+  label: string;
+  /** Heading shown in the inline expander. */
   title: string;
-  description: string;
-  evidenceHint: string;
-  badge: string;
-  /** 0–100 — pure UI signal. */
-  confidence: number;
-  icon: LucideIcon;
-  /** Catalog card IDs preselected when this reason is chosen. */
+  /** One-sentence plain-English explanation. */
+  explanation: string;
+  /** The evidence that strengthens this reason most. */
+  evidence: string[];
+  /** Catalog card IDs forwarded to the drafter when chosen. */
   groundIds: string[];
-  /** Search/filter keywords. */
-  keywords: string[];
-  /** When true, the reason shows in the default "Recommended" filter
-   *  (top 3 cards). When false, it only appears when the user taps
-   *  "All" or that reason's specific category chip. */
-  featured: boolean;
-  /** Short label used for the per-category filter chip at the top. */
-  chipLabel: string;
 }
 
-const RECOMMENDED_GROUNDS: RecommendedGround[] = [
+const COMMON_REASONS: CommonReason[] = [
   {
-    id: "signs_markings",
-    title: "Signs & markings unclear",
-    description: "Signs were missing, unclear or didn't match the rules.",
-    evidenceHint: "Best if you have photos",
-    badge: "Strong match",
-    confidence: 78,
-    icon: Signpost,
-    groundIds: ["sign-missing", "sign-obscured", "markings-faded"],
-    keywords: ["signs", "markings", "signage", "obscured", "faded"],
-    featured: true,
-    chipLabel: "Signs",
+    id: "broke-down",
+    label: "My car broke down",
+    title: "My car broke down",
+    explanation:
+      "Your vehicle became immobilised through no fault of your own, so it couldn't be moved.",
+    evidence: [
+      "Recovery / garage invoice or report",
+      "AA / RAC call-out reference",
+      "Photos of the breakdown",
+    ],
+    groundIds: ["breakdown-mechanical", "breakdown-aa-rac-attended"],
   },
   {
-    id: "permit_paid",
-    title: "Permit / paid parking issue",
-    description: "I had a valid permit or paid but the ticket was issued.",
-    evidenceHint: "Check permit, payment and dates",
-    badge: "Worth checking",
-    confidence: 64,
-    icon: BadgeCheck,
-    groundIds: ["resident-permit", "paid-app-correct-bay"],
-    keywords: ["permit", "paid", "parking", "resident", "visitor"],
-    featured: true,
-    chipLabel: "Permit",
+    id: "already-paid",
+    label: "Already paid",
+    title: "I already paid for parking",
+    explanation:
+      "You'd already paid to park here (or paid this PCN) when the ticket was issued.",
+    evidence: [
+      "Payment receipt or bank statement",
+      "Parking app confirmation",
+      "Council payment email",
+    ],
+    groundIds: ["paid-app-correct-bay", "already-paid"],
   },
   {
-    id: "procedural_error",
-    title: "Procedural error",
-    description: "The council didn't follow the correct process.",
-    evidenceHint: "Check ticket wording and dates",
-    badge: "Possible",
-    confidence: 42,
-    icon: FileWarning,
-    groundIds: ["nto-late", "observation-too-short", "photographic-evidence-missing"],
-    keywords: ["procedural", "process", "notice", "nto", "wrong"],
-    featured: true,
-    chipLabel: "Procedural",
+    id: "machine-failed",
+    label: "Machine failed",
+    title: "The payment machine failed",
+    explanation:
+      "The pay-and-display machine was broken or wouldn't take payment, so you couldn't pay.",
+    evidence: [
+      "Photo of the out-of-order machine",
+      "A failed payment or card decline",
+      "The time you tried to pay",
+    ],
+    groundIds: ["paid-pd", "paid-app-grace-period"],
   },
   {
-    id: "settled",
-    title: "Already paid or cancelled",
-    description: "I already paid this PCN, or the council cancelled it.",
-    evidenceHint: "Receipts or council emails help",
-    badge: "Strong match",
-    confidence: 82,
-    icon: Receipt,
-    groundIds: ["already-paid", "already-cancelled"],
-    keywords: ["paid", "settled", "cancelled", "duplicate"],
-    featured: false,
-    chipLabel: "Already paid",
+    id: "wrong-details",
+    label: "Wrong details",
+    title: "The ticket has the wrong details",
+    explanation:
+      "The PCN gets a key detail wrong — the time, place, or contravention doesn't match what happened.",
+    evidence: [
+      "Photos showing the real situation",
+      "Anything with a timestamp",
+      "The PCN itself",
+    ],
+    groundIds: ["wrong-vrm-misread", "cctv-misread"],
   },
   {
-    id: "blue_badge",
-    title: "Blue Badge issue",
-    description: "I was displaying a valid Blue Badge.",
-    evidenceHint: "Have your badge details ready",
-    badge: "Worth checking",
-    confidence: 70,
-    icon: Accessibility,
+    id: "medical",
+    label: "Medical emergency",
+    title: "There was a medical emergency",
+    explanation:
+      "You had to stop or stay because of a genuine medical emergency.",
+    evidence: [
+      "Hospital / GP letter or appointment",
+      "Prescription or discharge note",
+      "Anything showing the time",
+    ],
+    groundIds: ["medical-emergency"],
+  },
+  {
+    id: "hidden-signs",
+    label: "Hidden signs",
+    title: "The signs were hidden or unclear",
+    explanation:
+      "The restriction signs were missing, covered, or too unclear to read.",
+    evidence: [
+      "Wide shot of the bay and signs",
+      "Close-up of the obscured / missing sign",
+      "Photo from the driver's view",
+    ],
+    groundIds: ["sign-obscured", "sign-missing", "markings-faded"],
+  },
+  {
+    id: "permit-valid",
+    label: "Permit valid",
+    title: "I had a valid permit",
+    explanation:
+      "You held a valid resident, business, or visitor permit for this bay.",
+    evidence: [
+      "Photo of the permit and its dates",
+      "Permit confirmation email",
+      "Visitor session in the app",
+    ],
+    groundIds: ["resident-permit", "visitor-digital"],
+  },
+  {
+    id: "loading",
+    label: "Loading goods",
+    title: "I was loading or unloading",
+    explanation:
+      "You were actively loading or unloading goods, which is usually permitted.",
+    evidence: [
+      "Delivery note or order",
+      "Photos of the goods being moved",
+      "Anything showing the activity",
+    ],
+    groundIds: ["loading-bulky-goods", "loading-continuous-activity"],
+  },
+  {
+    id: "blue-badge",
+    label: "Blue badge",
+    title: "I was displaying a Blue Badge",
+    explanation:
+      "A valid Blue Badge was on display with the clock set correctly.",
+    evidence: [
+      "Photo of the badge on the dashboard",
+      "Badge serial and expiry",
+      "The set clock face",
+    ],
     groundIds: ["bb-displayed", "bb-clock-set"],
-    keywords: ["blue", "badge", "disabled"],
-    featured: false,
-    chipLabel: "Blue Badge",
   },
   {
-    id: "suspensions",
-    title: "Bay was suspended",
-    description: "The bay was suspended but I wasn't properly notified.",
-    evidenceHint: "Photos of the bay and signage help",
-    badge: "Worth checking",
-    confidence: 58,
-    icon: CalendarX,
-    groundIds: ["suspension-no-notice", "suspension-late-posted"],
-    keywords: ["suspended", "suspension", "bay"],
-    featured: false,
-    chipLabel: "Suspensions",
+    id: "vehicle-sold",
+    label: "Vehicle sold",
+    title: "I'd sold the vehicle",
+    explanation:
+      "You'd already sold or transferred the vehicle before the PCN date.",
+    evidence: [
+      "Bill of sale or transfer",
+      "DVLA sale confirmation",
+      "The buyer's details",
+    ],
+    groundIds: ["not-keeper-sold"],
   },
   {
-    id: "cctv",
-    title: "CCTV-issued PCN",
-    description: "A camera issued the ticket, not a warden in person.",
-    evidenceHint: "We'll check the warning sign rules",
-    badge: "Possible",
-    confidence: 48,
-    icon: Cctv,
-    groundIds: ["cctv-misread", "cctv-no-warning-sign"],
-    keywords: ["cctv", "camera", "moving"],
-    featured: false,
-    chipLabel: "CCTV",
+    id: "not-mine",
+    label: "Not my vehicle",
+    title: "This isn't my vehicle",
+    explanation:
+      "The plate was misread or cloned — this PCN isn't for your car.",
+    evidence: [
+      "Photo of your actual numberplate",
+      "Where your car really was at the time",
+      "V5C showing your vehicle",
+    ],
+    groundIds: ["wrong-vrm-misread", "fleet-driver-not-self"],
   },
   {
-    id: "amount",
-    title: "Charge or amount looks wrong",
-    description: "The amount on the ticket doesn't match the contravention.",
-    evidenceHint: "Check ticket wording carefully",
-    badge: "Possible",
-    confidence: 40,
-    icon: HandCoins,
-    groundIds: ["vat-or-fee-added"],
-    keywords: ["amount", "charge", "fee", "vat"],
-    featured: false,
-    chipLabel: "Charge",
+    id: "council-error",
+    label: "Council error",
+    title: "The council made a procedural error",
+    explanation:
+      "The council didn't follow the correct process — late notice, too-short observation, or missing evidence.",
+    evidence: [
+      "The PCN and any letters with dates",
+      "Envelopes or postmarks",
+      "Anything showing the timings",
+    ],
+    groundIds: ["nto-late", "observation-too-short", "photographic-evidence-missing"],
   },
 ];
 
-/** Filter pill identifier. "recommended" + "all" are meta-filters;
- *  every other id is a `chipLabel` from a specific reason. */
-type ReasonFilter = "recommended" | "all" | string;
+const MAX_EVIDENCE = 6;
+const MAX_NOTES = 2000;
 
 function GatheringEvidenceCard({
   appeal,
@@ -936,175 +969,380 @@ function GatheringEvidenceCard({
   busy?: boolean;
   onConfirm: (input: { grounds: string[]; notes: string }) => void;
 }) {
-  // Default selection: the top recommendation. The customer can change
-  // it with a single tap; we never strand them on a blank state.
-  const [selectedReasonId, setSelectedReasonId] = useState<string>(() => {
-    const saved = Array.isArray(appeal.grounds) ? appeal.grounds : [];
-    const fromSaved = RECOMMENDED_GROUNDS.find((r) =>
-      r.groundIds.some((id) => saved.includes(id)),
-    );
-    if (fromSaved) return fromSaved.id;
-    return RECOMMENDED_GROUNDS[0].id;
-  });
-  const [filter, setFilter] = useState<ReasonFilter>("recommended");
-  const [query, setQuery] = useState<string>("");
+  // Free-text "what happened" — the notes the drafter reads. Pre-filled
+  // from any saved notes so nothing the user wrote is ever lost.
   const [notes, setNotes] = useState<string>(appeal.notes ?? "");
-  const [evidenceCount, setEvidenceCount] = useState<number>(0);
-  const [evidenceOpen, setEvidenceOpen] = useState<boolean>(false);
-  const [notesOpen, setNotesOpen] = useState<boolean>(false);
+  // Selected common reason (single-select). Restored from saved grounds.
+  const [selectedReasonId, setSelectedReasonId] = useState<string | null>(
+    () => {
+      const saved = Array.isArray(appeal.grounds) ? appeal.grounds : [];
+      const match = COMMON_REASONS.find((r) =>
+        r.groundIds.some((id) => saved.includes(id)),
+      );
+      return match?.id ?? null;
+    },
+  );
+  const [evidence, setEvidence] = useState<string[]>(() => getEvidencePhotos());
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  // Dictation recorder state — the mic toggles recording in place. The
+  // card layout/height is identical whether typing or dictating; only the
+  // mic's appearance changes (grey idle → blue active).
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  // Common-reason pills collapse to exactly 3 rows by default; "Show all"
+  // reveals the rest. `reasonsRowH` is the measured pill height so the
+  // clamp lands cleanly on the boundary between row 3 and row 4.
+  const [reasonsExpanded, setReasonsExpanded] = useState(false);
+  const [reasonsRowH, setReasonsRowH] = useState(40);
+  const [reasonsOverflow, setReasonsOverflow] = useState(false);
 
-  const selectedReason = useMemo<RecommendedGround | undefined>(
-    () => RECOMMENDED_GROUNDS.find((r) => r.id === selectedReasonId),
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const reasonsWrapRef = useRef<HTMLDivElement | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  const selectedReason = useMemo(
+    () => COMMON_REASONS.find((r) => r.id === selectedReasonId) ?? null,
     [selectedReasonId],
   );
 
-  // Cards rendered by the filter / search. Query matches title +
-  // description + keywords. Filter chips are: "Recommended" (top 3
-  // featured reasons), "All" (every reason), or a per-reason
-  // chipLabel (single matching reason).
-  const visibleReasons = useMemo<RecommendedGround[]>(() => {
-    const q = query.trim().toLowerCase();
-    const base = RECOMMENDED_GROUNDS.filter((r) => {
-      if (filter === "recommended") return r.featured;
-      if (filter === "all") return true;
-      return r.chipLabel === filter;
-    });
-    if (!q) return base;
-    return base.filter((r) =>
-      [r.title, r.description, ...r.keywords]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
-    );
-  }, [filter, query]);
+  // Auto-grow the composer from its tall resting height (keeps the large
+  // form factor in both typing and dictation states).
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 210), 360)}px`;
+  }, [notes]);
 
+  // Measure the real pill height (and whether the list runs past 3 rows)
+  // so the collapsed clamp is exact regardless of font / width.
+  useEffect(() => {
+    const wrap = reasonsWrapRef.current;
+    if (!wrap) return;
+    const measure = () => {
+      const first = wrap.firstElementChild as HTMLElement | null;
+      const h = first?.offsetHeight ?? 40;
+      setReasonsRowH(h);
+      setReasonsOverflow(wrap.scrollHeight > h * 3 + 16 + 1);
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, []);
+
+  const reasonsCollapsedMaxH = reasonsRowH * 3 + 16; // 3 rows + 2 × 8px gap
+
+  const addEvidenceFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setEvidenceError(null);
+    try {
+      const next = [...evidence];
+      for (const f of files) {
+        if (next.length >= MAX_EVIDENCE) break;
+        if (f.size > 8 * 1024 * 1024) throw new Error(`"${f.name}" is over 8 MB.`);
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () =>
+            reject(reader.error ?? new Error("Couldn't read that file"));
+          reader.readAsDataURL(f);
+        });
+        next.push(dataUrl);
+      }
+      setEvidence(next);
+      setEvidencePhotos(next);
+    } catch (err) {
+      setEvidenceError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    void addEvidenceFiles(files);
+  };
+
+  const removeEvidence = (idx: number) => {
+    const next = evidence.filter((_, i) => i !== idx);
+    setEvidence(next);
+    setEvidencePhotos(next);
+  };
+
+  const appendTranscript = (text: string) => {
+    if (!text) return;
+    setNotes((prev) => {
+      const joiner =
+        prev.length === 0 ? "" : /[.!?]\s*$/.test(prev) ? "\n" : " ";
+      return `${prev}${joiner}${text}`.slice(0, MAX_NOTES);
+    });
+  };
+
+  // ── Dictation recorder (mic button inside the composer) ──
+  useEffect(
+    () => () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+
+  const startDictation = async () => {
+    setRecError(null);
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setRecError("Voice isn't available here — type instead.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => chunksRef.current.push(e.data);
+      rec.onstop = () => stream.getTracks().forEach((t) => t.stop());
+      rec.start();
+      recRef.current = rec;
+      setRecording(true);
+    } catch {
+      setRecError("Couldn't reach the microphone — type instead.");
+    }
+  };
+
+  const stopDictation = async () => {
+    const rec = recRef.current;
+    if (!rec) return;
+    rec.stop();
+    setRecording(false);
+    setTranscribing(true);
+    await new Promise((r) => setTimeout(r, 100));
+    const blob = new Blob(chunksRef.current, {
+      type: rec.mimeType || "audio/webm",
+    });
+    chunksRef.current = [];
+    recRef.current = null;
+    streamRef.current = null;
+    try {
+      const form = new FormData();
+      form.append("audio", blob);
+      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error?.message ?? `Transcribe failed (${res.status})`);
+      }
+      if (json.text) appendTranscript(String(json.text).trim());
+    } catch (err) {
+      setRecError(err instanceof Error ? err.message : "Transcribe failed");
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const toggleDictation = () => {
+    if (busy || transcribing) return;
+    if (recording) void stopDictation();
+    else void startDictation();
+  };
+
+  const canContinue = !!selectedReason || notes.trim().length > 0;
   const handleContinue = () => {
-    if (!selectedReason || busy) return;
-    onConfirm({ grounds: selectedReason.groundIds, notes });
+    if (!canContinue || busy) return;
+    onConfirm({ grounds: selectedReason?.groundIds ?? [], notes: notes.trim() });
   };
 
   return (
     <section
-      className="flex flex-col gap-5"
-      style={{
-        paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))",
-      }}
+      className="flex flex-col gap-6"
+      style={{ paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}
     >
-      {/* Header */}
-      <div>
-        <p className="text-[16px] font-bold text-snappeal-navy leading-tight">
-          Choose your best appeal reason
-        </p>
-        <p className="text-[12px] text-snappeal-muted mt-1 leading-snug">
-          Rabbit ranks the strongest options first based on success likelihood.
-        </p>
-      </div>
-
-      {/* Search + filter chips */}
-      <div className="flex flex-col gap-3">
-        <label className="h-12 rounded-2xl border border-[#E5E7EB] bg-white px-4 flex items-center gap-2.5 focus-within:border-snappeal-primary focus-within:ring-2 focus-within:ring-snappeal-primary/15 transition">
-          <Search
-            className="size-4 text-snappeal-muted shrink-0"
-            strokeWidth={2}
-          />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search reasons"
-            className="flex-1 min-w-0 bg-transparent text-[14px] text-snappeal-navy placeholder:text-snappeal-muted/70 focus:outline-none"
-          />
-        </label>
-        {/* Filter pills — every reason gets its own chip, so the
-         *  legacy "More reasons" disclosure + secondary chip grid is
-         *  gone. Recommended (star) is the default; All shows
-         *  everything; per-reason chips narrow to a single card.
-         *  Horizontal-scroll, no wrap, trailing pad so the last chip
-         *  scrolls fully into view. */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pr-6 flex-nowrap">
-          <FilterChip
-            label="Recommended"
-            active={filter === "recommended"}
-            onClick={() => setFilter("recommended")}
-            withStar
-          />
-          <FilterChip
-            label="All"
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-          />
-          {RECOMMENDED_GROUNDS.map((r) => (
-            <FilterChip
-              key={r.id}
-              label={r.chipLabel}
-              icon={r.icon}
-              active={filter === r.chipLabel}
-              onClick={() => setFilter(r.chipLabel)}
-            />
-          ))}
+      {/* ── What happened? — dictation-first ── */}
+      <div className="flex flex-col gap-4">
+        <div>
+          <h3 className="text-[20px] font-extrabold text-snappeal-navy tracking-tight">
+            What happened?
+          </h3>
+          <p className="text-[13px] text-snappeal-muted mt-1 leading-snug">
+            Tell us what happened in your own words
+          </p>
         </div>
+        {/* One large composer card — identical height/layout whether
+         *  typing or dictating. The mic (bottom-right) toggles dictation
+         *  and turns blue while active; the "+" (bottom-left) attaches a
+         *  photo/doc and is identical in both states. */}
+        <div
+          className={`relative rounded-3xl bg-white border-2 shadow-[0_10px_34px_-16px_rgba(16,24,40,0.22)] transition focus-within:border-snappeal-primary/50 focus-within:shadow-[0_0_0_4px_rgba(47,115,255,0.14)] ${
+            recording ? "border-snappeal-primary/40" : "border-snappeal-primary/15"
+          }`}
+        >
+          <textarea
+            ref={composerRef}
+            value={notes}
+            disabled={busy}
+            maxLength={MAX_NOTES}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Why is this ticket unfair?"
+            className="w-full bg-transparent resize-none px-5 pt-5 pb-16 text-[15px] leading-relaxed text-snappeal-navy placeholder:text-snappeal-muted/80 focus:outline-none"
+            style={{ minHeight: 210, maxHeight: 360 }}
+          />
+          {/* Bottom-left: attach evidence. Identical in both modes. */}
+          <button
+            type="button"
+            onClick={() => uploadInputRef.current?.click()}
+            aria-label="Add evidence"
+            className="absolute bottom-3 left-3 h-10 inline-flex items-center gap-1.5 rounded-full border border-snappeal-border bg-white text-snappeal-navy text-[12px] font-bold tracking-wide px-3.5 hover:border-snappeal-primary/50 hover:text-snappeal-primary transition active:scale-95"
+          >
+            <Plus className="size-4" strokeWidth={2.75} />
+            EVIDENCE
+          </button>
+          {/* Bottom-right: mic. Grey idle, blue while dictating. */}
+          <button
+            type="button"
+            onClick={toggleDictation}
+            disabled={busy || transcribing}
+            aria-pressed={recording}
+            aria-label={recording ? "Stop dictating" : "Start dictating"}
+            className={`absolute bottom-3 right-3 size-11 rounded-full flex items-center justify-center transition active:scale-95 disabled:opacity-60 ${
+              recording
+                ? "bg-snappeal-primary text-white shadow-[0_8px_22px_-6px_rgba(47,115,255,0.6)]"
+                : "text-snappeal-muted hover:bg-snappeal-bg"
+            }`}
+          >
+            {recording && (
+              <span className="absolute inset-0 rounded-full bg-snappeal-primary/25 animate-ping" />
+            )}
+            {transcribing ? (
+              <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
+            ) : (
+              <Mic className="size-5" strokeWidth={2.25} />
+            )}
+          </button>
+        </div>
+        {recError && (
+          <p className="text-[11.5px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+            {recError}
+          </p>
+        )}
+        {/* Attached evidence (added via "+ EVIDENCE"). */}
+        {evidence.length > 0 && (
+          <div className="grid grid-cols-4 gap-2">
+            {evidence.map((src, i) => (
+              <div
+                key={i}
+                className="relative aspect-square rounded-xl overflow-hidden border border-snappeal-border bg-snappeal-bg"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt={`Evidence ${i + 1}`}
+                  className="absolute inset-0 size-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeEvidence(i)}
+                  aria-label={`Remove evidence ${i + 1}`}
+                  className="absolute top-1 right-1 size-6 rounded-full bg-black/65 text-white flex items-center justify-center hover:bg-black/85 transition"
+                >
+                  <X className="size-3.5" strokeWidth={2.5} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {evidenceError && (
+          <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+            {evidenceError}
+          </p>
+        )}
       </div>
 
-      {/* Reason cards — natural list order conveys priority; no
-       *  explicit 1 / 2 / 3 numerals on each row. */}
-      {visibleReasons.length > 0 ? (
-        <ul className="flex flex-col gap-[14px]">
-          {visibleReasons.map((r) => (
-            <li key={r.id}>
-              <RecommendedCard
-                reason={r}
-                selected={selectedReasonId === r.id}
-                onSelect={() => setSelectedReasonId(r.id)}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-[12px] text-snappeal-muted text-center py-4">
-          No matching reasons — try a different search or tap All.
+      {/* ── Common reasons (pills, clamped to 3 rows) — unchanged behaviour ── */}
+      <div className="flex flex-col gap-3">
+        <p className="text-[12px] font-bold text-snappeal-muted uppercase tracking-[0.08em]">
+          Common reasons
         </p>
-      )}
+        <div
+          ref={reasonsWrapRef}
+          className="flex flex-wrap gap-2"
+          style={{
+            maxHeight: reasonsExpanded ? undefined : reasonsCollapsedMaxH,
+            overflow: "hidden",
+            transition: "max-height 260ms ease",
+          }}
+        >
+          {COMMON_REASONS.map((r) => {
+            const active = selectedReasonId === r.id;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setSelectedReasonId(active ? null : r.id)}
+                className={`rounded-full text-[13.5px] font-semibold px-4 py-2.5 transition active:scale-[0.97] ${
+                  active
+                    ? "bg-snappeal-primary text-white shadow-[0_6px_16px_-4px_rgba(47,115,255,0.5)] -translate-y-px"
+                    : "bg-white text-snappeal-navy border border-[#E5E7EB] hover:border-snappeal-primary/50"
+                }`}
+              >
+                {r.label}
+              </button>
+            );
+          })}
+        </div>
+        {reasonsOverflow && (
+          <button
+            type="button"
+            onClick={() => setReasonsExpanded((o) => !o)}
+            className="self-start inline-flex items-center gap-1 text-[12.5px] font-bold text-snappeal-primary hover:underline"
+          >
+            {reasonsExpanded ? "Show fewer" : "Show all reasons"}
+            <ChevronDown
+              className={`size-3.5 transition-transform ${reasonsExpanded ? "rotate-180" : ""}`}
+              strokeWidth={2.5}
+            />
+          </button>
+        )}
+        {selectedReason && (
+          <div className="rounded-3xl border border-snappeal-primary/25 bg-[#F5F9FF] p-5 flex flex-col gap-3 snappeal-mcp-fade-in">
+            <div>
+              <p className="text-[16px] font-bold text-snappeal-navy leading-tight">
+                {selectedReason.title}
+              </p>
+              <p className="text-[13px] text-snappeal-muted mt-1 leading-snug">
+                {selectedReason.explanation}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10.5px] font-bold uppercase tracking-wide text-snappeal-primary mb-1.5">
+                Helpful evidence
+              </p>
+              <ul className="flex flex-col gap-1.5">
+                {selectedReason.evidence.map((item) => (
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 text-[13px] text-snappeal-navy/85 leading-snug"
+                  >
+                    <Check
+                      className="size-3.5 mt-0.5 shrink-0 text-snappeal-primary"
+                      strokeWidth={3}
+                    />
+                    <span className="min-w-0">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* Sub-step cards */}
-      <SubStepCard
-        number={2}
-        title="Add evidence"
-        subtitle="Upload photos or documents to support your appeal."
-        icon={Camera}
-        open={evidenceOpen}
-        done={evidenceCount > 0}
-        doneLabel={
-          evidenceCount > 0
-            ? `${evidenceCount} photo${evidenceCount === 1 ? "" : "s"}`
-            : null
-        }
-        onToggle={() => setEvidenceOpen((o) => !o)}
-      >
-        <EvidenceCarousel onChange={(next) => setEvidenceCount(next.length)} />
-      </SubStepCard>
-
-      <SubStepCard
-        number={3}
-        title="Tell us what happened"
-        subtitle="Your summary helps Rabbit build a stronger appeal."
-        icon={MessageCircle}
-        open={notesOpen}
-        done={notes.trim().length > 0}
-        onToggle={() => setNotesOpen((o) => !o)}
-      >
-        <DictationPanel
-          value={notes}
-          onChange={setNotes}
-          selectedCardIds={selectedReason?.groundIds ?? []}
-          disabled={busy}
-        />
-      </SubStepCard>
-
-      {/* CTA */}
+      {/* Primary CTA */}
       <button
         type="button"
         onClick={handleContinue}
-        disabled={!selectedReason || busy}
+        disabled={!canContinue || busy}
         className="rounded-2xl bg-snappeal-primary text-white font-bold py-4 hover:bg-snappeal-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-primary/30 active:scale-[0.99]"
       >
         {busy ? (
@@ -1115,7 +1353,7 @@ function GatheringEvidenceCard({
         ) : (
           <>
             <Sparkles className="size-4" strokeWidth={2.25} fill="white" />
-            Continue with selected reason
+            Build my appeal
             <ArrowRight className="size-4" strokeWidth={2.5} />
           </>
         )}
@@ -1125,237 +1363,16 @@ function GatheringEvidenceCard({
         <Lock className="size-3" strokeWidth={2.25} />
         You can change this later if needed.
       </p>
-    </section>
-  );
-}
 
-/** Single filter chip in the horizontal scroll row above the reason
- *  cards. "Recommended" carries a leading star; per-reason chips
- *  carry their own icon. */
-function FilterChip({
-  label,
-  active,
-  onClick,
-  withStar,
-  icon: Icon,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  withStar?: boolean;
-  icon?: LucideIcon;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 h-9 inline-flex items-center gap-1.5 rounded-full text-[13px] font-semibold px-4 transition whitespace-nowrap ${
-        active
-          ? "bg-snappeal-primary text-white"
-          : "bg-white border border-[#E5E7EB] text-snappeal-muted hover:text-snappeal-navy"
-      }`}
-    >
-      {withStar && (
-        <Star
-          className="size-3.5"
-          strokeWidth={2.5}
-          fill={active ? "white" : "none"}
-        />
-      )}
-      {Icon && <Icon className="size-3.5" strokeWidth={2.25} />}
-      {label}
-    </button>
-  );
-}
-
-/** One of the recommended ground cards. Single-select; the parent
- *  owns selection state.
- *
- *  Layout (per the v0.3.x premium-fintech refresh):
- *    ┌─────────────────────────────────────────────┐
- *    │ [icon]   Title                       (sel)  │
- *    │          BADGE                              │
- *    │          Description                        │
- *    │          📷 Evidence hint                   │
- *    │          ───────────────────────────────    │
- *    │          78% success                        │
- *    └─────────────────────────────────────────────┘
- *
- *  Icon sits aligned with the title (not centered vertically), badge
- *  on its own row, success rate at the bottom behind a thin divider. */
-function RecommendedCard({
-  reason,
-  selected,
-  onSelect,
-}: {
-  reason: RecommendedGround;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const Icon = reason.icon;
-  const badgeTone =
-    reason.confidence >= 70
-      ? "bg-green-50 text-green-800 border-green-200"
-      : reason.confidence >= 50
-        ? "bg-amber-50 text-amber-800 border-amber-200"
-        : "bg-snappeal-bg text-snappeal-muted border-snappeal-border";
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={`relative w-full text-left rounded-2xl p-5 max-[380px]:p-4 transition active:scale-[0.995] ${
-        selected
-          ? "border-2 border-snappeal-primary bg-[#F3F8FF] shadow-[0_6px_18px_rgba(47,115,255,0.10)]"
-          : "border border-[#E5E7EB] bg-white hover:border-snappeal-primary/60"
-      }`}
-    >
-      {/* Selector — absolutely positioned so it doesn't steal width
-       *  from the title column. */}
-      <span
-        className={`absolute top-4 right-4 size-7 rounded-full flex items-center justify-center z-[2] ${
-          selected
-            ? "bg-snappeal-primary text-white"
-            : "bg-white border-2 border-[#E1E3E8]"
-        }`}
-        aria-hidden
-      >
-        {selected && <Check className="size-4" strokeWidth={3} />}
-      </span>
-
-      {/* Two-column grid: icon | content. The selector floats above
-       *  via absolute positioning and doesn't occupy any grid space. */}
-      <div className="grid grid-cols-[44px_1fr] gap-x-3.5 items-start">
-        {/* Icon box */}
-        <span
-          className={`size-11 rounded-2xl flex items-center justify-center shrink-0 ${
-            selected
-              ? "bg-[#E2EEFF] text-snappeal-primary"
-              : "bg-[#F4F5F7] text-snappeal-muted"
-          }`}
-          aria-hidden
-        >
-          <Icon className="size-5" strokeWidth={2.25} />
-        </span>
-
-        {/* Content column. Title + badge row needs right-side padding
-         *  to clear the absolute selector; description / evidence /
-         *  divider / success below use the full content-column width. */}
-        <div className="min-w-0 flex flex-col">
-          {/* Title + badge — pr-9 reserves room for selector */}
-          <div className="pr-9">
-            <p
-              className="font-bold text-snappeal-navy text-[17px] leading-[1.2] break-words"
-              style={{ letterSpacing: "-0.01em" }}
-            >
-              {reason.title}
-            </p>
-            <span
-              className={`mt-2 self-start inline-flex items-center rounded-full font-bold uppercase tracking-wide border px-2 py-0.5 text-[10.5px] ${badgeTone}`}
-            >
-              {reason.badge}
-            </span>
-          </div>
-
-          {/* Description */}
-          <p className="mt-3 text-[13px] leading-[1.4] text-[#6B7280] break-words">
-            {reason.description}
-          </p>
-
-          {/* Evidence hint */}
-          <p className="mt-2 text-[13px] font-semibold text-snappeal-primary flex items-start gap-1.5 leading-[1.3] break-words">
-            <Camera
-              className="size-[14px] mt-0.5 shrink-0"
-              strokeWidth={2.25}
-            />
-            <span className="min-w-0">{reason.evidenceHint}</span>
-          </p>
-
-          {/* Divider */}
-          <div className="mt-3 h-px w-full bg-[#E3E7ED]" />
-
-          {/* Success rate */}
-          <p className="mt-2.5 text-[13.5px] font-bold text-snappeal-navy">
-            {reason.confidence}% success
-          </p>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-/** Collapsible sub-step (Add evidence / Tell us what happened). Header
- *  shows a numbered badge, icon, title, subtitle, optional pill, done
- *  pill, and a chevron. Tapping expands the children inline. */
-function SubStepCard({
-  number,
-  title,
-  subtitle,
-  icon: Icon,
-  open,
-  done,
-  doneLabel,
-  onToggle,
-  children,
-}: {
-  number: number;
-  title: string;
-  subtitle: string;
-  icon: LucideIcon;
-  open: boolean;
-  done?: boolean;
-  doneLabel?: string | null;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-snappeal-border bg-white overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="w-full text-left px-3.5 py-3 flex items-center gap-3 hover:bg-snappeal-bg/40 transition"
-      >
-        <span
-          className={`size-7 rounded-full shrink-0 flex items-center justify-center text-[12px] font-bold ${
-            done
-              ? "bg-snappeal-success text-white"
-              : "bg-snappeal-bg text-snappeal-muted"
-          }`}
-          aria-hidden
-        >
-          {done ? <Check className="size-3.5" strokeWidth={3} /> : number}
-        </span>
-        <span className="size-9 rounded-xl bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center shrink-0">
-          <Icon className="size-4" strokeWidth={2.25} />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-[13.5px] font-bold text-snappeal-navy leading-tight">
-              {title}
-            </p>
-            {done && doneLabel && (
-              <span className="inline-flex items-center rounded-full bg-green-50 border border-green-200 text-green-800 text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5">
-                {doneLabel}
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-snappeal-muted leading-snug mt-0.5">
-            {subtitle}
-          </p>
-        </div>
-        <ChevronRight
-          className={`size-4 text-snappeal-muted shrink-0 transition-transform ${
-            open ? "rotate-90" : ""
-          }`}
-          strokeWidth={2.25}
-        />
-      </button>
-      {open && (
-        <div className="border-t border-snappeal-border px-3.5 py-3">
-          {children}
-        </div>
-      )}
+      {/* Hidden file input driving the "+ EVIDENCE" picker (photos / docs). */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={onPickFiles}
+      />
     </section>
   );
 }
