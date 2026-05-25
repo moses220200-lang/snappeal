@@ -1,32 +1,20 @@
 # Appeal state machine
 
-How an appeal moves from a draft photo to a closed council outcome — and how that domain status maps onto what the user actually sees on the Tickets list.
+How an appeal moves from a draft photo to a closed council outcome, and how that domain status maps onto what the user actually sees on the smart `<TicketCard>`.
 
-## Two layers
+## Three layers, kept separate
 
-There are **two states** to keep separate in your head:
+1. **`appeals.status`** — the persisted enum on the `appeals` row. Eight values, enforced as a Postgres enum.
+2. **`appeals.portal_lookup.status`** — independent jsonb-nested lifecycle of the council-portal lookup. Six values.
+3. **`CardKind`** — UI-only discriminated union the smart card branches on. 11 values, derived live by `lib/deriveCardState.ts` from `(appeal, statusSnapshot, liveProgress)`.
 
-1. **`appeal.status`** — the domain status persisted on the `appeals` row. Eight values, enforced as a Postgres enum:
-   ```
-   draft  →  ready  →  submitting  →  submitted
-          →  under_review  →  decision_pending  →  cancelled | rejected
-   ```
-2. **`displayState`** — a UI-only derivation used by the Tickets list (`apps/web/app/app/tickets/page.tsx → deriveDisplayState`). Four values:
-   ```
-   at_risk   →   due   →   appealed   →   resolved
-   ```
+The first two are persisted truth. `CardKind` is computed on every render so the card can morph through 11 states without 11 stored flags.
 
-The domain status is the authoritative thing the backend cares about; `displayState` is a compression of it that gives each ticket card a single legible "what is the user supposed to do about this *right now*?" treatment.
-
-## Domain status transitions
+## Layer 1 — `appeals.status` (Postgres enum)
 
 ```
-draft ───▶ ready ───▶ submitting ───▶ submitted ──┬─▶ under_review ───▶ decision_pending ──┬─▶ cancelled
-                  │                               │                                          └─▶ rejected
-                  │                               │
-                  └─ generation_failed (recoverable; `step` column flags the row, status stays `ready`)
-                                                  │
-                                                  └─ inbound mail can promote any in-flight status directly to cancelled / rejected
+draft  →  ready  →  submitting  →  submitted
+       →  under_review  →  decision_pending  →  cancelled | rejected
 ```
 
 | Status | Set by | What it means |
@@ -35,96 +23,152 @@ draft ───▶ ready ───▶ submitting ───▶ submitted ──�
 | `ready` | `attachDraftToAppeal()` after `/api/generate(-stream)` succeeds | Letter body + grounds persisted; awaiting customer Submit. |
 | `submitting` | `recordSubmission()` when the worker claims the `submit_appeal` job | MCP agent is driving the council portal **right now**. |
 | `submitted` | `recordSubmission()` when the agent reports back with a council reference | Representation lodged; awaiting council decision. |
-| `under_review` | currently unused in the happy path — reserved for council ACK mail that classifies as `acknowledged` | Council has acknowledged receipt but not decided. |
-| `decision_pending` | currently unused — reserved for "councils tells us they're considering" replies | Council has indicated a decision is imminent. |
-| `cancelled` | `processInboundMessage()` when the classifier returns `cancelled` | The council cancelled the PCN — customer won. |
-| `rejected` | `processInboundMessage()` when the classifier returns `rejected` | The council upheld the PCN — customer lost. |
+| `under_review` | (reserved) | Council has acknowledged receipt but not decided. |
+| `decision_pending` | (reserved) | Council has indicated a decision is imminent. |
+| `cancelled` | `processInboundMessage()` when the classifier returns `cancelled` | Council cancelled the PCN — customer won. |
+| `rejected` | `processInboundMessage()` when the classifier returns `rejected` | Council upheld the PCN — customer lost. |
 
-The `step` column on `appeals` is a free-form marker used for sub-states the enum doesn't capture — currently just `"generation_failed"`, which the Letter / Paywall pages use to surface a red retry banner. `attachDraftToAppeal()` resets `step` back to `"ready"` on the next successful generate, so the marker self-clears.
+The free-form `appeals.step` column captures sub-states the enum doesn't — the most important is `"generation_failed"` (v0.3.1 fix), stamped by `markAppealFailed()` when `generateDraft` throws so the card flips to a visible failure state with a Retry CTA. `attachDraftToAppeal()` resets `step` back to `"ready"` on the next successful generate, so the marker self-clears. v0.2.16 added `EVIDENCE_DONE_STEP = "evidence_gathered"` (exported from `lib/deriveCardState.ts`), stamped atomically with the grounds PATCH so the card can branch between "user tapped Appeal, still gathering inputs" and "all inputs in, drafting can run".
 
-## Display-state derivation
+## Layer 2 — `appeals.portal_lookup.status` (jsonb)
 
-`deriveDisplayState(appeal, now)` is the single function that the Tickets list uses to decide which card variant to render. It lives in `apps/web/app/app/tickets/page.tsx`. Logic, in priority order:
+Independent of `appeal.status`. Tracks the lifecycle of the **read-only** council-portal lookup that runs between PCN intake and the recommendation surface.
+
+| Value | Meaning |
+|---|---|
+| `pending` | `pcn_lookup` job enqueued, agent hasn't returned yet. |
+| `verified` | Lookup succeeded; verdict says the PCN is appealable (`open` / `expired` / `unknown`). |
+| `invalid` | Lookup succeeded; verdict is `paid` / `closed` / `not_found`. Card flips to `terminal` with an inline "I disagree — let me appeal anyway" override. |
+| `overridden` | User tapped the override; treat verdict as a warning, allow draft. (Server gate: `/api/submit` returns `409 PCN_NOT_APPEALABLE` while `invalid` and lifts on `overridden`.) |
+| `skipped` | Council not on `automated_beta`/`automated_ga`; lookup never ran; no banner shown. |
+| `error` | Agent threw / returned unparseable reply / wall-clock timeout; card surfaces a "couldn't verify" amber state. |
+
+Verdict + verdictReason + warden photo URLs + portal-confirmed ticket metadata all sit alongside on the same `portal_lookup` jsonb. See `lib/server/db/schema.ts → PortalLookupSnapshot` for the full shape.
+
+## Layer 3 — `CardKind` (UI discriminated union)
+
+`lib/deriveCardState.ts → deriveCardState(appeal, statusSnapshot, liveProgress)` returns one of **16 kinds** (v0.3.3 — was 11 in v0.3.2):
 
 ```ts
-if (status === "cancelled" || status === "rejected") return "resolved";
-if (status in {submitting, submitted, under_review, decision_pending}) return "appealed";
-// draft | ready
-const daysSinceIssue = floor((now - ticket.issuedAt) / 1 day);
-return daysSinceIssue >= 10 ? "due" : "at_risk";  // UK PCN discount window is 14 days
+type CardKind =
+  // ─── happy-path lifecycle (11) ───
+  | "scanning"            // photo upload in flight (rare; client-only)
+  | "processing"          // appeal row exists; OCR/portal-lookup/analysis still running
+  | "pending_review"      // OCR done; 3 editable rows + "I agree to T&Cs" button
+  | "validating"          // pcn_lookup job running; live agent thought streaming
+  | "needs_decision"      // verdict landed; recommendation surface (Appeal / Pay yourself / Coming soon)
+  | "gathering_evidence"  // user picked "Appeal"; 3-step StepBlock ladder (grounds → details → review)
+  | "drafting"            // /api/generate-stream in flight; letter streams word-by-word
+  | "letter_ready"        // letter persisted; strength badge + Pay £2.99 CTA
+  | "submitting"          // submit_appeal job running; Watch-live disclosure auto-expanded
+  | "submitted"           // council reference returned; success state
+  | "terminal"            // cancelled | rejected | portal-lookup invalid (no-override)
+  // ─── v0.3.3 failure kinds (5) — surfaced when the pipeline can't progress
+  //     without user input. All five are recoverable. ───
+  | "image_issue"             // OCR ran but the photo doesn't look like a PCN
+  | "image_unclear"           // OCR ran but the read was low-confidence
+  | "info_needed"             // some required fields are missing after OCR
+  | "extraction_failed"       // OCR errored or timed out
+  | "council_lookup_failed";  // pcn_lookup portal check errored or timed out
 ```
 
-A few invariants that make the derivation cheap to reason about:
+### Failure-kind recovery surfaces (v0.3.3)
 
-- **Resolved trumps everything.** Once `status` lands on `cancelled` / `rejected`, the discount window is irrelevant.
-- **`appealed` is the in-flight bucket.** Anything in the submission funnel (between `submitting` and `decision_pending`) is one state from the user's POV — "we filed it; the council is the bottleneck now."
-- **`at_risk` vs `due` is purely time-based.** A `draft` or `ready` ticket promotes from `at_risk` (blue) to `due` (red) when it crosses the 10-days-since-issue threshold — the last 4 days of the standard UK PCN 14-day discount window. The user is allowed to either pay or appeal in either bucket; the colour just escalates as the deadline approaches.
-- **Pre-capture drafts.** If `ticket.issuedAt` is null (the customer scanned the PCN but the AI couldn't extract anything legible), the function returns `at_risk` so the card renders with a "Draft ticket" amount line + "Add details" chip.
+Each failure kind surfaces via `<TicketLifecycleTimeline>` as a `failed`-status step (amber `<AlertTriangle>` rail dot, amber connector below, amber-900 title + supporting copy) with `tint: "warn"` wrapping the inline recovery children.
 
-## Display-state UI mapping
+| Failure CardKind | Trigger | Recovery surface |
+|---|---|---|
+| **`image_issue`** | OCR ran but Claude vision classified the photo as not a PCN | "Looks like this isn't a PCN" + Retake / Upload a different photo |
+| **`image_unclear`** | OCR ran but the per-field confidence scores are below threshold | "We couldn't read this clearly" + per-field uncertainty + Retake / Edit manually |
+| **`info_needed`** | OCR succeeded but one of PCN ref / vehicle reg / council is missing | Inline editable rows for the missing fields + "Continue when ready" |
+| **`extraction_failed`** | `/api/extract` errored or timed out (Claude CLI failure / 120 s timeout / image decode failure) | "Couldn't read the PCN" + Retry / Enter manually |
+| **`council_lookup_failed`** | `pcn_lookup` job errored or timed out (portal down / captcha / 5-min wall-clock) | "Couldn't reach the council right now" + Retry / Continue without validation |
 
-Defined inline in `ActiveCard` and `ResolvedCard`:
+All five are **recoverable in-card** — the user never has to navigate away to fix a problem. The `tint: "warn"` panel makes failure visually distinct from in-flight states without feeling like a dead-end.
 
-| displayState | Amount + state line | Tone | Right-side chip | NEXT STEP copy | Primary CTA |
-|---|---|---|---|---|---|
-| `at_risk` | `£X at risk` (blue "at risk") | `snappeal-primary-50` chip | `Decide in N days` | "Review your options: pay, challenge, or set reminders." | **Review options** → `/app/tickets/[id]` |
-| `due` | `£X due` (red "due") + secondary `£X/2 if paid by …` | `snappeal-action-50` chip | `Discount ends in N days` | "Pay now to keep the reduced rate." | **Pay ticket** → `/app/tickets/[id]` |
-| `appealed` | `£X appealed` (purple) | `snappeal-appealed-50` chip | `Council reply expected` + "Submitted N days ago" sub-line | "Appeal submitted. We'll notify you when the council responds." | **Track appeal** → `/app/watch/[id]` (live) or `/app/tickets/[id]` |
-| `resolved` (cancelled) | `Cancelled £X` (green) | — | — (compact card; date stamp + chevron only) | — | (whole card links to `/app/tickets/[id]`) |
-| `resolved` (rejected) | `Closed £X` (slate) | — | — | — | (whole card links to `/app/tickets/[id]`) |
+### How the card draws the CardKind — `<TicketLifecycleTimeline>` (v0.3.3)
 
-The `appealed` card variant also keeps the navy **"ParkingRabbit AI — Watch the AI submission"** strip below the buttons; that strip is the entry point to the live SSE-driven `/app/submitting/[jobId]` slideshow.
+The card's primary state surface is `<TicketLifecycleTimeline>` (`components/TicketLifecycleTimeline.tsx`) — v0.3.3's replacement for the legacy trio (the `<TicketJourney>` 3-step stepper + `<ProcessingCard>` inline rows + the bottom-of-card Progress Timeline). One vertical journey from upload → resolution, hosted inside the smart card.
 
-## Filter chips → displayState
+Per-step contract:
 
-The `/app/tickets` filter row is a thin lens on `displayState`:
+- **Rail dot**: green check (done), pulsing primary dot with halo (active), hollow outline (upcoming), amber `<AlertTriangle>` (failed — v0.3.3). All `size-5` (was `size-6` in v0.3.2's `<TicketJourney>`).
+- **Connector line** below the dot: green when this step is done, amber when failed, muted primary at 40% alpha when active, muted grey when upcoming.
+- **Title** + optional **`supporting`** line + optional **`detail` ReactNode** (richer single-line content like a coloured due-by line) + optional **`busy`** spinner on the active step.
+- **`children: ReactNode`** (new in v0.3.3) — mounted directly under the title when the step is active. Used to render the uploaded image preview (with `<ScanningOverlay>` mounted inside during OCR), the inline Pick-your-grounds quiz, the Pay / appeal choice tiles, the streaming letter preview, status / error messages.
+- **`tint: "warn" | "danger"`** (new in v0.3.3) — wraps `children` in a soft `amber-50` / `red-50` rounded panel for deadline rows + failure rows. Unset → no card background (avoids the "card inside a card" look when the children are themselves a card).
+- **`childrenFullBleed: boolean`** (new in v0.3.3) — when true, `children` escape the rail+gap indent (`-ml-9`) so action tiles render edge-to-edge inside the card (matching the footer's width). Used by the Pay / appeal choice surface.
+
+The numbered step badges (1–N) from `<TicketJourney>` are gone — position in the list is the position, and the numbers were redundant once `children` made each row big. `components/TicketJourney.tsx` is dead code on disk; safe to delete in a follow-up cleanup. See `components/TicketLifecycleTimeline.tsx` for the `LifecycleStep` / `LifecycleStepStatus` interface.
+
+`needs_decision` has three sub-flavors derived from `statusSnapshot.stage`:
+
+| Flavor | Trigger | What's surfaced |
+|---|---|---|
+| `recommendation` | Normal `appeal_open` stage | Appeal £2.99 · Pay yourself · Rabbit Pay (Coming soon) |
+| `escalated` | `charge_certificate_issued` / `order_for_recovery` / `enforcement` | Stage-aware banner + escalated copy; Appeal CTA hidden |
+| `expired` | `appeal_expired` (28-day window elapsed) | "Appeal window has closed" banner + Pay-yourself only |
+
+The card also returns `{ pillLabel, pillTone, caption, progress, inFlight, stage, canAppeal, isEscalated }` so the body knows what to render at a glance.
+
+## Transition rules
+
+```
+appeal.status = draft
+appeal.processing.ocr.status = pending|running    → CardKind = processing
+                                                    pill: "Reading PCN"
+appeal.ticket complete, no portal_lookup yet      → CardKind = processing
+                                                    (next step is "I agree to T&Cs" tap)
+appeal.ticket complete, T&Cs tapped               → enqueue pcn_lookup → CardKind = validating
+portal_lookup.status = invalid (& not overridden) → CardKind = terminal (with override CTA)
+portal_lookup.status = verified|overridden|skipped → CardKind = needs_decision
+user picks "Appeal" → preferred_method = portal   → CardKind = gathering_evidence
+3-step ladder complete → /api/generate-stream     → CardKind = drafting
+SSE done → letterBody + strengthScore persisted   → CardKind = letter_ready
+user pays → /api/submit → submit_appeal enqueued  → CardKind = submitting
+agent done → council reference                    → CardKind = submitted
+status = cancelled | rejected                     → CardKind = terminal
+```
+
+## Filter chips on `/app/tickets`
+
+The filter row is a thin lens over the card-state model:
 
 | Filter chip | Predicate |
 |---|---|
 | `All` | (no filter) |
-| `To Pay` | `displayState === "due"` |
-| `Challenging` | `displayState === "at_risk" \|\| displayState === "appealed"` |
-| `Resolved` | `displayState === "resolved"` |
+| `To Pay` | `displayState === "due"` (draft/ready in last 4 days of 14-day discount window) |
+| `Challenging` | card is in any of `pending_review` · `validating` · `needs_decision` · `gathering_evidence` · `drafting` · `letter_ready` · `submitting` · `submitted` (incl. all in-flight + just-submitted states) |
+| `Resolved` | card is in `terminal` (cancelled or rejected) |
 
-**Note on the merged `Challenging` filter.** From the user's mental model, deciding to dispute a ticket is one journey that begins with reviewing options and ends with a filed appeal. The card visual still distinguishes the two states (blue `£X at risk` vs purple `£X appealed`) so the user knows *where* in the journey a given ticket is — but the filter consolidates them under "Challenging" because that's the action category from their POV. Earlier versions of the page exposed a separate `Reviewing` chip; it was removed 2026-05-21 (post-audit).
-
-Both `cancelled` and `rejected` collapse into the single `Resolved` filter — the card visuals differentiate them, but the count is shared.
-
-## Why not first-class `to_pay` status?
-
-The "To Pay" bucket isn't a real status on the appeals row — it's a UI lens over `draft`/`ready` rows that are close to the 14-day discount cliff. Two reasons we left it that way:
-
-1. **Source of truth stays simple.** Adding a `to_pay` enum value would mean writing a periodic job to promote rows on the right day, plus dealing with what happens if the user re-engages on day 11 ("revert to `ready`?"). Compressing the time-axis into `displayState` keeps the persisted state stable and the UI honest.
-2. **The user's intent isn't disclosed.** A draft might become a paid ticket OR a challenged ticket — the customer hasn't picked yet. Promoting to a paid-specific status would lie about that.
-
-If product later wants the user to *commit* to paying (e.g. a "remind me to pay" action) — that's the time to add a `to_pay` status. Until then, the time-window derivation is the right primitive.
-
-## Stamping `now` once
-
-`deriveDisplayState` takes `now` as an explicit argument because React's purity rules (lint: `react-hooks/set-state-in-effect`) ban `Date.now()` inside the render body. The Tickets page stamps `now` once at mount via `useState(() => Date.now())` and threads it through both the filter `useMemo` and every `TicketCard`. This keeps deadline math stable across re-renders so a card can't flicker from "Decide in 8 days" to "Decide in 9 days" mid-session.
+`displayState` for the at-risk vs due colour split on `Challenging`/`To Pay` is derived from `ticket.issuedAt` + the UK PCN 14-day discount window (purely time-based; flips at day 10). `now` is stamped once at mount via `useState(() => Date.now())` so a card can't flicker mid-session.
 
 ## Error UX
 
-Three failure modes get distinct, branded surfaces so the user is never staring at an eternal spinner or a stack trace:
+Three failure modes get distinct surfaces so the user is never staring at an eternal spinner or a stack trace:
 
-| Failure mode | Where surfaced | Trigger |
+| Failure | Where it surfaces | Trigger |
 |---|---|---|
-| **Resource not found** (bad id / not your appeal / job vanished) | `/app/tickets/[id]` and `/app/submitting/[id]` each render an inline "We couldn't find this ticket/submission" card with `XCircle` icon + reason + `Back to my tickets` button. `/app/letter/[id]` and `/app/watch/[appealId]` 307-redirect into the ticket-detail card, so they share the same UX. | `/api/appeals/[id]` returns 404/403; `/api/submissions/[id]/progress` sends a server-sent `event: error` over a 200-status one-shot stream (EventSource discards the body of non-2xx responses, so the route returns 200 with the error frame and closes — the client's `error` listener parses the payload, sets `status: "failed"`, and `es.close()`s). |
-| **Mid-run agent failure** | The full submitting page renders with the live progress + an "Agent halted" status; the run halts but the customer's draft is preserved. | Worker reports `status: "failed"` mid-stream after one or more progress events. |
-| **Unexpected render exception** | Top-level `app/error.tsx` boundary — branded "Something went wrong" card with `Try again` (calls `reset()`) + `Back to the app`. Stack trace is logged to `console.error`, never shown to the user. `error.digest` is rendered as a `Reference:` so support can correlate. | Any uncaught JS error in any segment under `app/`. |
-| **Unmatched route** | Top-level `app/not-found.tsx` — branded "Page not found" with `Open the app` / `Home page` buttons. | Hitting a URL with no matching route, or any `notFound()` call from a server component. |
-
-The "resource not found" SSE path is the load-bearing piece — see `apps/web/app/api/submissions/[id]/progress/route.ts` (the `sseError()` helper at the top) and the matching client handler in `apps/web/app/app/submitting/[id]/page.tsx` (`addEventListener("error", …)` plus the `status === "failed" && events.length === 0` render branch).
+| **Resource not found / 403** (bad id / not your appeal) | Smart card on `/app/tickets` renders an inline "We couldn't find this ticket" amber card with `XCircle` + reason. `?expand=<bad-id>` is a no-op; the URL param strips itself. | `/api/appeals/[id]` returns 404/403. |
+| **Mid-run agent failure** | `submitting` card surfaces "Agent halted" status; the run halts but the customer's letter is preserved. | Worker reports `status: "failed"` mid-stream after one or more progress events. |
+| **Drafting hang / failure** (v0.3.1 fix) | `validating` or `drafting` card transitions to a visible failure pill via `markAppealFailed()` + `step = "generation_failed"`. Body shows a red retry banner. | `generateDraft()` throws (no photo AND no complete ticket; Claude CLI error). |
+| **Unexpected render exception** | Top-level `app/error.tsx` boundary — branded "Something went wrong" card with `Try again` (calls `reset()`) + `Back to the app`. `error.digest` rendered as `Reference:` for support correlation. | Any uncaught JS error in any segment under `app/`. |
+| **Unmatched route** | Top-level `app/not-found.tsx` — branded "Page not found". | Hitting a URL with no matching route. |
 
 ## Files
 
-- `apps/web/app/app/tickets/page.tsx` — `deriveDisplayState`, `ActiveCard`, `ResolvedCard`, filter chip definitions.
-- `apps/web/app/app/tickets/[id]/page.tsx` — branded "ticket not found" card on 404/403 from `/api/appeals/[id]`.
-- `apps/web/app/app/submitting/[id]/page.tsx` — SSE error listener (closes the stream, sets `status: "failed"`) + "submission not found" render branch.
-- `apps/web/app/api/submissions/[id]/progress/route.ts` — `sseError()` helper returns 200 + one-shot SSE error frame (so EventSource actually delivers it client-side).
-- `apps/web/app/not-found.tsx` — global 404.
-- `apps/web/app/error.tsx` — global error boundary.
-- `apps/web/app/globals.css` — `--color-snappeal-appealed-*` token set (purple, scoped to ticket-list state semantics).
-- `apps/web/lib/server/appeals.ts` — status transitions (`createAppeal`, `attachDraftToAppeal`, `recordSubmission`, `markAppealFailed`).
-- `apps/web/lib/server/inbound.ts` — `processInboundMessage()` flips status to `cancelled` / `rejected` based on the classifier verdict.
-- `apps/web/lib/server/db/schema.ts` — `appeals.status` enum + `step` column definitions.
+- `apps/web/lib/deriveCardState.ts` — `CardKind` enum, `deriveCardState()`, `EVIDENCE_DONE_STEP` sentinel, fallback captions, milestone counts.
+- `apps/web/components/TicketCard.tsx` + `TicketCardBody.tsx` + `TicketCardHeader.tsx` — the smart card itself.
+- `apps/web/components/TicketLifecycleTimeline.tsx` — **v0.3.3** single vertical journey replacing `<TicketJourney>`. Hosts inline children per step + tint warn/danger + failed status.
+- `apps/web/components/ScanningOverlay.tsx` — **v0.3.3** minimal animated veil (scan-line + corner brackets + label pill) mounted inside the PCN image preview during OCR. Replaces the v0.3.2 full-page `<UploadingOverlay>` (still on disk, no longer imported — dead code).
+- `apps/web/app/app/scan/page.tsx` — **v0.3.3** dedicated Scan landing page (Camera / Upload picture / Input manually). New BottomNav FAB destination.
+- `apps/web/components/NotificationWatcher.tsx` — **v0.3.2** mounted in `app/app/layout.tsx`; polls `/api/appeals` for state transitions and emits notifications.
+- `apps/web/components/NotificationPermissionSheet.tsx` — **v0.3.2** context-sensitive opt-in bottom-sheet.
+- `apps/web/lib/client/notifications.ts` — **v0.3.2** in-app notification store + native browser notification firing.
+- `apps/web/hooks/useAppealLiveState.ts` — SSE subscription that feeds `liveProgress` into `deriveCardState`.
+- `apps/web/app/app/tickets/page.tsx` — list page + filter chips + `displayState` derivation for the at-risk/due colour split.
+- `apps/web/app/app/layout.tsx` — mounts `<NotificationWatcher>` once for every `/app/*` route, plus `<BottomNav>`.
+- `apps/web/lib/server/appeals.ts` — status transitions (`createAppeal`, `attachDraftToAppeal`, `recordSubmission`, `markAppealFailed`, `setProcessingStep`, `persistPortalLookup`).
+- `apps/web/lib/server/inbound.ts` — `processInboundMessage()` flips status to `cancelled` / `rejected`.
+- `apps/web/lib/server/db/schema.ts` — `appeals.status` enum + `step` column + `PortalLookupSnapshot` + `ProcessingStatus` types.
+- `apps/web/app/not-found.tsx`, `apps/web/app/error.tsx` — global error surfaces.
