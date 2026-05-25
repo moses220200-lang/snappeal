@@ -72,3 +72,10 @@ pnpm-debug.log*
 /playwright-report/
 
 .vercel
+
+# Claude Code session state (transcripts, plans, tool results, memory cache)
+.claude/
+
+# Ad-hoc dev / Playwright MCP screenshots dumped at the repo root that
+# the named-pattern list above missed (catches everything else at root)
+/*.png
