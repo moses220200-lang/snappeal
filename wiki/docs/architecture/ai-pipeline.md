@@ -82,6 +82,10 @@ Claude tends to score generously even when the evidence base is thin. After the 
 
 When the AI returns a council slug we don't know, `attachDraftToAppeal()` keeps the slug on the ticket jsonb (for diagnostics) but resolves the FK column to `NULL`. No more FK constraint violations on unrecognised images.
 
+#### Re-scoring on added evidence — `scoreAppealStrength()` (v0.3.4)
+
+When a weak appeal's `letter_ready` card prompts "Add more evidence", we re-evaluate the strength **without redrafting the letter**. `scoreAppealStrength()` (`lib/server/ai.ts`) is a focused structured call — it takes the *existing* `letterBody` + grounds + notes + council + the latest evidence photos and returns a fresh `AppealStrength` (`{ score, rationale, improvements }`), judging the photos critically (a wide scene shot scores lower than a close-up that isolates the issue). It runs behind **`POST /api/appeals/[id]/rescore`** (ownership-gated, `lib/server/appeals.ts → updateAppealStrength()` patches only the three strength columns; `letterBody` is never touched). The smart card's `PaidSubmitCta` fires it automatically on each `EvidenceCarousel` change and refreshes the appeal, so the score moves in place and the weak-appeal warning clears once it crosses 50 — no "Redraft with your photo" round-trip. The v0.3.0 server-side cap above still applies to the *initial* draft; the re-score path trusts the model's evidence-aware judgement (the user has explicitly added photos by then).
+
 ### 3. Inbound mail classification — `lib/server/inbound.ts → processInboundMessage()`
 
 Each council reply (received via `/api/inbound`) is classified into one of `cancelled | rejected | acknowledged | request | unknown` via a short Claude CLI call with a tiny `{ outcome, reasoning }` schema. When the outcome is `cancelled` or `rejected`, the appeal's status flips automatically and shows up in the Inbox + Tickets list.
@@ -127,14 +131,14 @@ The v0.3.1 **`showMcpLiveView`** runtime flag (default ON; OFF only when `NEXT_P
 ```
 lib/server/
 ├── claude-cli.ts                 # runStructured() + runAgentic() — the wrapper
-├── ai.ts                         # generateDraft() + extractTicket() + coachPhoto() + strengthenNotes()
+├── ai.ts                         # generateDraft() + extractTicket() + coachPhoto() + strengthenNotes() + scoreAppealStrength()
 ├── knowledge.ts                  # loadKnowledgePack() — deterministic ranker over apps/web/knowledge/*
 ├── inbound.ts                    # processInboundMessage() — classify council replies
 ├── concurrency.ts                # Semaphore for /api/generate
 ├── settings.ts                   # mcpHeaded · stopAtReview · submissionLive · workerDisabled ·
 │                                 # fakePayment · skipPaymentCheck · showMcpLiveView
 ├── submission/portal.ts          # agentic Playwright MCP submit runner
-├── submission/lookup.ts          # agentic Playwright MCP read-only PCN lookup
+├── submission/lookup.ts          # agentic Playwright MCP read-only PCN lookup (v0.3.4: onVerdictConfirmed fires early so the user advances to Pay/appeal mid-job)
 ├── submission/mcp-warm.ts        # prewarmMcp() — called by the worker at boot
 └── submission/_progress.ts       # emitToolStep / extractJsonObject helpers
 
@@ -146,6 +150,7 @@ apps/web/knowledge/
 
 app/api/
 ├── jobs/[id]/progress/route.ts   # SSE with v0.3.1 4 KB padding + identity encoding + no-store
+├── appeals/[id]/rescore/route.ts # v0.3.4 — re-score strength on added evidence (no redraft)
 └── generate-stream/route.ts      # SSE drafter; emits ticket → ground → strength → chunk → done
 ```
 
