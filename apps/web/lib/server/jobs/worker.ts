@@ -250,7 +250,18 @@ async function runHandler(job: Job): Promise<unknown> {
       const council = councilRows[0];
       if (!council) throw new Error(`Unknown council slug: ${appeal.councilSlug}`);
 
-      const lookup = await runPortalLookup({ appeal, council, jobId: job.id });
+      const lookup = await runPortalLookup({
+        appeal,
+        council,
+        jobId: job.id,
+        // Persist the verdict the moment the council confirms it so the
+        // customer advances to Pay/appeal immediately. The agent keeps
+        // capturing warden photos in the background; the final persist
+        // below overwrites this with the full snapshot (incl. photos).
+        onVerdictConfirmed: async (snapshot) => {
+          await persistPortalLookup({ appealId, snapshot }).catch(() => null);
+        },
+      });
       await persistPortalLookup({ appealId, snapshot: lookup.snapshot });
       // Surface the verdict to the SSE consumer so the validating page
       // can pick its redirect target without an extra round-trip.

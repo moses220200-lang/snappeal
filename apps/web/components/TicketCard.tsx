@@ -391,11 +391,25 @@ export function TicketCard({
   // useAppealLiveState above.
   const cardState = deriveCardState(appeal, statusSnapshot, live, timeouts);
   useEffect(() => {
-    if (cardState.kind !== "processing" && cardState.kind !== "drafting") {
+    if (
+      cardState.kind !== "processing" &&
+      cardState.kind !== "drafting" &&
+      cardState.kind !== "validating"
+    ) {
       return;
     }
-    const interval = cardState.kind === "processing" ? 2000 : 3000;
-    const maxPolls = cardState.kind === "processing" ? 60 : 60;
+    // `validating` is polled too so the card can advance to Pay/appeal the
+    // INSTANT the council confirms the verdict — the lookup worker persists
+    // the verified snapshot mid-job (while it keeps capturing warden photos
+    // in the background), and this poll picks up `portalLookup.status`
+    // flipping out of "pending" without waiting for the whole job to settle.
+    const interval =
+      cardState.kind === "processing"
+        ? 2000
+        : cardState.kind === "validating"
+          ? 2500
+          : 3000;
+    const maxPolls = cardState.kind === "validating" ? 80 : 60;
     let alive = true;
     let polls = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -411,6 +425,10 @@ export function TicketCard({
         const ocr = next?.processing?.ocr?.status;
         if (next?.ticket?.pcnRef && next?.ticket?.vehicleReg) return;
         if (ocr === "failed") return;
+      } else if (cardState.kind === "validating") {
+        // The council has confirmed (or rejected) — advance immediately.
+        const portal = next?.portalLookup;
+        if (portal && portal.status !== "pending") return;
       }
       if (polls < maxPolls) timer = setTimeout(tick, interval);
     };
@@ -819,16 +837,21 @@ export function TicketCard({
     }
   };
 
-  // ─── MCP live agent panel — full-width, mounted inside the
-  //     "Checking council" timeline step instead of as a separate
-  //     supplementary card. Pre-built here so buildLifecycleSteps
-  //     stays a pure function over plain values. Returns null when
-  //     the admin flag is OFF or there's nothing to show yet. ───
+  // ─── MCP live agent panel — full-width, mounted inside a timeline
+  //     step instead of as a separate supplementary card. Pre-built here
+  //     so buildLifecycleSteps stays a pure function over plain values. ───
+  //
+  // The read-only council LOOKUP no longer pushes a screenshot slideshow
+  // on the customer: there's no reason to watch the agent grab page +
+  // warden screenshots. During the lookup they see a calm "Checking
+  // council" status + the confirmed-data stream, and advance to
+  // Pay/appeal the moment the verdict lands (the agent keeps capturing in
+  // the background). The live agent view is reserved for the actual
+  // submission (submit_appeal), where watching the filing is meaningful.
   const mcpPanel: React.ReactNode | null = (() => {
+    if (activeJobKind !== "submit_appeal") return null;
     const galleryEvents = events.length > 0 ? events : pastSubmitEvents;
-    const isLive =
-      cardState.inFlight &&
-      (activeJobKind === "pcn_lookup" || activeJobKind === "submit_appeal");
+    const isLive = cardState.inFlight && activeJobKind === "submit_appeal";
     const hasGallery = galleryEvents.length > 0;
     if (!showMcpLiveView) return null;
     if (!isLive && !hasGallery) return null;

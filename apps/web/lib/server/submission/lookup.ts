@@ -100,6 +100,14 @@ Steps:
      "expired"   — statutory challenge window has passed.
      "not_found" — lookup returned "not found" / no record.
      "unknown"   — none of the above can be reasonably determined.
+
+   As SOON as you determine the verdict — and BEFORE capturing any
+   photos — emit it on its own line using the bracket-tag protocol so
+   the customer can move ahead immediately:
+
+     [verdict]<one of the values above>
+     [verdictReason]<one-sentence reason citing the page text>
+
 5. Capture visible ticket metadata (pcnRef, vehicleReg, contraventionCode,
    location, issuedAt, amountPence, discountUntil, fullChargeFrom,
    dueDateAt, paidAt). Leave fields undefined if not on the page.
@@ -140,8 +148,15 @@ export async function runPortalLookup(opts: {
   jobId?: string;
   /** Filesystem root for live screenshot streaming (defaults to <cwd>/public). */
   publicRoot?: string;
+  /** Fired ONCE the moment the council's verdict is first read off the
+   *  page — with the verdict + metadata captured so far and NO photos yet.
+   *  Lets the caller persist a verified snapshot early so the customer can
+   *  advance to Pay/appeal while the agent keeps capturing warden photos in
+   *  the background. The final return value still carries the full snapshot
+   *  (incl. photos) for a final persist. */
+  onVerdictConfirmed?: (snapshot: PortalLookupSnapshot) => void | Promise<void>;
 }): Promise<PortalLookupResult> {
-  const { appeal, council, jobId } = opts;
+  const { appeal, council, jobId, onVerdictConfirmed } = opts;
   const started = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "snappeal-lookup-"));
   // Per-run Chrome user-data-dir lives INSIDE the workDir so each
@@ -226,6 +241,42 @@ Return the lookup JSON as specified in the system prompt — no commentary.`;
       }
     }
   };
+
+  // Fire ONCE the first time a verdict is read off the page. Persists the
+  // confirmed status (with whatever metadata is captured so far, no photos)
+  // so the customer advances to Pay/appeal immediately while the agent
+  // carries on capturing warden photos in the background.
+  let earlyConfirmFired = false;
+  const maybeConfirmEarly = () => {
+    if (earlyConfirmFired || !scrapedVerdict || !onVerdictConfirmed) return;
+    earlyConfirmFired = true;
+    const meta = coerceMetadata(scrapedMetadata);
+    const lifecycle: PortalLookupSnapshot["status"] =
+      scrapedVerdict === "paid" ||
+      scrapedVerdict === "closed" ||
+      scrapedVerdict === "not_found"
+        ? "invalid"
+        : "verified";
+    const prelim: PortalLookupSnapshot = {
+      jobId: jobId ?? null,
+      status: lifecycle,
+      verdict: scrapedVerdict,
+      verdictReason: scrapedReason,
+      photoUrls: [],
+      metadata: Object.keys(meta).length
+        ? (meta as NonNullable<PortalLookupSnapshot["metadata"]>)
+        : undefined,
+      fetchedAt: new Date().toISOString(),
+    };
+    if (jobId) {
+      void appendProgress(jobId, {
+        kind: "status",
+        message: "Council confirmed — preparing your options",
+      }).catch(() => {});
+    }
+    void Promise.resolve(onVerdictConfirmed(prelim)).catch(() => {});
+  };
+
   const result = await runAgentic({
     prompt: userPrompt,
     systemPrompt,
@@ -275,6 +326,9 @@ Return the lookup JSON as specified in the system prompt — no commentary.`;
           scrapeFromText(delta.text);
         }
       }
+      // Advance the customer the instant the verdict lands (background
+      // photo capture continues).
+      maybeConfirmEarly();
     },
   });
   await watcher.stop();
