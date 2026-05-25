@@ -73,11 +73,40 @@ export const PhotoCoach = z.object({
   advice: z.string().max(280),
 });
 
+// `body` is the load-bearing field — the entire letter the customer
+// will submit. If the drafter returns an empty/near-empty body, fail
+// the structured parse loudly rather than persist a blank letter that
+// renders as nothing in the UI. A real PCN representation letter is
+// always at least a handful of sentences; the prompt asks for
+// 250–500 words. 80 chars is enough to catch "" and one-line stubs
+// without rejecting unusually terse but legitimate drafts.
 export const Letter = z.object({
-  subject: z.string(),
-  body: z.string(),
+  subject: z.string().min(3),
+  body: z.string().min(80),
   wordCount: z.number().int().nonnegative(),
-  addressedTo: z.string(),
+  addressedTo: z.string().min(3),
+});
+
+/**
+ * Calibrated read of how likely the council is to cancel given the
+ * grounds, evidence, and dictated notes the user supplied. NOT the
+ * drafter's confidence in the legal argument in the abstract — it
+ * reflects the evidence base, so a strong ground with no corroborating
+ * photo will score lower than a moderate ground with a clean photo.
+ *
+ * Bands:
+ *   80–100 strong  — clear ground + corroborating evidence + matching precedent
+ *   50–79  solid   — at least one strong ground with partial evidence
+ *   30–49  weak    — argument plausible but evidence thin
+ *    0–29  very weak — no evidence supports the chosen grounds
+ *
+ * When score < 50 the UI shows a warning above the £2.99 button so the
+ * user can add evidence or back out before paying.
+ */
+export const AppealStrength = z.object({
+  score: z.number().int().min(0).max(100),
+  rationale: z.string().max(280),
+  improvements: z.array(z.string().max(140)).max(3),
 });
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -107,8 +136,12 @@ export const CheckoutResponse = z.object({
 
 export const GenerateRequest = z.object({
   sessionId: z.string().min(1).max(128),
-  /** Required: base64 data URL of the PCN photo. */
-  pcnPhoto: z.string().min(1).startsWith("data:image/"),
+  /** Base64 data URL of the PCN photo. Optional — the drafter can run on
+   *  a complete `confirmedTicket` alone (no re-OCR needed) so the
+   *  ticket-detail "Start drafting" path doesn't have to re-upload a
+   *  photo that sessionStorage may have already dropped. The route
+   *  enforces "photo OR complete ticket" before dispatching to Claude. */
+  pcnPhoto: z.string().startsWith("data:image/").optional(),
   /** Optional evidence photos (up to 6). */
   evidencePhotos: z
     .array(z.string().startsWith("data:image/"))
@@ -128,6 +161,7 @@ export const GenerateResponse = z.object({
   ticket: Ticket,
   groundIds: z.array(z.string()).min(0).max(6),
   letter: Letter,
+  strength: AppealStrength.optional(),
   modelUsed: z.string(),
   generatedAt: z.string(),
 });
@@ -143,7 +177,10 @@ export const SubmissionMethod = z.enum(["portal", "email", "manual"]);
 export const SubmitRequest = z.object({
   sessionId: z.string().min(1).max(128),
   appealId: z.string().min(1),
-  paymentIntentId: z.string().min(1),
+  /** Stripe PaymentIntent id — required for the £2.99 portal path, omitted
+   *  on the free email path (the route gates the check by the appeal's
+   *  `preferred_method`). */
+  paymentIntentId: z.string().min(1).optional(),
   /** Channel preference — engine may still route differently. */
   preferredMethod: SubmissionMethod.optional(),
 });

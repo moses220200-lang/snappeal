@@ -30,9 +30,8 @@
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — open the appropriate stage's URL.
-- **v0.3 target**: automated via Playwright MCP, stage-aware (informal vs formal forms differ).
-- **Automation status**: `manual`
+- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/lambeth`. The stage-aware informal-vs-formal split is handled by the per-council `agent_prompt`; edit + dry-run at `/admin/councils/lambeth/automation`.
+- Email fallback via `appealEmail` when portal automation throws / returns `success: false`.
 
 ## Sources
 

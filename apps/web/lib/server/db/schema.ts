@@ -81,8 +81,12 @@ export const councils = pgTable("councils", {
 /* ───── council_automation — per-council MCP recipe ───── */
 export const councilAutomation = pgTable("council_automation", {
   councilSlug: text("council_slug").primaryKey(),
-  /** Markdown prompt fed to the Claude+Playwright MCP agent. */
+  /** Markdown prompt fed to the Claude+Playwright MCP submission agent. */
   agentPrompt: text("agent_prompt").notNull(),
+  /** Markdown prompt fed to the Claude+Playwright MCP **lookup** agent —
+   *  read-only walk of the portal to fetch warden photos + verdict.
+   *  Nullable: falls back to FALLBACK_LOOKUP_PROMPT when not seeded. */
+  lookupAgentPrompt: text("lookup_agent_prompt"),
   /** Last known good selectors / hints (jsonb so it can evolve). */
   fieldHints: jsonb("field_hints"),
   /** Last dry-run's step trace (event log + final JSON). */
@@ -166,6 +170,10 @@ export const appeals = pgTable(
     ticket: jsonb("ticket"),
     grounds: jsonb("grounds").$type<string[]>().notNull().default([]),
     notes: text("notes"),
+    /** Council-portal lookup snapshot (warden photos + validity verdict).
+     *  Populated by the `pcn_lookup` job before the user reaches the
+     *  evidence/quiz page. Null when the council is not yet automated. */
+    portalLookup: jsonb("portal_lookup").$type<PortalLookupSnapshot | null>(),
     letterSubject: text("letter_subject"),
     letterBody: text("letter_body"),
     letterWordCount: integer("letter_word_count"),
@@ -174,6 +182,32 @@ export const appeals = pgTable(
     councilSlug: text("council_slug").references(() => councils.slug),
     /** Pricing tier for this appeal: 'buy_time' | 'grounds' | 'care_plan'. */
     serviceTier: text("service_tier").notNull().default("grounds"),
+    /** Customer-picked submission path (v0.2.11). Nullable until the user
+     *  taps an action on the ticket-page recommendation card. Read as:
+     *    - `"email"`  → free path; `/api/submit` bypasses the Stripe check
+     *                    and routes through `runSubmission(_, { method: "email" })`.
+     *    - `"portal"` → £2.99 path; existing PaymentSheet + `submit_appeal` MCP job.
+     *    - NULL       → user hasn't picked yet (state B on the ticket page). */
+    preferredMethod: text("preferred_method"),
+    /** v0.2.15 — per-step processing status. Drives the inline status rows
+     *  on the smart ticket card (Reading PCN / Generating recommendation).
+     *  Portal lookup status lives on `portalLookup.status` (separate so
+     *  each step's error trail stays targeted). */
+    processing: jsonb("processing").$type<ProcessingStatus | null>(),
+    /** Vercel Blob URL for the uploaded PCN photo. Lets the smart card
+     *  show the image inline even after a refresh or cross-device load. */
+    pcnImageUrl: text("pcn_image_url"),
+    /** PR 3 — AI-strength score (0–100). NULL until the drafter has
+     *  returned. Surfaced in the smart card so a sub-50 appeal warns the
+     *  user before they pay. */
+    strengthScore: integer("strength_score"),
+    /** One-sentence rationale shown when score < 50. */
+    strengthRationale: text("strength_rationale"),
+    /** Up to 3 actionable evidence asks shown when score < 50. */
+    strengthImprovements: jsonb("strength_improvements").$type<string[] | null>(),
+    /** Audit trail: `{ usedIds: string[], tokens: number }` snapshot of the
+     *  knowledge pack the drafter saw on the most recent generation. */
+    knowledgePackUsed: jsonb("knowledge_pack_used").$type<KnowledgePackAudit | null>(),
     modelUsed: text("model_used"),
     costPenceMillis: integer("cost_pence_millis"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -230,7 +264,90 @@ export type JobProgressEvent =
   | { ts: string; kind: "status"; message: string }
   | { ts: string; kind: "step"; message: string }
   | { ts: string; kind: "thought"; message: string }
-  | { ts: string; kind: "screenshot"; step: number; url: string; caption?: string };
+  | { ts: string; kind: "screenshot"; step: number; url: string; caption?: string }
+  | {
+      ts: string;
+      kind: "metadata";
+      /** A field of `PortalLookupSnapshot["metadata"]` plus a few extras
+       *  the prompt may emit progressively (e.g. issuer, contravention
+       *  description). The client maps these into the live "Council
+       *  confirms" panel. */
+      field: string;
+      value: string;
+    };
+
+/** Audit trail snapshot for the knowledge pack a drafter actually saw —
+ *  written to `appeals.knowledge_pack_used` so we can later debug
+ *  why a given letter was framed the way it was. */
+export interface KnowledgePackAudit {
+  usedIds: string[];
+  tokens: number;
+}
+
+/** Per-step processing status for the smart ticket card (v0.2.15).
+ *  Each backend operation that runs after the appeal row is created
+ *  reports its lifecycle here, so the UI can show progressive inline
+ *  loading rows without a full-screen blocker. */
+export type ProcessingStepStatus = "pending" | "running" | "done" | "failed";
+
+export interface ProcessingStatus {
+  /** OCR step — Claude vision extracts ticket fields from the photo. */
+  ocr?: {
+    status: ProcessingStepStatus;
+    error?: string;
+    /** Set when the OCR PATCH wrote to ticket. */
+    completedAt?: string;
+  };
+  /** AI appeal-analysis step — recommendation card generation. */
+  analysis?: {
+    status: ProcessingStepStatus;
+    error?: string;
+    completedAt?: string;
+  };
+}
+
+/** Verdict returned by the council portal after a PCN lookup. */
+export type PortalLookupVerdict =
+  | "open"           // PCN is live + appealable
+  | "paid"           // already paid in full
+  | "closed"         // council has cancelled / closed the case
+  | "not_found"      // portal couldn't locate the PCN
+  | "expired"        // statutory window to challenge has passed
+  | "unknown";       // lookup ran but couldn't determine state
+
+/** Snapshot persisted to `appeals.portal_lookup`. Drives the validation
+ *  banner, the warden-photo gallery, and the hard-block routing on the
+ *  evidence page. */
+export interface PortalLookupSnapshot {
+  jobId: string | null;
+  /** Lifecycle of the lookup itself (not the verdict). */
+  status:
+    | "pending"        // job enqueued, not yet run
+    | "verified"       // ran ok; verdict is trustworthy
+    | "invalid"        // ran ok; verdict ∈ {paid, closed, not_found}
+    | "skipped"        // council not automated — no lookup attempted
+    | "overridden"     // verdict said invalid but user chose to appeal anyway
+    | "error";         // lookup failed (portal down, timeout, captcha…)
+  verdict?: PortalLookupVerdict;
+  verdictReason?: string;
+  /** Warden / portal-side photo URLs (already uploaded to Blob). */
+  photoUrls: string[];
+  /** Ticket fields the portal returned — these become the source-of-truth
+   *  over the OCR'd ticket once a lookup succeeds. */
+  metadata?: {
+    pcnRef?: string;
+    vehicleReg?: string;
+    contraventionCode?: string;
+    location?: string;
+    issuedAt?: string;
+    amountPence?: number;
+    discountUntil?: string;
+    fullChargeFrom?: string;
+    dueDateAt?: string;
+    paidAt?: string;
+  };
+  fetchedAt: string;
+}
 
 /**
  * Inbound mail from councils. Per-appeal alias is `<appeal-id>@appeals.parkingrabbit.com`;

@@ -5,9 +5,8 @@ import { X } from "lucide-react";
 
 /**
  * Reusable "wizard sheet" — full-screen on mobile, large modal on desktop.
- * Matches the WizardOnboarding aesthetic (navy backdrop, dotted pattern,
- * badge + title + subtitle + body + sticky footer) so any moment in the
- * app can pop a contextual mini-wizard.
+ * Navy backdrop, dotted pattern, badge + title + subtitle + body + sticky
+ * footer, so any moment in the app can pop a contextual mini-wizard.
  *
  * Used for: photo coach feedback, strengthen-my-notes preview, voice
  * notes recording UI, permission asks, post-success upsells.

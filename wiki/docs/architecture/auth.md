@@ -130,7 +130,7 @@ The wizard's Apple / Google buttons (`components/OAuthButtons.tsx`, also rendere
 
 JWT is in an httpOnly + SameSite=Lax cookie, which blocks cross-site request forgery for the dominant attack pattern. State-changing routes that are reachable from a different origin (`/api/inbound` webhook in particular) gate on a shared secret header instead (`X-ParkingRabbit-Webhook-Secret`, REQUIRED in `NODE_ENV=production`).
 
-Appeal-scoped routes (`/api/appeals/[id]`, `/api/submit`, `/api/jobs/[id]`, `/api/submissions/[id]/progress`) use the helpers in `lib/server/viewer.ts` (`canViewAppeal`, `getRequestSessionId`) to gate access:
+Appeal-scoped routes (`/api/appeals/[id]`, `/api/submit`, `/api/jobs/[id]`, `/api/jobs/[id]/progress`) use the helpers in `lib/server/viewer.ts` (`canViewAppeal`, `getRequestSessionId`) to gate access:
 
 - Signed-in users prove identity via the `snappeal.token` JWT cookie.
 - Guests prove ownership of their anonymous session via the `x-snappeal-session` request header (or a `?session=` query param on the SSE endpoint, since EventSource can't send custom headers).

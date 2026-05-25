@@ -33,9 +33,8 @@
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — ParkingRabbit copies the letter to clipboard and opens the RBKC help-hub URL.
-- **v0.3 target**: automated via Playwright MCP — needs Chatbot Max conversation handler.
-- **Automation status**: `manual`
+- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/kensington-chelsea`. Chatbot Max conversation handling is one of the per-council `agent_prompt` customisations; edit + dry-run at `/admin/councils/kensington-chelsea/automation`.
+- The engine routes through email fallback (`appealEmail` on the council row) if portal automation throws / returns `success: false`.
 
 ## Sources
 

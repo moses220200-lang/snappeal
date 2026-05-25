@@ -19,7 +19,7 @@ The Next.js app runs natively on the host (not in Docker) so the Claude CLI can 
 docker compose up -d
 cd apps/web
 npm install
-npm run db:migrate   # apply all 10 Drizzle migrations (0000–0009)
+npm run db:migrate   # apply all 14 Drizzle migrations (0000–0013)
 npm run db:seed      # seed 7 councils
 npm run dev          # http://localhost:3001
 ```
@@ -60,12 +60,12 @@ The full list lives in `apps/web/.env.example`.
 │ Neon Postgres (EU)    │    │ Worker box              │
 │ via Vercel Marketplace│◄───┤ Fly.io / Railway        │
 │ 11 tables             │    │ Or Vercel Sandbox       │
-└──────────┬────────────┘    │ - claude CLI            │
+└──────────┬────────────┘    │ - claude CLI binary     │
            │                 │ - Playwright + Chromium │
            │                 │ - instrumentation.ts    │
 ┌──────────▼────────────┐    │   boots worker          │
-│ Vercel Blob           │    └──────────┬──────────────┘
-│ private buckets       │               │
+│ Vercel Blob           │    │ - prewarmMcp() on boot  │
+│ private buckets       │    └──────────┬──────────────┘
 │ 90-day TTL on photos  │◄──────────────┘
 └───────────────────────┘
 ```

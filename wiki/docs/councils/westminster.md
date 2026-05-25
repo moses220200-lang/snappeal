@@ -41,9 +41,8 @@ S98 1TU
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — ParkingRabbit copies the drafted letter to the clipboard and opens `https://appeals.westminster.gov.uk/` in a new tab.
-- **v0.3 target**: automated via Playwright MCP (priority council — highest London PCN volume).
-- **Automation status**: `manual`
+- **Automation status: `automated_beta`** — Westminster is the primary automated council (the per-council MCP prompt for every other automated borough was forked from the Westminster recipe). The submit-appeal job runs `runPortalAutomation()` against `https://appeals.westminster.gov.uk/` end-to-end (5-min wall-clock cap, 30-step agent budget). The read-only `runPortalLookup()` is also wired (parallel `pcn_lookup` job runs during evidence-gathering, returns verdict + warden photos).
+- **Edit the agent prompt + field hints + run dry-runs** from `/admin/councils/westminster/automation`. Reset-to-canonical reverts to the in-code Westminster fallback (the same canonical that seeded every other automated council).
 
 ## Sources
 

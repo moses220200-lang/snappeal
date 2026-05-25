@@ -35,9 +35,9 @@
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — open the TfL representation page.
-- **v0.3 target**: automated via Playwright MCP, red-route + bus-lane support first; congestion/ULEZ later.
-- **Automation status**: `manual`
+- **Automation status** lives on `councils.automation_status` (slug `tfl`) — view at `/admin/councils/tfl`. Red-route + bus-lane are the primary automation targets; congestion/ULEZ stay manual until the v0.3 separate-statutory-regime work lands.
+- When automated, the engine runs `runPortalAutomation()` against the TfL portal using the per-council recipe in `council_automation`. Edit + dry-run at `/admin/councils/tfl/automation`.
+- Lookup (read-only) is wired separately via `council_automation.lookup_agent_prompt` (or falls back to `FALLBACK_LOOKUP_PROMPT`).
 
 ## Sources
 

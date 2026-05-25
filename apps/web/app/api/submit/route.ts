@@ -52,7 +52,40 @@ export async function POST(request: Request) {
       );
     }
 
+    // Council-portal gate: refuse to spend the user's £2.99 (and a worker
+    // slot) on a PCN the council says is already paid / closed / not on
+    // record. The verdict-popup override flips status to "overridden",
+    // which is the only way past this check.
+    const lookup = appeal.portalLookup;
+    if (
+      lookup &&
+      lookup.status !== "overridden" &&
+      (lookup.verdict === "paid" ||
+        lookup.verdict === "closed" ||
+        lookup.verdict === "not_found")
+    ) {
+      return NextResponse.json(
+        jsonError(
+          "PCN_NOT_APPEALABLE",
+          `Council portal reports this PCN as ${lookup.verdict}; no appeal is possible.`,
+        ),
+        { status: 409 },
+      );
+    }
+
+    // v0.2.12 — the customer no longer chooses email vs portal at
+    // submit time. The paid AI appeal workflow IS the product; the only
+    // public submission path is the £2.99 portal/MCP flow. Email is
+    // still reachable inside `runSubmission` as a portal-fallback for
+    // unautomated councils, but not as a customer-facing free path.
+    // (The earlier v0.2.11 free-email branch is removed.)
     if (process.env.SNAPPEAL_SKIP_PAYMENT_CHECK !== "1") {
+      if (!body.paymentIntentId) {
+        return NextResponse.json(
+          jsonError("BAD_REQUEST", "paymentIntentId required for £2.99 portal submission"),
+          { status: 400 },
+        );
+      }
       if (!env.STRIPE_SECRET_KEY) {
         return NextResponse.json(
           jsonError("STRIPE_NOT_CONFIGURED", "Stripe is not configured"),
@@ -71,8 +104,8 @@ export async function POST(request: Request) {
     // Stamp the appeal as 'submitting' immediately so the UI reflects state.
     await recordSubmission({
       appealId: appeal.id,
-      method: body.preferredMethod ?? "portal",
-      channel: body.preferredMethod ?? "portal",
+      method: "portal",
+      channel: "portal",
       status: "queued",
       councilReference: null,
       submittedAt: null,
@@ -88,7 +121,7 @@ export async function POST(request: Request) {
     const response: SubmitResponse = {
       submissionId: job.id,
       status: "queued",
-      method: body.preferredMethod ?? "portal",
+      method: "portal",
       councilReference: null,
       submittedAt: null,
     };

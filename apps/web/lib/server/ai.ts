@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { runStructured } from "./claude-cli";
-import { Ticket, TicketConfidence, PhotoCoach, Letter } from "./contracts";
+import { AppealStrength, Ticket, TicketConfidence, PhotoCoach, Letter } from "./contracts";
+import type { KnowledgePack } from "./knowledge.types";
+import type { PortalLookupSnapshot } from "./db/schema";
 
 /**
  * Cheap extract-only call. Used during capture (BEFORE the paywall) to
@@ -148,6 +150,7 @@ export const GeneratedDraft = z.object({
   ticket: Ticket,
   groundIds: z.array(z.string()).min(0).max(6),
   letter: Letter,
+  strength: AppealStrength,
 });
 
 export type GeneratedDraft = z.infer<typeof GeneratedDraft>;
@@ -252,6 +255,52 @@ Your job is FOUR things in one response:
    PO Box 351, Sheffield, S98 1TU"), otherwise the council name + "Parking
    Services" alone.
 
+6) USE THE KNOWLEDGE PACK supplied below to strengthen your reasoning.
+
+   The pack contains, when available:
+   - Up to 6 redacted precedents of previously won appeals filtered to
+     the user's selected grounds + contravention code + council.
+   - 1–2 contravention-code briefs explaining the statutory basis and
+     the defences council adjudicators routinely accept.
+   - 1 council brief listing the issuing authority's quirks (postal
+     address, evidence bar, common rebuttals, portal idiosyncrasies).
+
+   When precedents are provided, MIRROR their successful framing where
+   the user's facts align — never copy phrasing verbatim. Express the
+   precedent's keyArgument in your own words.
+   When a code brief lists a common rebuttal from council, PRE-EMPT it
+   in the letter with one sentence.
+   When the council brief notes a quirk (e.g. discount window is 14
+   days), respect it in any deadline language.
+   The knowledge pack is INTERNAL context — never mention "precedents",
+   "knowledge base", file IDs, or the brief titles in the letter body.
+
+7) SCORE THE APPEAL STRENGTH.
+
+   Output a strength.score (0–100, integer) reflecting your honest read
+   of the chance THIS council cancels the PCN at the informal or NTO
+   stage GIVEN the evidence supplied:
+     - 80–100: strong — clear ground + corroborating evidence + matching
+       precedent + sympathetic council.
+     - 50–79: solid — at least one strong ground with partial evidence.
+     - 30–49: weak — argument plausible but evidence is thin or council
+       routinely refuses this ground.
+     - 0–29: very weak — no evidence supports the chosen grounds.
+
+   The score reflects EVIDENCE supplied, not the abstract legal merit.
+   Worked example: if the user selected "signage-unclear" but supplied
+   zero evidence photos and a 5-word note, the appropriate score is
+   25–35, NOT 60. A strong substantive ground with no evidence is still
+   weak in front of an adjudicator.
+
+   When score < 50, write a one-sentence strength.rationale the user
+   sees ("Without a photo of the obscured sign on the day, the council
+   will likely reject this."). List up to 3 strength.improvements —
+   short, actionable evidence asks the user can satisfy.
+
+   The score is metadata for the product UI. NEVER include it, the
+   rationale, or the improvements list in the letter body.
+
 Hard rules:
 - NEVER invent evidence the photos don't show.
 - NEVER return placeholders like "[council-slug]" or "[NOT READABLE]" in
@@ -259,6 +308,10 @@ Hard rules:
 - Plain English. Quote statute only when the user's note explicitly
   raises it.
 - Do not impersonate a solicitor.
+- The knowledge pack is internal context — do not cite, name, or quote
+  its entries in the letter body.
+- The strength score reflects evidence supplied, not the abstract merit
+  of the legal argument.
 `;
 
 /**
@@ -266,12 +319,31 @@ Hard rules:
  * draft. Throws on any failure (CLI exit, schema mismatch, vision error).
  */
 export async function generateDraft(input: {
-  pcnPhotoDataUrl: string;
+  /** Base64 data URL of the PCN photo. Optional — when a complete
+   *  `confirmedTicket` is provided we skip vision entirely. The route
+   *  is responsible for ensuring at least one of (photo, complete
+   *  ticket) is present; we throw fast here as a defensive backstop. */
+  pcnPhotoDataUrl?: string;
   evidencePhotoDataUrls: string[];
   notes?: string;
   /** Already-extracted+confirmed ticket fields. When supplied, the drafter
    * uses these verbatim and re-extracts only what's missing. */
   confirmedTicket?: Partial<z.infer<typeof Ticket>>;
+  /** Cards the user picked in the quiz, with their promptHooks — the
+   *  drafter uses the hooks as starting points where the user's note
+   *  corroborates them. */
+  selectedCards?: Array<{
+    id: string;
+    label: string;
+    promptHook?: string;
+    weight?: "weak" | "medium" | "strong";
+  }>;
+  /** Council-portal-verified metadata. Treated as authoritative — beats
+   *  OCR'd ticket fields when present. */
+  portalMetadata?: PortalLookupSnapshot["metadata"];
+  /** Knowledge pack from `lib/server/knowledge.ts`. Adds precedent
+   *  framings, code briefs, and council quirks the drafter can lean on. */
+  knowledgePack?: KnowledgePack;
 }): Promise<GeneratedDraft & { modelUsed: string; costUsd: number | null }> {
   // If the user has already confirmed the PCN fields on /app/capture (via
   // /api/extract), don't make Claude re-OCR the ticket photo here. We just
@@ -306,16 +378,35 @@ export async function generateDraft(input: {
             : "\n\nThe above fields are correct as-is; only fill any missing/empty values by reading the PCN photo."
         }`
       : null,
+    input.portalMetadata && Object.keys(input.portalMetadata).length > 0
+      ? `Council-portal-verified metadata (treat as authoritative — these came directly from the issuing authority's system):\n${JSON.stringify(input.portalMetadata, null, 2)}`
+      : null,
+    input.selectedCards && input.selectedCards.length > 0
+      ? `The user picked these specific situations from the quiz. Use each promptHook as a starting framing where the user's note corroborates it; ignore hooks where the note contradicts or fails to support them:\n${input.selectedCards
+          .map(
+            (c) =>
+              `- [${c.id}] ${c.label}${c.weight ? ` (strength: ${c.weight})` : ""}${c.promptHook ? `\n    hook: ${c.promptHook}` : ""}`,
+          )
+          .join("\n")}`
+      : null,
     input.notes ? `User's note about what happened: ${input.notes}` : null,
     input.evidencePhotoDataUrls.length > 0
       ? `${input.evidencePhotoDataUrls.length} evidence photo(s) of the scene are attached. For each, give it a charitable, evidence-supportive reading in the letter — but never invent facts the photos do not show.`
       : null,
+    input.knowledgePack && input.knowledgePack.rendered.length > 0
+      ? `KNOWLEDGE PACK (internal context — do not cite, name, or quote in the letter body):\n\n${input.knowledgePack.rendered}`
+      : null,
     "Respond with a single JSON object matching the provided schema. Do not wrap it in markdown.",
   ].filter(Boolean);
 
+  if (!ticketComplete && !input.pcnPhotoDataUrl) {
+    throw new Error(
+      "generateDraft requires either a complete confirmedTicket or a pcnPhotoDataUrl",
+    );
+  }
   const images = ticketComplete
     ? input.evidencePhotoDataUrls
-    : [input.pcnPhotoDataUrl, ...input.evidencePhotoDataUrls];
+    : [input.pcnPhotoDataUrl!, ...input.evidencePhotoDataUrls];
 
   const { value, modelUsed, costUsd } = await runStructured({
     prompt: promptParts.join("\n\n"),
@@ -325,5 +416,22 @@ export async function generateDraft(input: {
     timeoutMs: 120_000,
   });
 
-  return { ...value, modelUsed, costUsd };
+  // Server-side strength cap — defend against AI score inflation when the
+  // evidence base is thin. Claude tends to score generously even when
+  // there's almost nothing to ground a ground in.
+  const noEvidence = input.evidencePhotoDataUrls.length === 0;
+  const thinNotes = (input.notes?.trim().length ?? 0) < 50;
+  const capped = { ...value };
+  if (noEvidence && thinNotes && capped.strength.score > 45) {
+    capped.strength = {
+      ...capped.strength,
+      score: 45,
+      rationale: `${"We capped this score because no evidence photos were attached and the notes are very brief. "}${capped.strength.rationale}`.slice(
+        0,
+        280,
+      ),
+    };
+  }
+
+  return { ...capped, modelUsed, costUsd };
 }

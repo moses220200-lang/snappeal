@@ -79,3 +79,7 @@ pnpm-debug.log*
 # Ad-hoc dev / Playwright MCP screenshots dumped at the repo root that
 # the named-pattern list above missed (catches everything else at root)
 /*.png
+
+# Local Vercel Blob fallback (user-uploaded PCN + warden photos when
+# BLOB_READ_WRITE_TOKEN is unset in dev). User data — never commit.
+/apps/web/public/dev-blobs/

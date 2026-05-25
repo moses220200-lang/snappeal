@@ -10,7 +10,7 @@ The ParkingRabbit Next.js 16 app: landing site + customer PWA + admin backend.
 docker compose up -d            # Postgres (127.0.0.1:5544), wiki, tunnel
 npm install
 cp .env.example .env.local      # then fill in AUTH_SECRET + ANTHROPIC_API_KEY at minimum
-npm run db:migrate              # apply all 10 Drizzle migrations
+npm run db:migrate              # apply Drizzle migrations 0000–0009; 0010–0013 are applied manually (idempotent)
 npm run db:seed                 # seed 7 councils
 npm run dev                     # http://localhost:3001
 ```
@@ -54,7 +54,8 @@ lib/
 ├── client/                # Browser helpers (haptics, session id)
 ├── server/                # Server-only (auth, ai, appeals, jobs, submission, …)
 └── grounds-catalog.ts     # Customer-facing PCN appeal grounds
-drizzle/                   # 10 migrations + meta
+drizzle/                   # 14 migrations + meta (0010–0013 hand-applied)
+knowledge/                 # markdown KB: precedents / codes / councils (v0.3.0)
 scripts/                   # Seed + promote + smoke tests
 tests/                     # Playwright UI + API specs
 ```

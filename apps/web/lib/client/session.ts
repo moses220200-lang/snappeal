@@ -24,19 +24,36 @@ const KEY_EVIDENCE = "snappeal.evidencePhotos";
 const KEY_APPEAL = "snappeal.currentAppealId";
 const KEY_TIER = "snappeal.serviceTier";
 
-// One-shot cleanup of the keys we used to store on first import in a
-// browser. Safe to call on every page load — does nothing once the keys
-// are already gone. Runs in module scope so any module that touches
-// session also flushes the legacy data.
+// One-shot cleanup of legacy keys we used to store. Safe to call on every
+// page load — does nothing once the keys are already gone. Runs in module
+// scope so any module that touches session also flushes the legacy data.
+//
+// v0.2.7 (2026-05-22): `KEY_SESSION` and `KEY_APPEAL` moved from
+// localStorage → sessionStorage so a fresh browser launch (closed tab,
+// re-opened) starts with no resurrected guest state. The product rule:
+// "tickets page should not show tickets if you are not logged in". The
+// localStorage entries are removed once on first load so returning users
+// get a clean slate exactly once.
 const LEGACY_KEYS = [
   "snappeal.notes",
   "snappeal.confirmedTicket",
   "snappeal.selectedGrounds",
 ];
+const LEGACY_LOCAL_TO_REMOVE = [
+  "snappeal.sessionId",          // moved to sessionStorage in v0.2.7
+  "snappeal.currentAppealId",    // moved to sessionStorage in v0.2.7
+];
 if (typeof window !== "undefined") {
   for (const k of LEGACY_KEYS) {
     try {
       window.sessionStorage.removeItem(k);
+      window.localStorage.removeItem(k);
+    } catch {
+      /* private mode / quota — best effort */
+    }
+  }
+  for (const k of LEGACY_LOCAL_TO_REMOVE) {
+    try {
       window.localStorage.removeItem(k);
     } catch {
       /* private mode / quota — best effort */
@@ -58,10 +75,14 @@ export function setServiceTier(tier: ServiceTier) {
 
 export function getOrCreateSessionId(): string {
   if (typeof window === "undefined") return "ssr";
-  let id = window.localStorage.getItem(KEY_SESSION);
+  // sessionStorage (not localStorage) — clears on tab close so a fresh
+  // browser launch never resurrects an old guest session. Signed-in users
+  // are identified by the snappeal.token JWT cookie; this id only ever
+  // identifies guests within the lifetime of a single tab.
+  let id = window.sessionStorage.getItem(KEY_SESSION);
   if (!id) {
     id = `snap_${crypto.randomUUID()}`;
-    window.localStorage.setItem(KEY_SESSION, id);
+    window.sessionStorage.setItem(KEY_SESSION, id);
   }
   return id;
 }
@@ -93,21 +114,84 @@ export function clearEvidencePhotos() {
   window.sessionStorage.removeItem(KEY_EVIDENCE);
 }
 
+// currentAppealId tracks the in-flight draft so capture → validating →
+// evidence → paywall all operate on the same row. Stored in sessionStorage
+// (not localStorage) — same rationale as sessionId: a fresh tab is a fresh
+// flow; signed-in users carry their appeals across tabs via the JWT cookie
+// + /api/appeals lookup, not via this pointer.
 export function setCurrentAppealId(id: string) {
-  window.localStorage.setItem(KEY_APPEAL, id);
+  window.sessionStorage.setItem(KEY_APPEAL, id);
 }
 export function getCurrentAppealId(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(KEY_APPEAL);
+  return window.sessionStorage.getItem(KEY_APPEAL);
 }
 export function clearCurrentAppealId() {
-  window.localStorage.removeItem(KEY_APPEAL);
+  window.sessionStorage.removeItem(KEY_APPEAL);
 }
 
 export function clearCaptureFlow() {
   clearPcnPhoto();
   clearEvidencePhotos();
   clearCurrentAppealId();
+  clearOcrResult();
+}
+
+/* ───── OCR result handoff (v0.2.14) ─────
+ * Capture page stashes the OCR confidence + photo coach output in
+ * sessionStorage right before navigating to /app/tickets/[id], so the
+ * smart card can render the review UI (confidence pills, image preview,
+ * "2 greens" check, retake popup) without re-running OCR.
+ */
+const KEY_OCR = "snappeal.ocrHandoff";
+
+export interface OcrHandoff {
+  appealId: string;
+  confidence: {
+    issuer?: number;
+    councilSlug?: number;
+    pcnRef?: number;
+    vehicleReg?: number;
+    contraventionCode?: number;
+    location?: number;
+    issuedAt?: number;
+    amountPence?: number;
+  };
+  photoCoach: {
+    legible: boolean;
+    quality: "good" | "ok" | "poor";
+    issues: string[];
+    advice: string;
+  } | null;
+}
+
+export function setOcrHandoff(handoff: OcrHandoff) {
+  try {
+    window.sessionStorage.setItem(KEY_OCR, JSON.stringify(handoff));
+  } catch {
+    /* sessionStorage quota / private mode — handoff is non-critical */
+  }
+}
+
+export function getOcrHandoff(appealId: string): OcrHandoff | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(KEY_OCR);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OcrHandoff;
+    return parsed.appealId === appealId ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearOcrResult() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(KEY_OCR);
+  } catch {
+    /* best effort */
+  }
 }
 
 /**

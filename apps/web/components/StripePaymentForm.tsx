@@ -162,8 +162,8 @@ function CheckoutForm({
     }
     if (paymentIntent && paymentIntent.status === "succeeded") {
       onSucceededInPlace?.(paymentIntent.id);
-      // Submit button stays disabled; the parent renders the
-      // GeneratingOverlay on top of us.
+      // Submit button stays disabled; the parent ticket card transitions
+      // into its "submitting" state via SSE.
     } else {
       setSubmitting(false);
     }

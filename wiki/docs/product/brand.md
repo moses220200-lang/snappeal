@@ -18,7 +18,7 @@ For App Store listings and SEO landing pages we may use the longer descriptor *"
 
 ParkingRabbit is a **responsive PWA** — installable on iOS and Android home screens, and also rendered as a desktop / tablet experience for the same domain. The product itself is mobile-first, but the public marketing surface (homepage, pricing, FAQ, success stories) is designed-for-desktop and downsizes responsively. From v0.3 the PWA is wrapped via Capacitor for App Store + Play Store.
 
-See [screens/homepage.md](screens/homepage.md) for the desktop home spec.
+The marketing landing lives at `apps/web/app/page.tsx` (canonical source) — the previous v0.1 spec doc was folded into the [archive](../archive.md).
 
 ## Tagline
 
@@ -98,9 +98,13 @@ Tone references: GOV.UK service writing, Monzo error copy, Apple's pre-2020 prod
 Reference strings — keep these consistent across surfaces:
 
 - Landing CTAs: **Get Started** (header), **Free Appeal** (hero), **See How It Works** (hero secondary).
-- `/app` home action heroes — left to right: **Start now** (Deal with parking tickets), **Start appeal** (Challenge a ticket), **Pay now** (Pay a ticket).
+- `/app` home action heroes — left to right: **Start now** (Scan PCN → `/app/tickets?scan=1`), **Appeal** (Challenge it → `/app/tickets`), **Pay now** (Pay a ticket → `/app/pay`). The whole card is a `<Link>` — tapping anywhere on the tile navigates. (`/app/capture` is a server-side redirect to `/app/tickets?scan=1` for back-compat.)
 - Tickets list filter chips: **All** / **To Pay** / **Challenging** / **Resolved**. (`Challenging` covers both reviewing options and in-flight appeals — one journey.)
 - Tickets list amount+state line — one of: **£X at risk** (blue, draft/ready inside the discount window), **£X due** (red, last 4 days of the discount window), **£X appealed** (purple, in-flight with the council), **Cancelled £X** (green, won), **Closed £X** (slate, rejected).
+- Tickets list ticket-card primary CTAs — **Review options** (at-risk) / **Pay ticket** (due, *green* button — positive resolution; the red chip + red `DUE / Today` tile carry the urgency) / **Track appeal** (appealed). Secondary on every active card: **View details**.
+- Tickets list footer pills (both `min-w-[112px]` so widths match): **View tips** (deadline-tip card, green) / **Contact us** (help card, blue → `/app/profile/help`). Help-card title is **Need help?** with subtitle "See guidance on paying, challenging, and deadlines."
+- Capture scanner status pill: **Scanning** → **Hold steady…** → **Captured** (live-camera auto-capture).
+- Capture inline manual entry — heading **Enter ticket details manually**, required-fields header **Required to find your PCN**, optional `<details>` summary **More details (optional)**, submit CTA **Continue**.
 - Photos step CTA: **Continue**
 - Notes step CTA: **Generate letter**
 - Paywall CTA: **Generate my appeal** (drafting is free; the £2.99 charge moves to the `PaymentSheet` on Submit).

@@ -27,9 +27,8 @@
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — open the challenge page.
-- **v0.3 target**: automated via Playwright MCP — Taranto platform handler will likely serve multiple councils.
-- **Automation status**: `manual`
+- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/city-of-london`. The Taranto platform handler can be forked for any other Taranto-hosted council; edit + dry-run at `/admin/councils/city-of-london/automation`.
+- Email fallback via `appealEmail` when portal automation throws / returns `success: false`.
 
 ## Sources
 

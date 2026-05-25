@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getJob } from "@/lib/server/jobs/queue";
 import { jsonError } from "@/lib/server/contracts";
 import { getAppealById } from "@/lib/server/appeals";
+import { getCouncil } from "@/lib/server/councils";
 import {
   canViewAppeal,
   getRequestSessionId,
@@ -44,11 +45,35 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     }
   }
 
+  // Resolve the council attached to this job's appeal so the live view
+  // can render the council logo + name in the URL chip without an extra
+  // round-trip. Cheap — `getCouncil` is request-cached.
+  let council: {
+    slug: string;
+    name: string;
+    logoUrl: string | null;
+    logoBg: string | null;
+  } | null = null;
+  if (job.appealId) {
+    const appeal = await getAppealById(job.appealId);
+    if (appeal?.councilSlug) {
+      const info = await getCouncil(appeal.councilSlug);
+      if (info) {
+        council = {
+          slug: info.slug,
+          name: info.name,
+          logoUrl: info.logoUrl,
+          logoBg: info.logoBg,
+        };
+      }
+    }
+  }
+
   // Strip payload + lockedBy on the wire — they're internals.
   const {
     payload: _payload, // eslint-disable-line @typescript-eslint/no-unused-vars
     lockedBy: _lockedBy, // eslint-disable-line @typescript-eslint/no-unused-vars
     ...safe
   } = job;
-  return NextResponse.json({ job: safe });
+  return NextResponse.json({ job: safe, council });
 }

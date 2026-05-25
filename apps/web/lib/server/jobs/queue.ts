@@ -19,7 +19,7 @@ import type { JobProgressEvent } from "../db/schema";
 
 const STALE_LOCK_AFTER_MS = 5 * 60_000;
 
-export type JobKind = "submit_appeal" | "generate_draft";
+export type JobKind = "submit_appeal" | "generate_draft" | "pcn_lookup";
 
 export type JobStatus = "queued" | "running" | "done" | "failed";
 

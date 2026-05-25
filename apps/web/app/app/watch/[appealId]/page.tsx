@@ -1,14 +1,11 @@
 /**
- * /app/watch/[appealId] — convenience redirect.
+ * /app/watch/[appealId] — convenience redirect (v0.2.13).
  *
- * Looks up the latest `submit_appeal` job for the given appeal and forwards
- * the user to /app/submitting/<jobId> so the ticket card doesn't have to
- * carry the job id directly. If no job exists yet, falls back to the ticket
- * detail page (the customer hasn't submitted yet).
+ * The smart ticket card on `/app/tickets/[appealId]` now owns the live
+ * view. This route is kept alive so old email / notification deep-links
+ * still work — it just forwards to the card. No body needed.
  */
 import { redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
-import { getDb, schema } from "@/lib/server/db/client";
 
 export const dynamic = "force-dynamic";
 
@@ -18,15 +15,5 @@ export default async function WatchAppealPage({
   params: Promise<{ appealId: string }>;
 }) {
   const { appealId } = await params;
-  const db = getDb();
-  if (db) {
-    const rows = await db
-      .select({ id: schema.jobs.id })
-      .from(schema.jobs)
-      .where(eq(schema.jobs.appealId, appealId))
-      .orderBy(desc(schema.jobs.createdAt))
-      .limit(1);
-    if (rows[0]) redirect(`/app/submitting/${rows[0].id}`);
-  }
   redirect(`/app/tickets/${appealId}`);
 }

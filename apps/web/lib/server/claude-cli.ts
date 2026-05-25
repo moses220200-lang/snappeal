@@ -83,7 +83,7 @@ export class ClaudeCliError extends Error {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 interface StructuredOptions<T> {
-  /** User prompt — may reference image files with @-mentions. */
+  /** User prompt — may reference image / audio files with @-mentions. */
   prompt: string;
   /** Zod schema the response must conform to. */
   schema: ZodType<T>;
@@ -91,6 +91,8 @@ interface StructuredOptions<T> {
   systemPrompt?: string;
   /** Image data URLs to make available via the Read tool. Saved to a temp dir, referenced from the prompt as `@path`. */
   imageDataUrls?: string[];
+  /** Audio data URLs to make available via the Read tool. Saved to a temp dir alongside images. Use for transcription tasks. */
+  audioDataUrls?: string[];
   /** Override the model. Default: CLAUDE_MODEL env, falling back to sonnet 4.6. */
   model?: string;
   /** Hard ceiling (ms) — kills the child process if it overruns. */
@@ -115,10 +117,11 @@ export async function runStructured<T>(
   const timeoutMs = opts.timeoutMs ?? 90_000;
   const jsonSchema = z.toJSONSchema(opts.schema, { target: "draft-7" });
 
-  // Write image data URLs to a fresh temp dir so Claude's Read tool can pick
-  // them up. Cleaned up in `finally`.
+  // Write image / audio data URLs to a fresh temp dir so Claude's Read
+  // tool can pick them up. Cleaned up in `finally`.
   const workDir = await mkdtemp(join(tmpdir(), "snappeal-"));
   const imageRefs: string[] = [];
+  const audioRefs: string[] = [];
   try {
     if (opts.imageDataUrls?.length) {
       for (let i = 0; i < opts.imageDataUrls.length; i++) {
@@ -126,11 +129,22 @@ export async function runStructured<T>(
         imageRefs.push(path);
       }
     }
+    if (opts.audioDataUrls?.length) {
+      for (let i = 0; i < opts.audioDataUrls.length; i++) {
+        const path = await writeDataUrl(workDir, `audio-${i}`, opts.audioDataUrls[i]);
+        audioRefs.push(path);
+      }
+    }
 
+    const attachments: string[] = [];
+    if (imageRefs.length > 0) {
+      attachments.push(`Attached images:\n${imageRefs.map((p) => `@${p}`).join("\n")}`);
+    }
+    if (audioRefs.length > 0) {
+      attachments.push(`Attached audio:\n${audioRefs.map((p) => `@${p}`).join("\n")}`);
+    }
     const prompt =
-      imageRefs.length === 0
-        ? opts.prompt
-        : `${opts.prompt}\n\nAttached images:\n${imageRefs.map((p) => `@${p}`).join("\n")}`;
+      attachments.length === 0 ? opts.prompt : `${opts.prompt}\n\n${attachments.join("\n\n")}`;
 
     const args = [
       "-p",
@@ -285,31 +299,81 @@ export async function runAgentic(opts: AgenticOptions): Promise<AgenticResult> {
     let costUsd: number | null = null;
     let isError = false;
 
-    const { stdout } = await spawnClaude(args, {
-      stdinPrompt: opts.prompt,
-      timeoutMs,
-      onStdoutLine: (line) => {
-        if (!line.trim()) return;
-        let parsed: Record<string, unknown> | null = null;
-        try {
-          parsed = JSON.parse(line);
-        } catch {
-          return;
-        }
-        if (!parsed) return;
-        const evt = { type: String(parsed.type ?? "unknown"), raw: parsed };
-        events.push(evt);
-        opts.onEvent?.(evt);
-        if (parsed.type === "result") {
-          finalText = String(parsed.result ?? "");
-          costUsd = (parsed.total_cost_usd as number | undefined) ?? null;
-          isError = Boolean(parsed.is_error);
-        }
-      },
-    });
-    if (!finalText && stdout) {
+    // Accumulate streamed text from `content_block_delta` events so we
+    // still have a usable final-text if the Claude CLI dies mid-stream
+    // (a real failure mode on Windows — the process exits with code
+    // null partway through emitting the verdict JSON). When the
+    // `result` event arrives normally, that wins over the accumulated
+    // text. When it doesn't, the accumulator is our only record.
+    let accumulatedText = "";
+
+    let spawnError: unknown = null;
+    let stdoutCaptured = "";
+    try {
+      const out = await spawnClaude(args, {
+        stdinPrompt: opts.prompt,
+        timeoutMs,
+        onStdoutLine: (line) => {
+          if (!line.trim()) return;
+          let parsed: Record<string, unknown> | null = null;
+          try {
+            parsed = JSON.parse(line);
+          } catch {
+            return;
+          }
+          if (!parsed) return;
+          const evt = { type: String(parsed.type ?? "unknown"), raw: parsed };
+          events.push(evt);
+          opts.onEvent?.(evt);
+          if (parsed.type === "result") {
+            finalText = String(parsed.result ?? "");
+            costUsd = (parsed.total_cost_usd as number | undefined) ?? null;
+            isError = Boolean(parsed.is_error);
+          }
+          // Accumulate partial-message text. The Claude CLI emits
+          // `--include-partial-messages` as nested events of shape:
+          //   { type: "stream_event",
+          //     event: { type: "content_block_delta",
+          //              delta: { type: "text_delta", text: "..." } } }
+          if (parsed.type === "stream_event") {
+            const event = parsed.event as Record<string, unknown> | undefined;
+            if (event?.type === "content_block_delta") {
+              const delta = event.delta as Record<string, unknown> | undefined;
+              if (delta?.type === "text_delta" && typeof delta.text === "string") {
+                accumulatedText += delta.text;
+              }
+            }
+          }
+          // Also accumulate full assistant text blocks — useful when
+          // partial messages weren't requested or were dropped.
+          if (parsed.type === "assistant") {
+            const message = parsed.message as Record<string, unknown> | undefined;
+            const content = (message?.content ?? []) as Array<Record<string, unknown>>;
+            for (const block of content) {
+              if (block.type === "text" && typeof block.text === "string") {
+                // Avoid double-counting if delta accumulator already
+                // captured this text by checking if it ends with it.
+                if (!accumulatedText.endsWith(block.text)) {
+                  accumulatedText += block.text;
+                }
+              }
+            }
+          }
+        },
+      });
+      stdoutCaptured = out.stdout;
+    } catch (err) {
+      // Spawn-level errors (timeout, exit code null on Windows mid-stream,
+      // process killed). Don't throw — the accumulated text may already
+      // contain the agent's full reply. Let the caller decide.
+      spawnError = err;
+      console.warn(
+        `[claude-cli] spawn ended with error after ${events.length} events; falling back to accumulated text (${accumulatedText.length} chars)`,
+      );
+    }
+    if (!finalText && stdoutCaptured) {
       // Fallback — try parsing the last JSON line.
-      const lines = stdout.trim().split(/\r?\n/).reverse();
+      const lines = stdoutCaptured.trim().split(/\r?\n/).reverse();
       for (const line of lines) {
         try {
           const obj = JSON.parse(line);
@@ -321,6 +385,13 @@ export async function runAgentic(opts: AgenticOptions): Promise<AgenticResult> {
           /* keep walking */
         }
       }
+    }
+    // Final fallback — use the accumulated streamed text. This is what
+    // saves us when the CLI dies mid-completion: the deltas are all
+    // there, we just never got the wrapping `result` event.
+    if (!finalText && accumulatedText) {
+      finalText = accumulatedText;
+      isError = isError || spawnError !== null;
     }
 
     return {
@@ -450,11 +521,29 @@ function parseClaudeJson(stdout: string): ClaudeJsonResult {
   }
 }
 
+/** Decode a `data:` URL and write it to disk inside `dir`, returning the
+ *  resulting absolute path. Supports image and audio MIME types — the
+ *  MIME may include codec hints (`audio/webm;codecs=opus`) which
+ *  MediaRecorder emits by default. The file extension is derived from
+ *  the bare subtype so the Claude CLI's Read tool picks the right
+ *  reader. */
 async function writeDataUrl(dir: string, name: string, dataUrl: string): Promise<string> {
-  const match = /^data:(image\/(?:png|jpe?g|webp|heic|gif));base64,(.+)$/i.exec(dataUrl);
-  if (!match) throw new Error("Unsupported image data URL");
-  const ext = match[1].split("/")[1].replace("jpeg", "jpg");
+  // Tolerate `;codecs=...` (and any other MIME parameters) between the
+  // media type and the `;base64` marker. MediaRecorder emits
+  // `data:audio/webm;codecs=opus;base64,...` by default on Chromium.
+  const match = /^data:((?:image|audio)\/[a-z0-9.+-]+)(?:;[a-z0-9.=+-]+)*;base64,(.+)$/i.exec(
+    dataUrl,
+  );
+  if (!match) throw new Error("Unsupported data URL (expected image/* or audio/*)");
+  const [, mime, b64] = match;
+  const subtype = mime.split("/")[1].toLowerCase();
+  const extMap: Record<string, string> = {
+    jpeg: "jpg",
+    "x-m4a": "m4a",
+    mp4: "m4a", // MediaRecorder on iOS emits audio/mp4 → save as .m4a (AAC)
+  };
+  const ext = extMap[subtype] ?? subtype;
   const path = join(dir, `${name}.${ext}`);
-  await writeFile(path, Buffer.from(match[2], "base64"));
+  await writeFile(path, Buffer.from(b64, "base64"));
   return path;
 }

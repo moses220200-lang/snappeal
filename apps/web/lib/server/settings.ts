@@ -31,6 +31,15 @@ interface BooleanOverrides {
   fakePaymentOverride: boolean | null;
   /** Override the Stripe payment-verification skip. `null` = use env. */
   skipPaymentCheckOverride: boolean | null;
+  /** Customer-facing toggle (v0.2.10, repurposed v0.2.13). When ON, the
+   *  smart ticket card on `/app/tickets/[id]` opens the "Watch live"
+   *  disclosure by default and subscribes to screenshot frames. When OFF
+   *  (default), the card stays calm — live MCP screenshots are still
+   *  available, just behind one tap. The full-page /app/validating /
+   *  /app/submitting routes and the GeneratingOverlay are gone; all live
+   *  work happens inline on the card. OCR extraction on /app/capture is
+   *  NEVER gated by this flag. */
+  showMcpLiveView: boolean;
 }
 
 const state: BooleanOverrides = {
@@ -40,6 +49,11 @@ const state: BooleanOverrides = {
   workerDisabledOverride: null,
   fakePaymentOverride: null,
   skipPaymentCheckOverride: null,
+  // Default ON — customers should see the live agent stream out of the
+  // box (matches the experience the team validated in end-to-end runs).
+  // Admin can flip OFF via /admin/settings or pin the env to "0" to
+  // restore the calm-destination behaviour.
+  showMcpLiveView: process.env.NEXT_PUBLIC_SNAPPEAL_SHOW_MCP_LIVE_VIEW !== "0",
 };
 
 /* ───── resolved getters — what the rest of the app actually reads ───── */
@@ -52,6 +66,7 @@ export interface SnappealSettings {
   workerDisabled: boolean;
   fakePayment: boolean;
   skipPaymentCheck: boolean;
+  showMcpLiveView: boolean;
 }
 
 export function getSettings(): SnappealSettings {
@@ -66,6 +81,7 @@ export function getSettings(): SnappealSettings {
       state.fakePaymentOverride ?? process.env.NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT === "1",
     skipPaymentCheck:
       state.skipPaymentCheckOverride ?? process.env.SNAPPEAL_SKIP_PAYMENT_CHECK === "1",
+    showMcpLiveView: state.showMcpLiveView,
   };
 }
 
@@ -88,6 +104,9 @@ export function setFakePayment(value: boolean | null): void {
 }
 export function setSkipPaymentCheck(value: boolean | null): void {
   state.skipPaymentCheckOverride = value;
+}
+export function setShowMcpLiveView(value: boolean): void {
+  state.showMcpLiveView = value;
 }
 
 /** Convenience for the submission engine: returns the `--headless` flag
@@ -154,7 +173,8 @@ export const ENV_INVENTORY: EnvKeyDescriptor[] = [
   { name: "SNAPPEAL_MCP_HEADED", category: "Submission engine", sensitivity: "config", description: "Run Chromium headed so you can watch the agent drive." },
   { name: "SNAPPEAL_DISABLE_WORKER", category: "Submission engine", sensitivity: "config", description: "Skip the in-process worker (use when running it on a separate box)." },
   { name: "SNAPPEAL_SKIP_PAYMENT_CHECK", category: "Submission engine", sensitivity: "config" },
-  { name: "NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT", category: "Submission engine", sensitivity: "public", description: "Render the dev fake-payment buttons on /app/paywall." },
+  { name: "NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT", category: "Submission engine", sensitivity: "public", description: "Render the dev fake-payment buttons inside the £2.99 submit PaymentSheet." },
+  { name: "NEXT_PUBLIC_SNAPPEAL_SHOW_MCP_LIVE_VIEW", category: "Submission engine", sensitivity: "public", description: "When ON, the customer routes into the full MCP live views for validation / drafting / submission. When OFF (default), those run in the background and emit notifications on done. Overridable at runtime via /admin/settings." },
   // Inbound mail
   { name: "INBOUND_WEBHOOK_SECRET", category: "Inbound mail", sensitivity: "secret", description: "REQUIRED in production. Shared secret on /api/inbound." },
   { name: "EMAIL_PROVIDER", category: "Inbound mail", sensitivity: "config" },

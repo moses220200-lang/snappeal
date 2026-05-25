@@ -48,10 +48,20 @@ The full mechanism is documented in [legal/representations-and-appeals.md](../le
 
 ## What ParkingRabbit does at each stage
 
-- **Stage 1**: Drafts the informal representation, picks the strongest informal ground from your photos + notes, addresses it to the right council channel.
+- **Stage 1**: Drafts the informal representation, picks the strongest informal ground from your photos + notes, addresses it to the right council channel. From v0.3, the AI also reads a private knowledge base of past wins for your contravention code and your council, mirrors precedent framings in its own words, and pre-empts the rebuttals the council is most likely to use.
 - **Stage 2**: Re-uses the case to draft a formal representation citing the appropriate statutory ground from TMA 2004 Schedule 1.
 - **Stage 3**: Drafts the Tribunal appeal letter. ParkingRabbit does **not** represent you at an oral hearing — for that, see the [London Tribunals self-rep guidance](https://www.londontribunals.gov.uk/).
 - **Stage 4**: Out of scope; we point you to the [TEC route on GOV.UK](https://www.gov.uk/parking-tickets/challenge-a-parking-ticket).
+
+## The strength score
+
+Every draft comes back with a **0–100 appeal-strength score** rendered as a green / amber / red badge above the Pay button. The score reflects the **evidence you've supplied**, not the abstract merit of the legal argument:
+
+- **80–100 (green) — Strong appeal.** Your evidence supports the chosen ground clearly. Pay button reads "Submit for £2.99".
+- **50–79 (amber) — Solid appeal.** The case is reasonable but not airtight.
+- **Below 50 (red) — Weak appeal warning.** A red panel appears above the Pay button with a one-sentence rationale and up to 3 specific evidence asks ("Add a photo of the suspension sign", "Describe what you saw when you returned"). The Pay button rebrands to "Submit anyway for £2.99" — you can still proceed, but eyes open.
+
+If you didn't attach any photos and your notes are under 50 characters, the score is automatically capped at 45 — you can lift it instantly by adding a photo or a sentence of detail.
 
 ## How long it takes
 

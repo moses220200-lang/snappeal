@@ -1,6 +1,11 @@
 # Knowledge base
 
-The council knowledge base is the single most-edited data in ParkingRabbit after the appeals themselves. It governs which council is matched, what letter address is used, what portal URL the user is sent to, and (in v0.2) what form fields the Playwright MCP agent expects to fill.
+Two parallel knowledge stores feed ParkingRabbit:
+
+1. **Operational `councils` table + `council_automation` recipes** — the database-backed KB the Playwright MCP submission agent consumes (portal URLs, form schemas, postal addresses). The schema below.
+2. **Markdown KB at `apps/web/knowledge/`** (v0.3.0) — precedents from past wins, contravention-code briefs, council quirks. Read at runtime by `lib/server/knowledge.ts` and spliced into the drafter prompt — informs the AI's *reasoning*, not its mechanics. See [§ Markdown knowledge corpus (v0.3.0)](#markdown-knowledge-corpus-v030) at the bottom of this page.
+
+The council/automation tables are the single most-edited data in ParkingRabbit after the appeals themselves. They govern which council is matched, what letter address is used, what portal URL the user is sent to, and (in v0.2) what form fields the Playwright MCP agent expects to fill.
 
 This page is the **schema** that Phase B's admin CRUD targets.
 
@@ -24,26 +29,40 @@ This page is the **schema** that Phase B's admin CRUD targets.
 | `created_at` | `timestamp` | |
 | `updated_at` | `timestamp` | |
 
-## `contraventions` table
+!!! note "Where contraventions + grounds actually live"
+    There is **no `contraventions` table** in the schema — contravention-code knowledge lives as markdown briefs at `apps/web/knowledge/codes/*.md` (currently codes `01, 02, 12, 16, 21, 22, 23, 27, 30, 40, 47, 99`), loaded by `lib/server/knowledge.ts` and spliced into the drafter prompt. Similarly there is **no `grounds` table** — the canonical grounds are an enum in code (`lib/server/contracts.ts`): `contravention-did-not-occur`, `signage-unclear`, `valid-permit`, `blue-badge`, `loading-unloading`, `breakdown`, `medical-emergency`, `vehicle-not-mine`, `penalty-exceeds-amount`, `procedural-impropriety`, `traffic-order-invalid` (11 total). The customer-facing 75-card quiz catalog in `lib/grounds-catalog.ts` maps each card's `mapsTo` field onto these canonical IDs. Schemas below for those embedded structures.
 
-| Field | Type | Notes |
+## `apps/web/knowledge/codes/<NN>.md` frontmatter
+
+```yaml
+code: "12"
+description: "Parked in a residents' or shared-use parking place..."
+formalDescription: "as it appears on PCNs"
+appliesTo: ["borough", "tfl"]
+typicalGrounds: ["valid-permit"]
+similarCodes: [16]
+commonRebuttals:
+  - "Permit not displayed"
+  - "Permit expired or zoned wrong"
+```
+
+## Canonical grounds (enum in `lib/server/contracts.ts`)
+
+| `id` | TMA-2004 statutory? | Notes |
 |---|---|---|
-| `code` | `text PK` | TMA code, e.g. `12`, `40`, `47`. |
-| `description` | `text` | Plain English (used in extracted-fields card). |
-| `formal_description` | `text` | The text as it appears on PCNs. |
-| `applies_to` | `text[]` | List of authority types this code is issued by (`borough`, `tfl`, …). |
-| `typical_grounds` | `text[]` | IDs of grounds particularly relevant for this code (e.g. `12` → `valid-permit`). |
-| `notes` | `text?` | Edge cases. |
+| `contravention-did-not-occur` | yes | The most-used statutory ground when the basic facts don't hold up. |
+| `signage-unclear` | informal | Sign obscured / contradictory / missing — drives a procedural-impropriety reframe. |
+| `valid-permit` | yes | Permit valid + on display. |
+| `blue-badge` | yes | BB clock + badge visible + within rules. |
+| `loading-unloading` | informal | Active loading exemption (Highway Code Rule 240 / TMA s.6). |
+| `breakdown` | informal | Vehicle disabled — proof required. |
+| `medical-emergency` | informal | Medical exemption — proof required. |
+| `vehicle-not-mine` | yes | Statutory transfer of liability. |
+| `penalty-exceeds-amount` | yes | Charge incorrectly calculated. |
+| `procedural-impropriety` | yes | TMA s.4 / contravention not technically issued correctly. |
+| `traffic-order-invalid` | yes | Underlying TRO defective. |
 
-## `grounds` table
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | `text PK` | e.g. `signage-unclear`, `blue-badge`, `loading-unloading`. |
-| `label` | `text` | User-friendly label. |
-| `detail` | `text` | What the AI uses when including this ground in the letter. |
-| `is_statutory` | `bool` | True for the six TMA-2004 grounds; false for informal grounds. |
-| `applies_to_codes` | `text[]?` | Optional binding to specific contravention codes. |
+The customer never sees these IDs directly — they pick from the 75 cards in `lib/grounds-catalog.ts → GROUND_CATEGORIES`, and `selectedCardsToGroundIds()` flattens each card's `mapsTo` array onto this enum (deduped, capped at 6).
 
 ## `automation_form_schema` (v0.2)
 
@@ -89,18 +108,54 @@ This schema is intentionally a **mini DSL**, not arbitrary code. Two reasons:
 
 ## Versioning
 
-Every change to a council record (via the admin UI) writes a row to `council_audit` with `actor_user_id`, `field`, `before`, `after`, `at`. This is required because a wrong portal URL or a broken form-schema in production causes real harm (failed submissions, lost user appeals).
+Open work — there is **no `council_audit` table today**. Per-council change tracking is on the open-work list in [admin.md](admin.md). For now, `council_automation.updated_by` + `updated_at` capture who-last-touched-the-automation-recipe; council CRUD itself isn't audited yet.
 
-## Initial seed (Phase A)
+## Initial seed
 
-`councils/index.md` lists the full set: 32 London boroughs + City of London Corporation + TfL + Royal Parks. Top 5 by PCN volume (Westminster, K&C, Camden, Lambeth, Islington) are filled with researched portal URLs and contact details in Phase A. The remainder use the `_template.md` placeholder until verified.
+`scripts/seed-councils.ts` inserts **7 councils** sourced from `apps/web/lib/mock-data.ts`: Westminster, Kensington & Chelsea, Camden, Lambeth, Islington, TfL, City of London. Run with `npm run db:seed`. Logos are populated separately by `scripts/populate-council-logos.ts`. The 32-borough-plus-TfL-plus-City-of-London full set is intended; the remainder fill in as portal recon completes — see [councils/index.md](../councils/index.md).
 
-## Admin operations on this data (Phase B)
+## Admin operations on this data
 
-The Phase B admin UI exposes:
+The live `/admin/councils/*` surface exposes:
 
-- **List view** with filters (`type`, `automation_status`, `last_verified_at` older than 90 days).
-- **Detail view + edit** for each council record.
-- **Bulk verify** — mark a set of councils as freshly verified.
-- **Form-schema editor** — JSON editor with live validation against a Zod schema.
-- **Diff view** showing the last 10 changes via `council_audit`.
+- **List view** at `/admin/councils` with the **Add Council** button.
+- **Detail + edit** at `/admin/councils/[slug]`.
+- **MCP automation editor** at `/admin/councils/[slug]/automation` — edit `agentPrompt` + `fieldHints` + run a **dry-run against the live portal** (returns event log + final JSON + screenshot) + reset to canonical Westminster fallback.
+- **Create** at `/admin/councils/new`.
+
+See [admin.md](admin.md) for the full admin surface map.
+
+## Markdown knowledge corpus (v0.3.0)
+
+Beyond the operational `councils` table, a **filesystem-backed markdown corpus** at `apps/web/knowledge/` informs the AI drafter's *reasoning*. Three folders:
+
+```
+apps/web/knowledge/
+├── precedents/    # Anonymised past wins (London tribunals / informal stage / NTO).
+├── codes/         # One brief per common contravention code (01, 02, 12, 16, 21, 22, 23, 27, 30, 40, 47, 99).
+└── councils/      # One brief per top London authority (westminster, camden, kensington-chelsea, lambeth, islington, tfl).
+```
+
+Each file has YAML frontmatter + a body. See `apps/web/knowledge/README.md` for the contribution format. Frontmatter shapes are typed in `lib/server/knowledge.types.ts`.
+
+### Retrieval
+
+`lib/server/knowledge.ts` exports `loadKnowledgePack({groundIds, contraventionCode?, councilSlug?}) → KnowledgePack`. The loader is a lazy-singleton (frontmatter parsed once at module init via `gray-matter`). Ranking is deterministic for v1:
+
+- Precedent score = `+3` per ground intersection, `+2` if contravention code matches, `+1` if council matches, `+2` if outcome == `cancelled`, `+1` if date within 24 months. Filter score ≥ 3, sort score desc + date desc, take top 6.
+- Code briefs: primary `codes/<NN>.md` + 1 similar-code brief via curated map (`12 ↔ 16`, `01 ↔ 02`, `24 ↔ 27`, `21 ↔ 22`).
+- Council brief: exact slug match on `councils/<slug>.md`.
+
+The renderer truncates each body to 500 chars, prioritises `summary` + `keyArgument` over body. The final pack is hard-capped at **2500 tokens** (`approxTokens = ceil(charCount / 4)`); on overshoot, the lowest-scoring precedent is dropped and the render retries.
+
+### Bundling
+
+`lib/server/knowledge.ts` is fenced behind `import "server-only"` to prevent client-bundle leakage. `next.config.ts` sets `outputFileTracingIncludes` for both `/api/generate-stream` and `/api/generate` so the markdown corpus ships inside the Vercel function bundles — without this, runtime reads ENOENT in production. Verify with `vercel build` locally before any deploy.
+
+### Audit trail
+
+When the drafter runs, the route persists `appeals.knowledge_pack_used = { usedIds, tokens }` so the choice of precedents / briefs that shaped a given letter is recoverable later. See migration `0013_appeal_strength_and_kb.sql`.
+
+### Migration path to pgvector
+
+When the corpus exceeds ~200 docs the deterministic ranker stops paying its way and we move to embeddings. Planned: a `knowledge_chunks` table with a `vector(1536)` embedding column populated by a build-time script using OpenAI `text-embedding-3-small`, then `ORDER BY embedding <=> $1 LIMIT 8` with the existing filter score as a re-rank step. Until then, the filesystem-based approach is faster to review and diff in PRs.

@@ -39,9 +39,9 @@ RH1 9GQ
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — open <https://www.camden.gov.uk/challenge-a-pcn> in new tab.
-- **v0.3 target**: automated via Playwright MCP.
-- **Automation status**: `manual`
+- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/camden`.
+- When automated (`automated_beta` / `automated_ga`), the engine runs `runPortalAutomation()` against the council portal using the per-council MCP recipe in `council_automation.agent_prompt`. Edit + dry-run at `/admin/councils/camden/automation`.
+- When `manual`, the engine routes through the council's `appealEmail` when one is on file; otherwise flags for ops.
 
 ## Sources
 

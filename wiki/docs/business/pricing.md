@@ -10,7 +10,7 @@
 - **Pay a ticket** (`/app/pay`) → **Ticket amount + £1.99 ParkingRabbit service fee**. The user authorises us via an explicit checkbox; we pay the council on their behalf. Stripe-ready surface, real Stripe keys pending.
 - **Challenge a ticket** → **Free to draft. £2.99 per auto-submission. One-off, non-refundable.**
   - Drafting the appeal letter (vision OCR, grounds picker, AI-drafted representation, saved to inbox) → free, unlimited. No card on file.
-  - Auto-submitting that letter through the council's portal via the **AI Auto-Submit Agent** → £2.99 per submission, opt-in on the ticket-detail screen via `PaymentSheet`.
+  - Auto-submitting that letter through the council's portal via the **AI Auto-Submit Agent** → £2.99 per submission, opt-in on the smart card's `letter_ready` state via `PaymentSheet`.
 
 £2.99 buys the **submission work** — the AI Auto-Submit Agent operating the council portal on your behalf — not the **outcome**. We're priced like a service, not a wager: you pay for the submission we deliver, not for whether the council says yes.
 

@@ -10,6 +10,7 @@ interface ResolvedSettings {
   workerDisabled: boolean;
   fakePayment: boolean;
   skipPaymentCheck: boolean;
+  showMcpLiveView: boolean;
 }
 
 type ToggleKey = keyof ResolvedSettings;
@@ -57,6 +58,11 @@ const ITEMS: Array<{
     title: "Skip Stripe verification (dev)",
     body: "Skip the PaymentIntent status check on /api/submit. Useful for dev; never enable in prod.",
     hasNullReset: true,
+  },
+  {
+    key: "showMcpLiveView",
+    title: "Show MCP live view to customers",
+    body: "ON = customers see the full-screen Playwright MCP live view during PCN validation, drafting, and council submission. OFF (default) = those run silently in the background; customers stay on a calm destination and get a notification when each step finishes. Does NOT affect OCR extraction on /app/capture (always live).",
   },
 ];
 

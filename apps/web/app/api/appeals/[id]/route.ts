@@ -21,6 +21,15 @@ const PatchBody = z.object({
   serviceTier: z.enum(["buy_time", "grounds", "care_plan"]).optional(),
   evidenceCount: z.number().int().min(0).max(6).optional(),
   grounds: z.array(z.string().max(80)).max(50).optional(),
+  /** Customer-picked submission path. Stamped from the ticket-page
+   *  recommendation card on tap. NULL is a valid value (resets state). */
+  preferredMethod: z.enum(["email", "portal"]).nullable().optional(),
+  /** v0.2.15 — uploaded PCN photo URL (Blob or data URL until Blob ships). */
+  pcnImageUrl: z.string().max(8 * 1024 * 1024).nullable().optional(),
+  /** v0.2.16 — workflow step sentinel. Used by the smart card to flip
+   *  the gathering_evidence → drafting transition. Pattern matches
+   *  appeals.step (text). */
+  step: z.string().max(64).optional(),
 });
 
 export async function GET(

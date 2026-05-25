@@ -11,7 +11,7 @@ import { runPortalAutomation, type PortalAutomationResult } from "./portal";
 import { sendCouncilEmail, type EmailSubmissionResult } from "./email";
 import { getDb, schema } from "../db/client";
 import { getSettings } from "../settings";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 export type SubmissionOutcome = {
   method: "portal" | "email" | "manual";
@@ -35,14 +35,48 @@ interface RunInput {
   appeal: AppealRecord;
   /** Job id used as the anchor for live progress events (set by the worker). */
   jobId?: string;
+  /** Override the automatic channel decision. `"auto"` keeps the existing
+   *  behaviour (portal-first, email fallback). `"email"` forces the free
+   *  email path even if the council is automated (v0.2.11 free path).
+   *  `"portal"` forces the MCP portal path even if the council has no
+   *  automation (will fail loudly — only used by ops dry-runs). */
+  method?: "auto" | "email" | "portal";
 }
 
-export async function runSubmission({ appeal, jobId }: RunInput): Promise<SubmissionOutcome> {
+export async function runSubmission({
+  appeal,
+  jobId,
+  method = "auto",
+}: RunInput): Promise<SubmissionOutcome> {
   if (!appeal.councilSlug) {
     return mockSubmission(appeal, "council slug missing — generate the draft first");
   }
   if (!appeal.letterBody) {
     return mockSubmission(appeal, "letter body missing — generate the draft first");
+  }
+
+  // ─── duplicate-submission guard ───
+  // If this appeal already has a successful submission row, do NOT re-run
+  // the MCP agent against the council portal — that would file a second
+  // representation against the same PCN. This protects against:
+  //   (a) a retried job whose original outcome was recorded but whose
+  //       result was lost on the way back to the worker,
+  //   (b) a fresh /api/submit call after the customer paid twice (e.g.
+  //       double-tapped through a flaky Stripe redirect).
+  // Surface the prior outcome as the result so the worker writes the
+  // appeal forward to status="submitted" idempotently.
+  const prior = await findRecentSuccessfulSubmission(appeal.id);
+  if (prior) {
+    return {
+      method: (prior.method as SubmissionOutcome["method"]) ?? "portal",
+      channel: prior.channel ?? prior.method ?? "portal",
+      status: "submitted",
+      councilReference: prior.councilReference ?? null,
+      messageId: prior.messageId ?? null,
+      screenshotUrl: prior.screenshotUrl ?? null,
+      lastError: "already submitted — skipped duplicate filing",
+      submittedAt: prior.submittedAt ?? new Date(),
+    };
   }
 
   const council = await loadCouncil(appeal.councilSlug);
@@ -54,9 +88,19 @@ export async function runSubmission({ appeal, jobId }: RunInput): Promise<Submis
     return mockSubmission(appeal, null, council);
   }
 
-  // Decide channel: prefer portal (LLM + Playwright) when the council has
-  // automation_status >= automated_beta; otherwise fall back to email.
+  // Forced-email path (v0.2.11 free submission). Skip the portal altogether
+  // and email the council directly. If the council has no email on file
+  // we fall through to the existing auto-decide which will hit the mock.
+  if (method === "email" && council.appealEmail) {
+    const result = await sendCouncilEmail({ appeal, council });
+    return emailToOutcome(result);
+  }
+
+  // Decide channel: caller can force portal; otherwise prefer portal (LLM +
+  // Playwright) when the council has automation_status >= automated_beta;
+  // else fall back to email.
   const preferPortal =
+    method === "portal" ||
     council.automationStatus === "automated_beta" ||
     council.automationStatus === "automated_ga";
 
@@ -120,6 +164,30 @@ async function loadCouncil(slug: string) {
     .select()
     .from(schema.councils)
     .where(eq(schema.councils.slug, slug));
+  return rows[0] ?? null;
+}
+
+/** Look up the most recent `submitted` submission row for this appeal.
+ *  Used by the duplicate-submission guard at the top of `runSubmission`
+ *  so a retry / accidental double-submit doesn't file a second
+ *  representation against the council. Returns null if there's no
+ *  successful prior submission (the normal first-time path). */
+async function findRecentSuccessfulSubmission(appealId: string): Promise<
+  typeof schema.submissions.$inferSelect | null
+> {
+  const db = getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(schema.submissions)
+    .where(
+      and(
+        eq(schema.submissions.appealId, appealId),
+        eq(schema.submissions.status, "submitted"),
+      ),
+    )
+    .orderBy(desc(schema.submissions.submittedAt))
+    .limit(1);
   return rows[0] ?? null;
 }
 

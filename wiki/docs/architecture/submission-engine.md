@@ -2,7 +2,11 @@
 
 What the user is paying £2.99 for, technically. The submission engine is the bridge between the AI-drafted letter and the council's "we received your appeal" confirmation.
 
-**Status as of 2026-05-20 (v0.1.5)** — the engine is implemented and wired end-to-end. The portal path uses `claude -p` with Playwright MCP attached and **defaults to LIVE**; the engine reads `SNAPPEAL_SUBMISSION_LIVE !== "0"`, so missing/empty/anything-but-"0" runs the real Playwright flow. Set `SNAPPEAL_SUBMISSION_LIVE=0` to opt into the deterministic mock. The email path uses a Resend-compatible API call (Resend by default, stubbed in dev). Both are dispatched via the [job queue](./job-queue.md) so `/api/submit` returns in &lt;100ms while the actual work runs on a worker.
+**Status as of v0.3.1 (2026-05-23)** — the engine is implemented and wired end-to-end. The portal path uses the headless `claude` CLI with Playwright MCP attached and **defaults to LIVE**; the engine reads `SNAPPEAL_SUBMISSION_LIVE !== "0"`, so missing/empty/anything-but-`"0"` runs the real Playwright flow. Set `SNAPPEAL_SUBMISSION_LIVE=0` to opt into the deterministic mock. The email path is Resend-compatible (Resend by default, stubbed in dev). Both are dispatched via the [job queue](./job-queue.md) so `/api/submit` returns in &lt;100 ms while the actual work runs on a worker.
+
+**v0.3.1 prewarm.** `lib/server/submission/mcp-warm.ts → prewarmMcp()` is called by `lib/server/jobs/worker.ts → startWorker()` on boot. It spawns `@playwright/mcp` + Chromium once so customer #1 of a fresh deploy gets the same latency as customer #100 — no 30–60 s cold-start tax on the first portal-automation or pcn-lookup job.
+
+**Three Playwright MCP paths.** `runPortalLookup()` (read-only PCN verdict + warden photos, fired *before* the user pays), `runPortalAutomation()` (the £2.99 submit), and the admin dry-run path (same submit flow but stopped at review). All three share the `runAgentic()` wrapper, the workDir + screenshot watcher, the SSE progress pipeline, and the per-council prompt + field hints from `council_automation`.
 
 **Fallback fires on BOTH a thrown agent error AND a returned `success: false`** — early versions only fell back on throws, which let "service unavailable" responses end as silent failures instead of routing to email.
 
@@ -33,11 +37,31 @@ flowchart LR
 
 Both paths produce the same observable outcome from the user's perspective: an appeal has been delivered to the council with a recorded timestamp. The user pays for **delivery**, not for which path delivered.
 
+## Path 0 — Portal lookup (read-only, pre-submission validation)
+
+Implemented in `lib/server/submission/lookup.ts → runPortalLookup()`. Runs **before** the user pays — fired from the smart card on `/app/tickets` once the customer confirms the PCN by tapping "I agree to T&Cs". The agent walks the council portal with the PCN reference + vehicle reg, opens the "View images" / ticket-details route (never the challenge route — `prompts/westminster_lookup.ts` explicitly inverts the submission prompt's "View images is a decoy" rule), captures the warden photos, and reads visible metadata.
+
+Key differences from Path 1:
+
+- **Read-only.** The system prompt forbids clicking Submit / Pay / Make representation. Hard rule, repeated at the top + bottom of the prompt.
+- **Different schema.** `LookupResultSchema` returns `{ success, verdict, verdictReason, metadata: {...}, photoFiles[], stepsCompleted, errorMessage }` — much wider than the submission `{ success, councilReference, notes?, errorMessage? }`.
+- **Tighter wall-clock.** 3-minute cap vs submission's 5-minute, because there's no letter to paste + no review-page wait.
+- **Photo persistence.** Warden screenshots go through `uploadPortalPhotos()` (`lib/server/blob.ts`) → Vercel Blob (or `public/dev-blobs/` fallback) → `appeal_photos` rows with `kind='portal'`. First real writer for that table.
+- **Result persistence.** `persistPortalLookup()` (in `lib/server/appeals.ts`) writes the snapshot to `appeals.portal_lookup` jsonb AND merges any portal-confirmed fields into `appeals.ticket` so the downstream letter draft uses the council's record instead of OCR.
+- **Verdict-driven routing.** The smart `<TicketCard>` subscribes to the lookup job's SSE via `useAppealLiveState`. When the job settles, the card's status pill morphs inline to reflect the verdict — no modal, no route change. Invalid verdicts (`paid` / `closed` / `not_found`) flip the card to `deriveCardState`'s `terminal` state with an inline "I disagree — let me appeal anyway" override button that POSTs `/api/appeals/[id]/lookup/override`. Valid verdicts flip the card to `needs_decision` (recommendation card with Appeal / Pay yourself / Rabbit Pay Coming Soon). **Server-side gate**: `/api/submit` returns `409 PCN_NOT_APPEALABLE` if `appeal.portalLookup.verdict ∈ {paid, closed, not_found}` and `status ≠ overridden` — defence in depth against direct API calls.
+
+Shared with Path 1:
+- Same `runAgentic()` (`lib/server/claude-cli.ts`), same Playwright MCP `--output-dir` workDir, same screenshot watcher (`watchScreenshots()`), and the v0.3.1 `prewarmMcp()` at worker boot benefits both paths equally.
+- Same SSE progress pipeline (`lib/server/submission/_progress.ts → emitToolStep`, `extractJsonObject`) including the v0.3.1 4 KB padding + identity encoding + 150 ms poll + 3 s keep-alive on `/api/jobs/[id]/progress`.
+- Same per-council seeding pattern: `getAutomation()` reads `council_automation.lookup_agent_prompt` (nullable; falls back to a generic `FALLBACK_LOOKUP_PROMPT` in code). Edit + dry-run from `/admin/councils/<slug>/automation`.
+
+For non-automated councils (`automation_status` ≠ `automated_beta` / `automated_ga`), the API stamps a `status: 'skipped'` snapshot inline and returns `{ skipped: true }` so the smart card surfaces the recommendation immediately — flipping a council on later is a one-row DB change.
+
 ## Path 1 — LLM + Playwright MCP (primary)
 
 Implemented in `lib/server/submission/portal.ts`. When the council's online portal is supported and healthy:
 
-0. **Client-side payment gate.** Submit on `/app/tickets/<id>` (where the AI-drafted letter + Submit live; the standalone `/app/letter/<id>` route is now a redirect stub) opens `PaymentSheet` (`components/PaymentSheet.tsx`), which mounts either the Stripe `<PaymentElement>` (Apple Pay / Google Pay / card auto-detected) or `FakePaymentButtons` when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`. Only on a succeeded PaymentIntent does the page POST to `/api/submit` with that intent id. The route itself verifies the id against Stripe (unless `SNAPPEAL_SKIP_PAYMENT_CHECK=1`) before enqueueing the job — so the engine is doubly gated.
+0. **Client-side payment gate.** The `letter_ready` state on the smart `<TicketCard>` (on `/app/tickets`) opens `PaymentSheet` (`components/PaymentSheet.tsx`) when the customer taps Pay, mounting either the Stripe `<PaymentElement>` (Apple Pay / Google Pay / card auto-detected) or `FakePaymentButtons` when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`. Only on a succeeded PaymentIntent does the card POST to `/api/submit` with that intent id. The route itself verifies the id against Stripe (unless `SNAPPEAL_SKIP_PAYMENT_CHECK=1`) before enqueueing the job — so the engine is doubly gated. (`/app/tickets/[id]` and `/app/letter/<id>` are server-side redirects to `/app/tickets?expand=<id>`; everything renders on the list page.)
 1. `/api/submit` enqueues a `submit_appeal` job in the [Postgres queue](./job-queue.md) — durable, retry-safe.
 2. A worker (booted by `instrumentation.ts`) claims the job with `FOR UPDATE SKIP LOCKED`.
 3. The worker calls `runPortalAutomation()`. It **loads the per-council agent prompt** from the `council_automation` table (the same prompt the admin edits at `/admin/councils/[slug]/automation`) and falls back to a generic prompt if no row exists for this slug.

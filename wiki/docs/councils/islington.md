@@ -21,9 +21,8 @@
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual — open Islington's challenge page.
-- **v0.3 target**: automated via Playwright MCP.
-- **Automation status**: `manual`
+- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/islington`. Edit + dry-run the per-council MCP recipe at `/admin/councils/islington/automation`.
+- Email fallback via `appealEmail` when portal automation throws / returns `success: false`.
 
 ## Sources
 

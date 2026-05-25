@@ -58,3 +58,5 @@ next-env.d.ts
 
 # Live-submission screenshots written by watchScreenshots()
 /public/submissions/
+
+.vercel

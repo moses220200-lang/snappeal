@@ -29,6 +29,15 @@ type AppealPatch = {
   serviceTier?: "buy_time" | "grounds" | "care_plan";
   evidenceCount?: number;
   grounds?: string[];
+  /** v0.2.11 — customer-picked submission path. Stamped from the ticket-
+   *  page recommendation card on tap. NULL resets the choice. */
+  preferredMethod?: "email" | "portal" | null;
+  /** v0.2.15 — uploaded PCN photo URL. Allows the smart card to show
+   *  the image inline even across refreshes / different devices. */
+  pcnImageUrl?: string | null;
+  /** v0.2.16 — workflow step sentinel. Used by the smart card's
+   *  gathering_evidence → drafting transition (EVIDENCE_DONE_STEP). */
+  step?: string;
 };
 
 const cache = new Map<string, AppealRecord>();
@@ -116,13 +125,23 @@ export async function patchCurrentAppeal(patch: AppealPatch): Promise<AppealReco
 
 /**
  * Debounced PATCH for inputs that fire on every keystroke (e.g. the notes
- * textarea). Returns a function the page can call freely; only the trailing
- * write within `waitMs` actually hits the network.
+ * textarea). Returns:
+ *
+ *   - `schedule(patch)` — accumulates into the pending bag and re-arms the
+ *     trailing timer. Fire-and-forget.
+ *   - `schedule.flush()` — synchronously cancels the timer and resolves
+ *     once the pending bag (if any) has been PATCHed. Use before
+ *     navigating away or transitioning to a step that reads from the
+ *     same field, so the latest keystroke is durable.
+ *
+ * Backwards-compatible: callers that just invoke the returned function
+ * with a patch object behave as before; `.flush()` is opt-in.
  */
 export function debouncedPatch(waitMs = 600) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: AppealPatch | null = null;
-  return (patch: AppealPatch) => {
+
+  const schedule = (patch: AppealPatch) => {
     pending = { ...(pending ?? {}), ...patch };
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
@@ -137,7 +156,30 @@ export function debouncedPatch(waitMs = 600) {
       }
     }, waitMs);
   };
+
+  /** Force-write any pending patch immediately. Awaits the network so the
+   *  caller can guarantee durability before moving on. */
+  (schedule as DebouncedPatchFn).flush = async () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    const next = pending;
+    pending = null;
+    if (!next) return;
+    try {
+      await patchCurrentAppeal(next);
+    } catch {
+      /* swallowed — caller can re-attempt with a non-debounced write */
+    }
+  };
+
+  return schedule as DebouncedPatchFn;
 }
+
+export type DebouncedPatchFn = ((patch: AppealPatch) => void) & {
+  flush: () => Promise<void>;
+};
 
 export function clearDraftCache() {
   cache.clear();

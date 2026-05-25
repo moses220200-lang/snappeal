@@ -104,9 +104,7 @@ function Hero() {
           </div>
 
           <h1 className="mt-6">
-            <span className="sr-only">
-              Appealing a parking ticket is your right.
-            </span>
+            <span className="sr-only">Appeal an unfair parking ticket.</span>
             <HeroHeadlineSvg />
           </h1>
 
@@ -271,7 +269,7 @@ function HeroHeadlineSvg() {
 
   return (
     <svg
-      viewBox="0 -12 740 410"
+      viewBox="0 -12 740 275"
       className="block w-full max-w-[740px] h-auto"
       preserveAspectRatio="xMidYMid meet"
       aria-hidden
@@ -284,8 +282,10 @@ function HeroHeadlineSvg() {
         fontSize="96"
         fill="#0A1929"
         letterSpacing="-3"
+        textLength="720"
+        lengthAdjust="spacingAndGlyphs"
       >
-        Appealing a
+        Appeal an unfair
       </text>
 
       <g transform="translate(0, 143)">
@@ -311,21 +311,9 @@ function HeroHeadlineSvg() {
           textLength={BAND_RIGHT - 76}
           lengthAdjust="spacingAndGlyphs"
         >
-          PARKING TICKET
+          PARKING TICKET.
         </text>
       </g>
-
-      <text
-        x="0"
-        y="365"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontWeight="800"
-        fontSize="96"
-        fill="#0A1929"
-        letterSpacing="-3"
-      >
-        Is your right.
-      </text>
     </svg>
   );
 }

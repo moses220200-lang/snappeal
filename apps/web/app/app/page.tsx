@@ -2,19 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  ArrowRight,
-  ChevronRight,
-  FileText,
-  Scale,
-  Send,
-  ShieldCheck,
-  Upload,
-} from "lucide-react";
+import { ChevronRight, Scale } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Confetti } from "@/components/Confetti";
 import { RealisticPcnInWallet } from "@/components/SnappealSplash";
-import { getOrCreateSessionId, setServiceTier } from "@/lib/client/session";
+import { getOrCreateSessionId } from "@/lib/client/session";
 import type { AppealRecord } from "@/lib/server/appeals";
 
 export default function AppHome() {
@@ -50,26 +42,23 @@ export default function AppHome() {
           title="Scan PCN"
           subtitle="Scan your parking ticket and review your best options."
           ctaLabel="Start now"
-          href="/app/capture?from=review"
+          href="/app/tickets?scan=1"
           illustration={<ScanIllustration />}
         />
         <ActionHero
-          title="Challenge a ticket"
+          title="Challenge it"
           subtitle="We draft your appeal and help you submit it."
-          ctaLabel="Start appeal"
-          href="/app/capture"
-          onBeforeNavigate={() => setServiceTier("grounds")}
+          ctaLabel="Appeal"
+          href="/app/tickets"
           illustration={<ChallengeIllustration />}
         />
         <ActionHero
           title="Pay a ticket"
           subtitle="Settle your PCN quickly and securely."
           ctaLabel="Pay now"
-          href="/app/pay"
+          href="/app/tickets"
           illustration={<PayIllustration />}
         />
-        <HowItWorks />
-        <SuccessTip />
       </div>
     </>
   );
@@ -85,18 +74,19 @@ function ActionHero({
   subtitle,
   ctaLabel,
   href,
-  onBeforeNavigate,
   illustration,
 }: {
   title: ReactNode;
   subtitle: string;
   ctaLabel: string;
   href: string;
-  onBeforeNavigate?: () => void;
   illustration: ReactNode;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-[24px] text-white shadow-lg shadow-snappeal-navy/15">
+    <Link
+      href={href}
+      className="group relative block overflow-hidden rounded-[24px] text-white shadow-lg shadow-snappeal-navy/15 transition hover:brightness-110 active:scale-[0.99]"
+    >
       <div
         aria-hidden
         className="absolute inset-0 bg-[radial-gradient(120%_120%_at_0%_0%,#13315c_0%,#0a1f3a_45%,#050d18_100%)]"
@@ -114,20 +104,16 @@ function ActionHero({
         <div className="flex flex-col justify-center max-w-[58%] gap-2.5">
           <h2 className="text-[24px] font-bold leading-[1.1] tracking-tight">{title}</h2>
           <p className="text-[13px] text-white/75 leading-snug">{subtitle}</p>
-          <Link
-            href={href}
-            onClick={onBeforeNavigate}
-            className="mt-1.5 inline-flex items-center justify-between gap-2 rounded-2xl bg-snappeal-primary text-white font-semibold px-4 py-2.5 text-sm shadow-lg shadow-snappeal-primary/40 hover:bg-snappeal-primary-600 transition w-fit min-w-[130px]"
-          >
+          <span className="mt-1.5 inline-flex items-center justify-between gap-2 rounded-2xl bg-snappeal-primary text-white font-semibold px-4 py-2.5 text-sm shadow-lg shadow-snappeal-primary/40 w-fit min-w-[130px]">
             {ctaLabel}
             <ChevronRight className="size-4" strokeWidth={2.5} />
-          </Link>
+          </span>
         </div>
         <div className="absolute right-3 top-3 bottom-3 w-[42%] max-w-[160px]">
           {illustration}
         </div>
       </div>
-    </section>
+    </Link>
   );
 }
 
@@ -230,64 +216,3 @@ function PayIllustration() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
- * How it works — three mini steps with numbered badges in blue circles.
- * ──────────────────────────────────────────────────────────────────────── */
-function HowItWorks() {
-  const steps = [
-    { n: 1, icon: Upload, title: "Upload PCN", body: "Snap or upload\nyour ticket" },
-    { n: 2, icon: FileText, title: "Choose action", body: "Pay or challenge\nin minutes" },
-    { n: 3, icon: Send, title: "Track result", body: "Get updates\nin one place" },
-  ];
-  return (
-    <section className="rounded-3xl bg-white border border-snappeal-border px-3 py-5">
-      <h3 className="text-[15px] font-bold text-snappeal-navy mb-4 px-2">How it works</h3>
-      <ol className="grid grid-cols-3 gap-1">
-        {steps.map((step) => (
-          <li key={step.n} className="relative flex flex-col items-center text-center">
-            <div className="relative">
-              <span className="size-14 rounded-full bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center">
-                <step.icon className="size-6" strokeWidth={1.75} />
-              </span>
-              <span className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 inline-flex size-6 items-center justify-center rounded-full bg-snappeal-primary text-white text-[11px] font-bold shadow-md ring-2 ring-white">
-                {step.n}
-              </span>
-            </div>
-            <p className="mt-5 text-[12px] font-bold text-snappeal-navy leading-tight">
-              {step.title}
-            </p>
-            <p className="text-[10px] text-snappeal-muted mt-1 leading-tight whitespace-pre-line">
-              {step.body}
-            </p>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Success tip — light green card pinned at the bottom of the page.
- * ──────────────────────────────────────────────────────────────────────── */
-function SuccessTip() {
-  return (
-    <Link
-      href="/app/tips"
-      className="rounded-3xl bg-snappeal-success-soft border border-snappeal-success/25 p-4 flex items-center gap-3 hover:bg-green-100/70 transition"
-    >
-      <span className="size-10 rounded-full bg-white border border-snappeal-success/30 text-snappeal-success flex items-center justify-center flex-shrink-0">
-        <ShieldCheck className="size-5" strokeWidth={2} />
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-bold text-snappeal-success">Deadline tip</p>
-        <p className="text-[11px] text-snappeal-navy/80 mt-0.5 leading-snug">
-          Act early to keep discounts and appeal options open.
-        </p>
-      </div>
-      <span className="inline-flex items-center gap-1 rounded-full bg-white border border-snappeal-success/40 text-snappeal-success text-[11px] font-semibold px-3 py-1.5 whitespace-nowrap">
-        View tips
-        <ArrowRight className="size-3.5" strokeWidth={2} />
-      </span>
-    </Link>
-  );
-}

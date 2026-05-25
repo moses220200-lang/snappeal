@@ -1,13 +1,13 @@
 # ParkingRabbit
 
-> Pay or challenge London parking tickets in minutes. **`apps/web` v0.2.1**.
+> Pay or challenge London parking tickets in minutes. **`apps/web` v0.3.0**.
 
 This repository hosts the **ParkingRabbit** project — a London PCN management app (pay, challenge, track) targeting the canonical domain `parkingrabbit.com`. *Local Docker stack still uses the legacy `snappeal-*` container + volume names from the pre-rebrand era; those are stateful identifiers and intentionally left alone.*
 
 **Source of truth for "what's shipped vs in-flight":** [`wiki/docs/handoff.md`](./wiki/docs/handoff.md). Read that first if you're picking this up cold.
 
 - **`wiki/`** — MkDocs Material documentation. Business plan, product spec, architecture, council KB, legal/user guides.
-- **`apps/web/`** — Next.js 16 + Tailwind v4 PWA with the **full real backend**: Postgres + Drizzle (11 tables, 10 migrations), email/password auth + JWT, Postgres-backed job queue, Claude+Playwright MCP portal-submission engine, inbound mail webhook, Stripe-ready pay-a-ticket + auto-submit-appeal payment flows, and a 13-page admin backend. (Earlier versions of this README framed it as a mock-data prototype — that hasn't been true since mid-May 2026.)
+- **`apps/web/`** — Next.js 16 + Tailwind v4 PWA with the **full real backend**: Postgres + Drizzle (11 tables, 14 migrations), email/password auth + JWT, Postgres-backed job queue, Claude+Playwright MCP portal-submission engine, inbound mail webhook, Stripe-ready pay-a-ticket + auto-submit-appeal payment flows, **markdown knowledge base** (`apps/web/knowledge/`) feeding the AI drafter with past wins + code briefs + council quirks (v0.3.0), **AI appeal-strength scoring** with weak-appeal warnings, **75-card inline grounds quiz** + voice dictation (Whisper-compatible endpoint, e.g. OpenAI or Groq), and a 13-page admin backend. (Earlier versions of this README framed it as a mock-data prototype — that hasn't been true since mid-May 2026.)
 - **`fixtures/mock-data.json`** — kept around for typed fixture parity in tests; the live app reads from Postgres.
 
 ## Prerequisites
@@ -107,10 +107,11 @@ parkingappeal/                    # working dir (rename to snappeal/ — see bel
 │       │   ├── api/              # 25+ route handlers
 │       │   ├── sign-in/, sign-up/, privacy/, terms/
 │       │   └── icon.svg, apple-icon.tsx, opengraph-image.tsx, twitter-image.tsx
-│       ├── components/           # 31 client components (Logo, AppHeader,
-│       │                         #   BackHeader, AddressAutocomplete, OAuthButtons,
-│       │                         #   WizardOnboarding, BottomNav, GroundsCardQuiz, …)
-│       ├── drizzle/              # 10 migrations (0000–0009)
+│       ├── components/           # client components (TicketCard, TicketCardBody,
+│       │                         #   GroundsQuizInline, DictationPanel, VoiceNoteButton,
+│       │                         #   PaymentSheet, EvidenceCarousel, …)
+│       ├── knowledge/            # v0.3.0 markdown KB — precedents/, codes/, councils/
+│       ├── drizzle/              # 14 migrations (0000–0013); 0010–0013 hand-applied
 │       └── lib/server/           # auth, ai, appeals, jobs, submission, viewer, …
 ├── fixtures/
 │   └── mock-data.json            # typed fixture parity for tests

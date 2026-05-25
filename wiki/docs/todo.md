@@ -5,7 +5,7 @@ hide:
 
 # TODO — external action items
 
-Things outside the codebase that need someone to do them. Each one has an owner (placeholder until claimed), an "earliest start" date, and the reason.
+Things outside the codebase that need someone to do them. Each one has an owner (placeholder until claimed), an "earliest start" date, and the reason. **Code-side TODOs live in the running [handoff.md](handoff.md)** and the architecture pages' "Open work" sections.
 
 ## 🚨 Before the public beta — start the clocks now
 
@@ -22,22 +22,22 @@ These have wall-clock waiting periods (DNS propagation, app-store account verifi
 - **Where**: <https://developer.apple.com/programs/enroll/>
 - **Cost**: £79/year.
 - **Lead time**: 1–4 weeks (UK business verification by Apple).
-- **Why now**: Verification clock starts on submission, not on intended app-submission date. Block: needed before v0.3 native wrapper can ship to App Store.
+- **Why now**: Verification clock starts on submission, not on intended app-submission date. Block: needed before v0.3 native wrapper can ship to App Store, and gates the live Apple OAuth provider on `/sign-in` / `/sign-up`.
 - **Owner**: 👤 TBD
 - **Status**: 🔴 Not started
 
-### Google Play Developer account
-- **Where**: <https://play.google.com/console/signup>
-- **Cost**: $25 one-off.
-- **Lead time**: 1–3 days for individual account; up to 2 weeks for organisation accounts (Google verifies legal entity).
-- **Why now**: As above — verification is upstream of the v0.3 native wrapper milestone.
+### Google Play Developer account + Google Cloud OAuth client
+- **Where**: <https://play.google.com/console/signup> + <https://console.cloud.google.com/>
+- **Cost**: $25 one-off for Play; OAuth client is free.
+- **Lead time**: 1–3 days for individual; up to 2 weeks for organisation.
+- **Why now**: Verification is upstream of the v0.3 native wrapper milestone AND gates the live Google OAuth provider (`/api/auth/oauth/google` returns 503 until `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` land).
 - **Owner**: 👤 TBD
 - **Status**: 🔴 Not started
 
 ### UK IPO trademark search + filing — "ParkingRabbit"
 - **Search**: <https://www.gov.uk/search-for-trademark> (free, ~2 minutes).
 - **Filing**: £170 for one class via UK IPO online filing.
-- **Why now**: Public repo + GitHub indexing means the name is now discoverable. If clean, file a UK TM application before brand investment scales. Class 9 (mobile apps) and Class 42 (SaaS) are the typical pair for a product like this.
+- **Why now**: Public repo + GitHub indexing means the name is now discoverable. If clean, file a UK TM application before brand investment scales. Class 9 (mobile apps) + Class 42 (SaaS).
 - **Owner**: 👤 TBD
 - **Status**: 🔴 Not searched
 
@@ -47,14 +47,14 @@ These have wall-clock waiting periods (DNS propagation, app-store account verifi
 
 These don't need to start today, but should be on someone's list before the public beta hits real users.
 
-### Stripe UK account onboarding
-- UK business verification can take several working days. Required for live payments. Use Stripe test mode during v0.1 prototype build.
+### Stripe live keys
+- UK business verification can take several working days. The £2.99 PaymentSheet currently runs in test mode (or the fake-payment stub when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`). Live keys land at `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + `STRIPE_CARE_PLAN_PRICE_ID`.
 
-### Transactional email — `appeals.parkingrabbit.com` MX setup
-- Per-user aliases (`<user-id>@appeals.parkingrabbit.com`) for the council email-submission path + inbound reply parsing. Provider candidates: Resend, Postmark, AWS SES. DNS records: MX, SPF, DKIM, DMARC.
+### Transactional email — `appeals.parkingrabbit.com` MX + DKIM
+- Per-appeal aliases (`<appeal-id>@appeals.parkingrabbit.com`) for the inbound council reply parsing (`/api/inbound`). Provider candidates: Postmark Inbound (front-runner), Resend, Brevo, AWS SES. DNS: MX, SPF, DKIM, DMARC. `INBOUND_WEBHOOK_SECRET` is REQUIRED in `NODE_ENV=production`.
 
-### Privacy policy + Terms of Service
-- Required for App Store + Stripe + UK GDPR. Drafts live in `wiki/docs/legal/`. Open source template starting point: Termly / Iubenda / GDPR.eu.
+### Privacy policy + Terms of Service hardening
+- Drafts live at `/privacy` + `/terms`. Required-content checks for App Store + Stripe + UK GDPR before live launch.
 
 ### Cookie / consent banner
 - For the public PWA. Standard UK cookie law (PECR) + UK GDPR.
@@ -63,25 +63,25 @@ These don't need to start today, but should be on someone's list before the publ
 - Explicit rule on what gets stripped from images before AI processing: vehicle reg (keep), bystanders' faces (blur), GPS metadata (strip), unique device identifiers in EXIF (strip).
 
 ### Council outreach plan
-- Top-5 boroughs by volume should hear about ParkingRabbit directly from us before they hear about it via PCN submission volume changes. Tonally: collaborator not adversary. Risks.md R8 mitigation.
+- Top-5 boroughs by volume should hear about ParkingRabbit directly from us before they hear about it via PCN submission volume changes. Tonally: collaborator not adversary. See `risks.md` R8 mitigation.
 
 ### FOI request to London Councils TEC
 - Closes the open data gap on % of PCNs paid at discount vs full vs written off. Single request covering 2022-23 → 2024-25. ~20 working days turnaround.
 
+### Web Push send-side wiring
+- Service worker + `/api/push/subscribe` are live; the worker reading inbound classification → firing `web-push.send` against stored subscriptions still needs writing. Needs the `web-push` package + `VAPID_PRIVATE_KEY`.
+
+### Vercel deploy
+- Local-only today. Deploy runbook in [architecture/deployment.md](architecture/deployment.md). Web tier on Vercel with `SNAPPEAL_DISABLE_WORKER=1`; worker tier on Fly.io / Railway / Vercel Sandbox with the `claude` CLI binary + `@playwright/mcp` + Chromium baked in. Don't forget `outputFileTracingIncludes` for `apps/web/knowledge/*` so the markdown KB ships in the function bundles.
+
 ---
 
-## Refactor backlog (from mockup audit)
+## Already shipped (struck through for clarity)
 
-Tracked from [product/v0-1-mockup-audit.md](product/v0-1-mockup-audit.md), section "Remaining refactor work":
-
-- [ ] **A4** Logo design pass — current navy-shield-with-S is sufficient for the prototype; final pass by a designer in v0.2.
-- [ ] **B1** Manual PCN entry as a first-class capture path (refactor `user-flow.md` + `ai-pipeline.md`).
-- [ ] **B2** Evidence photos move to step 2 (after capture) in the flow.
-- [x] **B3 / D4** Appeal state machine + status timeline — implemented in `apps/web/app/app/tickets/page.tsx → deriveDisplayState` and documented at `architecture/appeal-state-machine.md` (2026-05-21).
-- [ ] **B5** Cases screen spec — add to `user-flow.md`.
-- [ ] **B6** Tips library content surface — new `product/tips-library.md`.
-- [ ] `product/navigation.md` — document the 4-tab structure (Home / Cases / Camera / Profile).
-- [ ] **Photo storage off-client** — PCN photo + evidence photos still live in `sessionStorage` as data URLs in `apps/web/lib/client/session.ts`. Ticket/notes/grounds moved to the cloud on 2026-05-21 via `lib/client/draft.ts`; photos are the last client-only payload. Blocker: pick blob storage (Vercel Blob is the obvious fit) + add `POST /api/photos` upload route + swap `getPcnPhoto`/`getEvidencePhotos` callsites to fetch the persisted URL.
+- ~~Smart-card consolidation onto `/app/tickets`~~ — v0.2.13–v0.3.0 (the whole post-scan flow now lives on one card).
+- ~~Deep grounds quiz (75 cards / 12 categories) + voice dictation + knowledge base + appeal-strength score~~ — v0.3.0.
+- ~~Drafting-hang root-cause fix~~, ~~three-step `<StepBlock>` ladder~~, ~~Cloudflare-grade SSE (4 KB padding + identity encoding + no-store)~~, ~~`prewarmMcp()` on worker boot~~, ~~`showMcpLiveView` runtime flag~~ — v0.3.1.
+- ~~Photo storage off-client for warden + portal photos~~ — Vercel Blob via `uploadPortalPhotos()` (v0.2.6). User-evidence photos still ride sessionStorage data URLs — last client-only payload, on the backlog.
 
 ---
 
@@ -89,4 +89,5 @@ Tracked from [product/v0-1-mockup-audit.md](product/v0-1-mockup-audit.md), secti
 
 - Tick items off as they're done; don't delete (history is useful).
 - New external action items get added here, not in random other pages.
+- Code-side TODOs go in [handoff.md](handoff.md) "Open work" sections, not here.
 - The audit page tracks *product decisions*; this page tracks *external coordination*.

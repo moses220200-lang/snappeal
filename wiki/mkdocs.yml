@@ -122,23 +122,21 @@ nav:
     - product/index.md
     - Overview: product/overview.md
     - User flow: product/user-flow.md
+    - Progressive ticket creation: product/progressive-ticket-creation.md
     - Features: product/features.md
     - Design principles: product/design-principles.md
-    - Brand: product/brand.md
-    - Mockups: product/mockups.md
-    - v0.1 mockup audit: product/v0-1-mockup-audit.md
     - Gamification: product/gamification.md
-    - Homepage (desktop spec): product/screens/homepage.md
+    - Brand: product/brand.md
   - Architecture:
     - architecture/index.md
     - System overview: architecture/system-overview.md
-    - Prototype state: architecture/prototype.md
     - Data model: architecture/data-model.md
-    - Appeal state machine: architecture/appeal-state-machine.md
     - AI pipeline: architecture/ai-pipeline.md
-    - Submission engine: architecture/submission-engine.md
-    - Job queue: architecture/job-queue.md
     - Knowledge base: architecture/knowledge-base.md
+    - Submission engine: architecture/submission-engine.md
+    - Status checker: architecture/status-checker.md
+    - Job queue: architecture/job-queue.md
+    - Appeal state machine: architecture/appeal-state-machine.md
     - Auth: architecture/auth.md
     - Admin backend: architecture/admin.md
     - Notifications: architecture/notifications.md
@@ -168,3 +166,4 @@ nav:
     - Managing councils: admin/managing-councils.md
     - Managing users: admin/managing-users.md
     - Monitoring appeals: admin/monitoring-appeals.md
+  - Archive: archive.md

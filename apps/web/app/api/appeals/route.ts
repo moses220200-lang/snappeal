@@ -61,8 +61,29 @@ export async function GET(request: Request) {
     });
   }
   const viewer = await getViewer();
+  // v0.2.15+: the v0.2.7 "guests don't see a list" gate is gone.
+  // Progressive ticket creation now persists real ticket rows owned by
+  // the guest session as soon as a PCN is uploaded, so the dashboard
+  // MUST surface them or the user is stranded with a ticket they
+  // can't find. `listAppealsForViewer` already filters strictly to
+  // `sessionId` (and, when present, `userId`) so a guest only ever
+  // sees their own session's appeals.
+  // v0.2.13 — `?since=<ISO>` returns only appeals updated strictly after
+  // the timestamp, used by the smart ticket card's 15s reconciliation poll
+  // so it doesn't redownload the full list each tick. Invalid input is
+  // silently ignored (the caller falls back to a full fetch).
+  const sinceRaw = url.searchParams.get("since");
+  let since: Date | null = null;
+  if (sinceRaw) {
+    const t = Date.parse(sinceRaw);
+    if (!Number.isNaN(t)) since = new Date(t);
+  }
   try {
-    const appeals = await listAppealsForViewer({ sessionId, userId: viewer.userId });
+    const appeals = await listAppealsForViewer({
+      sessionId,
+      userId: viewer.userId,
+      since,
+    });
     return NextResponse.json({ appeals });
   } catch (err) {
     if (err instanceof DatabaseNotConfiguredError) {

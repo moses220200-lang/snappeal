@@ -40,7 +40,7 @@ Three phases, eight quarters, one product.
 
 ### v0.1 — public beta *(2026 Q4)*
 
-**Status as of 2026-05-20**: real backend live end-to-end. Everything that was scoped as v0.2 (accounts, response tracking, queue) **pulled forward into v0.1**. Full file-by-file inventory in [architecture/prototype.md](../architecture/prototype.md).
+**Status as of 2026-05-23 (v0.3.1)**: real backend live end-to-end. Everything that was scoped as v0.2 (accounts, response tracking, queue) **pulled forward into v0.1**. v0.3.0 + v0.3.1 layered on the deep grounds quiz, voice dictation, knowledge base, appeal-strength score, drafting-hang fix, Cloudflare-grade SSE, and MCP prewarm — see the canonical [handoff.md](../handoff.md) for the per-version log. For historical file-by-file inventory see the [archive](../archive.md).
 
 **Shipped — frontend**
 
@@ -50,13 +50,13 @@ Three phases, eight quarters, one product.
 - ✅ 5-tab bottom nav (Home / Tickets / Camera-centered / Inbox / Profile)
 - ✅ AppHeader with shield + ParkingRabbit wordmark + UK pill
 - ✅ Red action CTA + iOS-blue navigation palette
-- ✅ Wizard onboarding (welcome → service-tier quiz → 3-question grounds quiz → permissions → OAuth/email upsell)
+- ⛔ Wizard onboarding **removed in v0.2.9** — users land straight on the app home (the three `ActionHero` tiles). The component file `components/WizardOnboarding.tsx` is deleted; `<WizardSheet>` remains for in-flow coaching (photo coach, strengthen-my-notes). First-launch friction was net-negative once the flow shrank to four screens.
 - ✅ Branded 3-second splash animation
 - ✅ Install banner (landing-scope only)
 
 **Shipped — backend**
 
-- ✅ Postgres 16 in docker-compose, ten Drizzle migrations applied (0000–0009)
+- ✅ Postgres 16 in docker-compose, fourteen Drizzle migrations applied (0000–0013)
 - ✅ Claude CLI piped headlessly for all AI reasoning (extract + draft + inbound classify)
 - ✅ Postgres-backed job queue (`FOR UPDATE SKIP LOCKED`, exponential backoff, stale-lock recovery)
 - ✅ Worker pool boots via `instrumentation.ts`
@@ -68,8 +68,16 @@ Three phases, eight quarters, one product.
 - ✅ Test-mode payment scaffold (Apple/Google/Card buttons that fake Stripe in dev)
 - ✅ In-process semaphore caps concurrent Claude subprocesses
 - ✅ Backend smoke tests: `npm run test:claude`, `npm run test:e2e:backend`
+- ✅ **v0.2.10 Scan → AI Review → Recommendation launch shape** — `<ReviewRecommendation>` card became the canonical post-scan surface with three actions: Appeal / Pay yourself / Pay instantly with Rabbit (Coming soon). Ticket-status connector architecture wired (`lib/server/connectors/`): `IssuerConnector` interface, mock connector with "Preview" UI pill, registry with fallback semantics, `/api/appeals/[id]/status` route, `<TicketStatusBadge>` component. Rollout roadmap for real connectors in [`architecture/status-checker.md`](../architecture/status-checker.md).
+- ⏪ **v0.2.11 Free-email experiment — reverted in v0.2.12.** Briefly tried exposing free council-email submission as a customer-facing path; rolled back because it devalued the paid product.
+- ✅ **v0.2.12 Paid AI appeal IS the product** — recommendation card collapsed to Appeal with Rabbit (PAID, primary) + Pay yourself (FREE deep-link) + Pay instantly with Rabbit (+£1.99 Coming soon). Free email path removed from UI + `/api/submit`. Connector taxonomy extended with `TicketStage` enum + `canAppeal`/`canPay`/`daysLeftToAppeal`/`paymentUrl` fields. Wiki rewritten — see [`business/launch-strategy.md`](launch-strategy.md) and [`business/payment-strategy.md`](payment-strategy.md).
+- ✅ **v0.2.13 Smart ticket card consolidation** — the entire post-scan flow collapsed onto a single `<TicketCard>` on `/app/tickets`. Deleted: `/app/validating/[jobId]`, `/app/submitting/[id]`, `/api/submissions/[id]/progress`, `<MCPLiveView>`, `<GeneratingOverlay>`, `<VerdictReveal>`, `<PassiveStatusBanner>`, `<TicketActionPanel>`, `<ExtractedDataPanel>`. New primitives: `lib/deriveCardState.ts` (11-state pure function), `hooks/useAppealLiveState.ts` (per-card SSE + IntersectionObserver), `<MCPLiveStrip>` (slim inline live-MCP). The smart card carries every state inline. See [`product/progressive-ticket-creation.md`](../product/progressive-ticket-creation.md).
+- ✅ **v0.2.14–v0.2.17 Smart-card polish** — pending-review surface with three editable fields (PCN ref + vehicle reg text inputs + council `<select>`) and the "I agree to T&Cs" confirm button. New `processing` state with inline OCR/portal/recommendation status rows (`<ProcessingCard>`), `pending_review` after OCR, `gathering_evidence` after Appeal-tap (compact 6-option grounds quiz). Migration `0012_processing_status.sql` added `appeals.processing` jsonb + `appeals.pcn_image_url`. Step labels removed throughout.
+- ✅ **v0.2.18 `/app/capture` deleted; upload entry on `/app/tickets`** — the old 1480-LoC capture page (camera live-preview, in-page OCR review, manual entry) replaced with a 5-line server-side redirect. The smart tickets page now hosts hidden file inputs + visible Camera/Library buttons; the home "Scan PCN" hero deep-links to `/app/tickets?scan=1` and the page auto-clicks the picker on mount. `lib/client/uploadPcn.ts` is the canonical upload helper (always creates a fresh appeal — fixes the guest-upload 403). Sign-in gate before drafting (`/api/generate-stream`) — guests bounce to `/sign-up?next=...` with grounds saved. Every state on one card on `/app/tickets`.
+- ✅ **v0.3.0 Deep grounds quiz + voice dictation + knowledge base + appeal-strength score; `/app/tickets/[id]` collapsed to redirect.** Grounds catalog rewritten end-to-end (75 cards / 12 categories / lucide outline icons / `mapsTo: CanonicalGroundId[]` so a card can argue multiple grounds / `promptHook` + `weight` + `relevantCodes`). New `<GroundsQuizSheet>` fullscreen sheet, new `<DictationPanel>` + upgraded `<VoiceNoteButton mode="append">` with mm:ss timer + pause/resume. Markdown knowledge corpus at `apps/web/knowledge/{precedents,codes,councils}` with deterministic ranker in `lib/server/knowledge.ts` (score + 2500-token cap), audit trail in `appeals.knowledge_pack_used`. Drafter returns a 0–100 strength score + rationale + up to 3 evidence improvements; server-side cap to 45 when no photos AND notes < 50 chars. SSE adds a `strength` event frame. Migration `0013_appeal_strength_and_kb.sql` adds 4 nullable `appeals` columns. `/app/tickets/[id]` becomes `redirect('/app/tickets?expand=<id>')`.
+- ✅ **v0.3.1 Drafting hang fix + three-step gathering + Cloudflare-grade SSE + MCP prewarm.** `GenerateRequest.pcnPhoto` made optional; both `/api/generate` and `/api/generate-stream` fall back to `appealRow?.ticket`; `generateDraft()` fails fast; validation-stage failures call `markAppealFailed()`. `<GatheringEvidenceCard>` becomes a numbered three-step `<StepBlock>` ladder (grounds → details → review). Four UI extractions (`<TicketCardHeader>`, `<CouncilPickerSheet>`, `<LetterPreview>`, `lib/format.ts`). SSE delivery hardened for Cloudflare — every event padded to 4 KB + `cache-control: no-store, no-transform` + `content-encoding: identity` + `x-accel-buffering: no` + 150 ms poll + 3 s keep-alive + `status`-kind projection in `useAppealLiveState`. Watch-live disclosure decoupled from SSE subscription; `showMcpLiveView` runtime flag default ON. `prewarmMcp()` at worker boot. No schema change.
 
-**Scope decisions locked** (see [product/v0-1-mockup-audit.md](../product/v0-1-mockup-audit.md)):
+**Scope decisions locked** (the original v0.1 mockup audit is folded into the [archive](../archive.md)):
 
 - Next.js 16 PWA, mobile-first; canonical domain `parkingrabbit.com`
 - 5-tab nav (revised from the original 4) — Inbox added once council reply tracking went live in v0.1

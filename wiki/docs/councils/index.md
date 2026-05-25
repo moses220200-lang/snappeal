@@ -3,8 +3,9 @@
 The full list of authorities that issue PCNs in London. Each entry below names the issuer, links to the per-borough page on this wiki where filled, and links externally to the council's own appeal portal.
 
 !!! warning "Verification status"
-    Entries marked **✅ verified** were checked against the council's own website during Phase A (May 2026). Entries marked **🟡 not yet verified** have a best-effort link but should be re-checked before being used in production submissions.
-    The Phase B admin panel will surface each council's `last_verified_at` timestamp and flag entries older than 90 days.
+    Entries marked **✅ verified** were checked against the council's own website. Entries marked **🟡 not yet verified** have a best-effort link but should be re-checked before being used in production submissions.
+
+    **Canonical state** lives in the `councils` Postgres table (`last_verified_at` + `automationStatus` columns) — view + edit via `/admin/councils`. The per-council MCP agent prompt + field hints live in `council_automation` — edit + dry-run via `/admin/councils/[slug]/automation`. The wiki entries here are a static reference, not the source of truth.
 
 ## 32 London Boroughs
 
@@ -53,11 +54,12 @@ The full list of authorities that issue PCNs in London. Each entry below names t
 
 ## How to populate the unverified entries
 
-Phase B's admin UI will allow an ops user to:
+The live admin UI at `/admin/councils` lets an ops user:
 
-1. Open each council record.
+1. Open each council record (`/admin/councils/[slug]`).
 2. Verify the portal URL, postal address, and email by visiting the council's website.
-3. Click *Mark verified* — sets `last_verified_at` to now.
-4. Re-verify every 90 days.
+3. Update fields + save — sets `last_verified_at` to now.
+4. Edit + dry-run the per-council MCP recipe at `/admin/councils/[slug]/automation` — full prompt + field hints + dry-run-against-live-portal button + reset-to-canonical (Westminster fallback).
+5. Re-verify every 90 days (the admin dashboard flags entries older than 90 days).
 
-For Phase A, [the template](_template.md) shows the expected shape of a per-borough page once filled in.
+[The template](_template.md) shows the expected shape of a per-borough wiki page; the canonical schema lives in `lib/server/db/schema.ts → councils + council_automation`.

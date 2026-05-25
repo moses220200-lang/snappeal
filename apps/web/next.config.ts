@@ -10,6 +10,18 @@ const nextConfig: NextConfig = {
     "*.trycloudflare.com",
     "snappeal.theailab.dev",
   ],
+
+  // PR 2 (knowledge base): the generate-stream + generate routes read
+  // markdown precedents / code briefs / council briefs from the
+  // `apps/web/knowledge/**` folder at runtime via node:fs/promises.
+  // Without an explicit trace include, Vercel's function bundler doesn't
+  // know to ship those files alongside the route, and reads fail in
+  // production with ENOENT. The patterns are relative to this file
+  // (apps/web/next.config.ts).
+  outputFileTracingIncludes: {
+    "/api/generate-stream": ["./knowledge/**/*"],
+    "/api/generate": ["./knowledge/**/*"],
+  },
 };
 
 export default nextConfig;

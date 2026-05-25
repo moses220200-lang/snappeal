@@ -16,6 +16,8 @@ import { stripe } from "@/lib/server/stripe";
 import { env } from "@/lib/server/env";
 import { getViewer } from "@/lib/server/viewer";
 import { generateSemaphore } from "@/lib/server/concurrency";
+import { getCardById } from "@/lib/grounds-catalog";
+import { loadKnowledgePack } from "@/lib/server/knowledge";
 
 export const runtime = "nodejs";
 /** Vision + drafting can take up to ~90s; bump the function timeout. */
@@ -95,6 +97,33 @@ export async function POST(request: Request) {
       appealId = created.id;
     }
 
+    // Re-read the appeal so the drafter sees the latest notes / grounds
+    // / portal lookup, then build the rich context bundle and load the
+    // knowledge pack (precedents + code briefs + council brief).
+    const appealRow = await getAppealById(appealId);
+    const selectedCards = (appealRow?.grounds ?? [])
+      .map((id) => getCardById(id))
+      .filter((c): c is NonNullable<ReturnType<typeof getCardById>> => !!c)
+      .map((c) => ({
+        id: c.id,
+        label: c.label,
+        promptHook: c.promptHook,
+        weight: c.weight,
+      }));
+    const knowledgePack = await loadKnowledgePack({
+      groundIds: appealRow?.grounds ?? [],
+      contraventionCode:
+        appealRow?.portalLookup?.metadata?.contraventionCode ??
+        appealRow?.ticket?.contraventionCode,
+      councilSlug:
+        appealRow?.councilSlug ?? appealRow?.ticket?.councilSlug ?? undefined,
+    });
+
+    // Fall back to the appeal row's stored ticket when the client didn't
+    // send one — keeps retries from a fresh tab working without forcing
+    // a re-upload of the PCN photo.
+    const confirmedTicket = body.confirmedTicket ?? appealRow?.ticket ?? undefined;
+
     // Cap concurrent Claude CLI subprocesses so a burst of users doesn't
     // exhaust the host. Excess requests queue here and run FIFO.
     const release = await generateSemaphore.acquire();
@@ -103,20 +132,27 @@ export async function POST(request: Request) {
       draft = await generateDraft({
         pcnPhotoDataUrl: body.pcnPhoto,
         evidencePhotoDataUrls: body.evidencePhotos,
-        notes: body.notes,
-        confirmedTicket: body.confirmedTicket,
+        notes: appealRow?.notes ?? body.notes,
+        confirmedTicket,
+        selectedCards,
+        portalMetadata: appealRow?.portalLookup?.metadata,
+        knowledgePack,
       });
     } finally {
       release();
     }
 
-    const updated = await attachDraftToAppeal(appealId, draft);
+    const updated = await attachDraftToAppeal(appealId, draft, {
+      usedIds: knowledgePack.usedIds,
+      tokens: knowledgePack.approxTokens,
+    });
 
     const response: GenerateResponse & { appealId: string } = {
       appealId: updated.id,
       ticket: draft.ticket,
       groundIds: draft.groundIds,
       letter: draft.letter,
+      strength: draft.strength,
       modelUsed: draft.modelUsed,
       generatedAt: new Date().toISOString(),
     };

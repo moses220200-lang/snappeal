@@ -13,6 +13,7 @@ import {
   inventoryStatus,
   setFakePayment,
   setMcpHeaded,
+  setShowMcpLiveView,
   setSkipPaymentCheck,
   setStopAtReview,
   setSubmissionLive,
@@ -40,6 +41,7 @@ const PatchBody = z.object({
     "workerDisabled",
     "fakePayment",
     "skipPaymentCheck",
+    "showMcpLiveView",
   ]),
   /** `null` for the *override*-style settings reverts to env-derived default. */
   value: z.union([z.boolean(), z.null()]),
@@ -81,6 +83,12 @@ export async function PATCH(req: Request) {
       break;
     case "skipPaymentCheck":
       setSkipPaymentCheck(body.value);
+      break;
+    case "showMcpLiveView":
+      if (typeof body.value !== "boolean") {
+        return NextResponse.json(jsonError("BAD_REQUEST", "showMcpLiveView requires boolean"), { status: 400 });
+      }
+      setShowMcpLiveView(body.value);
       break;
   }
 

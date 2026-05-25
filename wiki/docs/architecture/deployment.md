@@ -151,6 +151,12 @@ SNAPPEAL_BASE=https://parkingrabbit.com npm run test:e2e:backend
 - **Worker tier**: `fly releases` + `fly deploy --image registry.fly.io/snappeal-worker:<previous>`.
 - **DB schema**: every migration is committed; `git revert <migration-commit>` + a fresh forward migration. No `down` scripts.
 
+## v0.3.1 deployment gotchas
+
+- **MCP prewarm.** The worker tier calls `prewarmMcp()` (`lib/server/submission/mcp-warm.ts`) on boot — make sure the Dockerfile installs `@playwright/mcp` + Chromium so the prewarm doesn't fail silently.
+- **Cloudflare SSE.** The `/api/jobs/[id]/progress` route relies on `cache-control: no-store, no-transform`, `content-encoding: identity`, `x-accel-buffering: no` plus 4 KB per-event padding. If you front the web tier with anything else (Fastly, Akamai, custom Nginx), verify the same headers reach the client and increase padding if the buffer threshold differs.
+- **Knowledge base bundle.** `next.config.ts` sets `outputFileTracingIncludes` for `/api/generate-stream` and `/api/generate` so the `apps/web/knowledge/*` markdown corpus ships inside the Vercel function bundles. **Verify with `vercel build` locally** before any prod deploy — without this, runtime reads ENOENT on the precedents.
+
 ## What's deliberately NOT yet automated
 
 - **No CI/CD on push.** Deploys are manual `vercel --prod` and `fly deploy`. We add GitHub Actions once the deploy story stabilises.

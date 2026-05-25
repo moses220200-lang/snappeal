@@ -71,6 +71,20 @@
       "when": 1779309197024,
       "tag": "0009_short_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779478500000,
+      "tag": "0010_portal_lookup",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779494400000,
+      "tag": "0011_appeal_preferred_method",
+      "breakpoints": true
     }
   ]
 }

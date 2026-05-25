@@ -313,6 +313,13 @@ html {
   animation: generating-line 1.6s ease-in-out infinite alternate;
 }
 
+/* Bottom-sheet slide-in — used by NotificationPermissionSheet and any
+ * other contextual modal that wants the same iOS-style entrance curve. */
+@keyframes snappeal-sheet-up {
+  0%   { opacity: 0; transform: translateY(28%); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* Hero scan animation — used on /app home to animate a blue scan line over
  * the yellow PCN ticket inside the dark navy hero card. Loops forever. */
 @keyframes snappeal-hero-scan {
@@ -329,6 +336,86 @@ html {
 @keyframes generating-cursor {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0; }
+}
+
+/* ──────────────────────────────────────────────────────────────── *
+ * MCP live keyframes — used by the smart ticket card and MCPLiveStrip.
+ * Goal: make a 60-second Playwright run feel inhabited and intentional.
+ * ──────────────────────────────────────────────────────────────── */
+
+/* Cross-fade between consecutive screenshots. Both layers stack at
+ * opacity 0 by default; the "active" one ramps to 1, the previous one
+ * fades down. 400ms reads as live without smearing. */
+@keyframes snappeal-mcp-fade-in {
+  from { opacity: 0; transform: scale(1.005); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* One-shot radial spotlight pinged on each new screenshot — draws the
+ * eye even if the user is mid-scroll. White ring scales out + fades. */
+@keyframes snappeal-mcp-spotlight {
+  0%   { opacity: 0; transform: scale(0.92); }
+  18%  { opacity: 0.65; }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+.snappeal-mcp-spotlight {
+  background: radial-gradient(circle at center, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 60%);
+  animation: snappeal-mcp-spotlight 800ms ease-out;
+  pointer-events: none;
+}
+
+/* Ambient pre-first-screenshot state. A long horizontal scan line
+ * traverses a navy rectangle so the user has *something* to watch
+ * while the secure browser warms up. */
+@keyframes snappeal-mcp-warmup {
+  0%   { transform: translateX(-30%); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateX(130%); opacity: 0; }
+}
+.snappeal-mcp-warmup-line {
+  animation: snappeal-mcp-warmup 2.2s ease-in-out infinite;
+}
+
+/* Action ticker — promoted "what's the agent doing right now" chip
+ * under the screenshot. New text fades up; old text fades down. */
+@keyframes snappeal-mcp-ticker-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Milestone row fill — slides a left-to-right colour bar across the
+ * milestone row when it transitions to "reached". */
+@keyframes snappeal-mcp-milestone-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Verdict-reveal modal slides up from the bottom, scales subtly, then
+ * holds. Used on the validating page when the lookup verdict lands. */
+@keyframes snappeal-mcp-verdict-in {
+  0%   { opacity: 0; transform: translateY(48px) scale(0.97); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Per-row fade-up for the "Council confirms" live data panel. Each
+ * row plays this once when it first becomes visible (i.e. when a
+ * `metadata` SSE event arrives carrying that field). */
+@keyframes snappeal-data-row-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* "AI driving" pulse — tied to a CSS var the React state updates on
+ * each new tool_use event. Drives the badge dot's scale + opacity. */
+@keyframes snappeal-mcp-tick-pulse {
+  0%   { opacity: 0.5; transform: scale(0.9); }
+  50%  { opacity: 1; transform: scale(1.25); }
+  100% { opacity: 0.5; transform: scale(0.9); }
+}
+.snappeal-mcp-tick-dot {
+  animation: snappeal-mcp-tick-pulse 900ms ease-in-out infinite;
 }
 .snappeal-generating-cursor {
   animation: generating-cursor 1s steps(1, end) infinite;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
 import { delimiter as PATH_DELIM, join } from "node:path";
 import { env, hasDatabase } from "@/lib/server/env";
+import { getSettings } from "@/lib/server/settings";
 
 export const runtime = "nodejs";
 /** Always fresh — never cache the health report. */
@@ -60,6 +61,13 @@ export async function GET() {
       persistence: dbWired,
       submission: true, // mock or live both work
       inboundMail: dbWired && aiReady,
+    },
+    flags: {
+      // Public-readable subset of admin settings. v0.2.13: drives whether
+      // the smart ticket card on /app/tickets/[id] opens the "Watch live"
+      // disclosure by default and subscribes to screenshot frames. OFF
+      // keeps the card calm — screenshots stay behind one tap.
+      showMcpLiveView: getSettings().showMcpLiveView,
     },
     timestamp: new Date().toISOString(),
   });

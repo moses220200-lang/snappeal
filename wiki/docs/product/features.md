@@ -10,9 +10,29 @@ What is in scope, by version. ✅ shipped, 🟡 in progress, ⬜ planned, ⛔ de
 | Photo library upload (not just camera) | ⬜ | ✅ | ✅ |
 | OCR + vision extraction of PCN fields | ⬜ | ✅ | ✅ |
 | **Notes** | | | |
-| Free-text notes (≤ 800 chars soft limit) | ⬜ | ✅ | ✅ |
-| Guided prompt rotation | ⬜ | ✅ | ✅ |
-| Voice-to-text dictation | ⛔ | ⬜ | ⬜ |
+| Free-text notes (≤ 2000 chars, hard cap matching server contract) | ⬜ | ✅ | ✅ |
+| Guided prompt chips derived from selected grounds | ⬜ | ✅ | ✅ |
+| Voice-to-text dictation via Whisper-compatible endpoint (OpenAI / Groq / LiteLLM) | ⛔ | ⬜ | ✅ |
+| Pause/resume + mm:ss timer on voice capture | ⛔ | ⛔ | ✅ |
+| Append-mode voice transcripts (multiple takes accumulate) | ⛔ | ⛔ | ✅ |
+| **Grounds quiz** | | | |
+| 6 hard-coded reasons | ⛔ | ✅ | ⛔ (replaced) |
+| Deep 75-card grounds catalog across 12 categories | ⛔ | ⛔ | ✅ |
+| Inline picker inside the smart card (no popup) | ⛔ | ⛔ | ✅ |
+| Lucide outline icons + sticky search + chip filters | ⛔ | ⛔ | ✅ |
+| Per-card `promptHook` baked into the drafter prompt | ⛔ | ⛔ | ✅ |
+| "Suggested for code N" sort when contravention code is known | ⛔ | ⛔ | ✅ |
+| **Knowledge base** | | | |
+| Markdown precedent corpus (`apps/web/knowledge/precedents/`) | ⛔ | ⛔ | ✅ |
+| Per-contravention-code briefs (12 common London codes) | ⛔ | ⛔ | ✅ |
+| Per-council quirks briefs (top 6 London authorities) | ⛔ | ⛔ | ✅ |
+| Deterministic ranker + 2500-token-cap renderer | ⛔ | ⛔ | ✅ |
+| pgvector embedding retrieval | ⛔ | ⛔ | ⬜ (when corpus > 200 docs) |
+| **Appeal strength** | | | |
+| AI-returned 0–100 strength score on every draft | ⛔ | ⛔ | ✅ |
+| Server-side cap when evidence is thin (no photos + < 50 chars notes) | ⛔ | ⛔ | ✅ |
+| Strong/Solid/Weak badge surfaced on the letter-ready card | ⛔ | ⛔ | ✅ |
+| Weak-appeal warning banner above Pay £2.99 CTA | ⛔ | ⛔ | ✅ |
 | **Payment** | | | |
 | Stripe Payment Element | ⬜ | ✅ | ✅ |
 | Apple Pay | ⬜ | ✅ | ✅ |

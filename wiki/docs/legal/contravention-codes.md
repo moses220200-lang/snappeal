@@ -4,6 +4,8 @@ Every PCN issued under TMA 2004 carries a **contravention code** — a two-digit
 
 The full official list is maintained by London Councils' Traffic Enforcement Centre. Use this table as a reference for what each code means in plain English and which ground(s) are most often relevant.
 
+> **AI-readable mirror (v0.3.0):** each common code below also has a per-code brief at `apps/web/knowledge/codes/<NN>.md` (statutory basis + common defences + common council rebuttals) that the AI drafter reads via `loadKnowledgePack()` and uses to pre-empt the council's likely response. Edits to those briefs feed directly into the next generated letter — see [architecture/knowledge-base.md § Markdown knowledge corpus (v0.3.0)](../architecture/knowledge-base.md#markdown-knowledge-corpus-v030).
+
 | Code | What the PCN says | Common defences |
 |---|---|---|
 | **01** | Parked in a restricted street during prescribed hours | Signage unclear/obscured; loading exemption; contravention did not occur |

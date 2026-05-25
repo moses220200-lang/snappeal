@@ -42,9 +42,9 @@
 
 ## Submission method
 
-- **v0.1 / v0.2**: manual (open portal URL).
-- **v0.3 target**: automated via Playwright MCP (see [submission engine](../architecture/submission-engine.md)).
-- **Automation status**: `manual` / `automated_beta` / `automated_ga`.
+- **Automation status** (one of `manual` / `automated_beta` / `automated_ga`) lives on `councils.automation_status` — edit via `/admin/councils/[slug]`.
+- When status is `automated_beta` or `automated_ga`, the [submission engine](../architecture/submission-engine.md) runs the per-council Claude + Playwright MCP recipe stored in `council_automation.agent_prompt` (edit + dry-run via `/admin/councils/[slug]/automation`); falls back to email when the council has an `appeal_email` and portal automation throws / returns success=false.
+- When status is `manual`, the engine routes through `sendCouncilEmail()` if `appeal_email` is set; otherwise records a mock submission and flags the appeal for ops review.
 
 ## Sources
 

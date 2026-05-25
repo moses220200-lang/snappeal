@@ -12,9 +12,17 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WESTMINSTER_AGENT_PROMPT, WESTMINSTER_FIELD_HINTS } from "./prompts/westminster";
+import { WESTMINSTER_LOOKUP_PROMPT } from "./prompts/westminster_lookup";
 
-const DEFAULTS: Record<string, { prompt: string; hints: Record<string, unknown> }> = {
-  westminster: { prompt: WESTMINSTER_AGENT_PROMPT, hints: WESTMINSTER_FIELD_HINTS },
+const DEFAULTS: Record<
+  string,
+  { prompt: string; lookupPrompt?: string; hints: Record<string, unknown> }
+> = {
+  westminster: {
+    prompt: WESTMINSTER_AGENT_PROMPT,
+    lookupPrompt: WESTMINSTER_LOOKUP_PROMPT,
+    hints: WESTMINSTER_FIELD_HINTS,
+  },
 };
 
 export async function getAutomation(councilSlug: string) {
@@ -34,6 +42,7 @@ export async function getAutomation(councilSlug: string) {
     .values({
       councilSlug,
       agentPrompt: def.prompt,
+      lookupAgentPrompt: def.lookupPrompt ?? null,
       fieldHints: def.hints,
     })
     .returning();

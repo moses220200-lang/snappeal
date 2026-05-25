@@ -18,7 +18,7 @@ The admin UI lives at `/admin`. It's gated by `users.role = 'admin'` and is invi
 | `/admin/jobs` | Job queue inspector with **retry/cancel** actions and **per-row appeal-context dry-run** for `submit_appeal` rows |
 | `/admin/users` | All users (email, name, role, tier, last sign-in). `passwordHash` is **not** in the RSC payload (the page selects only the rendered columns). |
 | `/admin/health` | Integration check — DB / Claude CLI / API key / Stripe / Stripe webhook / AUTH_SECRET / submission engine mode / worker / fake-payment **+ Safety mode (stop-at-review) toggle + MCP browser visibility (headless / headed) toggle** |
-| `/admin/settings` | **New in v0.1.5.** Full env-var inventory (39 vars, grouped by category, status + sensitivity pills) + the six runtime override toggles (`mcpHeaded`, `stopAtReview`, `submissionLive`, `workerDisabled`, `fakePayment`, `skipPaymentCheck`). Secret values are NEVER displayed — secrets must still be edited in `.env.local` or the hosting provider's dashboard. |
+| `/admin/settings` | Full env-var inventory (37 vars, grouped by category, status + sensitivity pills) + the **seven runtime override toggles**: `mcpHeaded`, `stopAtReview`, `submissionLive`, `workerDisabled`, `fakePayment`, `skipPaymentCheck`, and **`showMcpLiveView`** (v0.3.1 — global kill-switch for the smart card's Watch-live disclosure; default ON, OFF only when `NEXT_PUBLIC_SNAPPEAL_SHOW_MCP_LIVE_VIEW === "0"`). Secret values are NEVER displayed — secrets must still be edited in `.env.local` or the hosting provider's dashboard. |
 | `/admin/wiki` | The MkDocs build embedded via iframe so admins can read the full wiki without leaving the admin shell. Reads `NEXT_PUBLIC_WIKI_URL` (default `http://127.0.0.1:8800/`). |
 
 ## How to make yourself admin
@@ -41,7 +41,7 @@ If the user doesn't exist yet, create the account via `/sign-up` first, then run
   - `GET/PUT /api/admin/council-automation/[slug]` + `POST {action}` — save prompt, dry-run, reset-to-canonical
   - `POST /api/admin/jobs/[id]` — retry / cancel
   - `GET/PUT /api/admin/settings/mcp` — legacy MCP toggles (headed + stop-at-review). Kept for backwards compat.
-  - `GET /api/admin/settings` → `{ settings, envStatus }`. `PATCH /api/admin/settings` body `{key, value}` — flips a single runtime override.
+  - `GET /api/admin/settings` → `{ settings, envStatus }`. `PATCH /api/admin/settings` body `{key, value}` — flips a single runtime override (any of the seven listed above, including `showMcpLiveView`).
   - `POST /api/admin/inbound/classify` — sandbox classifier
 - **Layout padding**: outer wrapper adds `px-5 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-[1400px]` content gutters so every page reads consistently against the sidebar.
 

@@ -19,18 +19,19 @@
  * Hard limits: 5-minute wall-clock cap, agent budgeted via the prompt's
  * step limit (the agent is instructed to abort after 30 turns).
  */
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { runAgentic, type AgenticStreamEvent } from "../claude-cli";
+import { runAgentic } from "../claude-cli";
 import type { AppealRecord } from "../appeals";
 import { getDb, schema } from "../db/client";
 import { getAutomation } from "./automation";
 import { appendProgress, watchScreenshots } from "../jobs/progress";
 import { getSettings, mcpHeadlessFlag } from "../settings";
+import { emitToolStep, extractJsonObject } from "./_progress";
 
 type CouncilRow = typeof schema.councils.$inferSelect;
 
@@ -142,12 +143,41 @@ export async function runPortalAutomation(opts: {
   const started = Date.now();
 
   const workDir = await mkdtemp(join(tmpdir(), "snappeal-portal-"));
+  // Per-run Chrome user-data-dir lives INSIDE the workDir so each
+  // submission run gets an isolated browser profile. Avoids the
+  // "MCP session locked" failure mode where back-to-back runs share
+  // Chrome state and stall.
+  const userDataDir = join(workDir, "chrome-profile");
   const publicRoot = opts.publicRoot ?? join(process.cwd(), "public");
 
   // Stream live screenshots to the customer if we have a job to attach to.
   const watcher = jobId
     ? watchScreenshots({ jobId, workDir, publicRoot })
     : { stop: async () => {} };
+
+  // Cleanup invariant: watcher MUST stop and workDir MUST be removed
+  // even when runAgentic throws (timeout, MCP crash, network drop) so
+  // Chrome user-data dirs + screenshot byproducts don't accumulate in
+  // /tmp across runs. Without this, a busy host can grow tens of GB
+  // of orphaned Chromium profile data inside a single uptime window.
+  // We preserve the confirmation screenshot to the public submissions
+  // folder BEFORE cleanup so the customer-facing URL keeps working.
+  let cleanupDone = false;
+  const cleanup = async (): Promise<void> => {
+    if (cleanupDone) return;
+    cleanupDone = true;
+    await watcher.stop().catch(() => {});
+    if (jobId) {
+      const src = join(workDir, "confirmation.png");
+      if (existsSync(src)) {
+        const destDir = join(publicRoot, "submissions", jobId);
+        await copyFile(src, join(destDir, "confirmation.png")).catch(() => {
+          /* destDir may not exist if the watcher never fired — best-effort */
+        });
+      }
+    }
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+  };
 
   if (jobId) {
     await appendProgress(jobId, { kind: "status", message: `Connecting to ${council.name} portal` });
@@ -253,144 +283,79 @@ specified in the system prompt — no commentary.`;
   const systemPrompt = automation?.agentPrompt ?? FALLBACK_SYSTEM_PROMPT;
 
   const events: string[] = [];
-  const result = await runAgentic({
-    prompt: userPrompt,
-    systemPrompt,
-    mcpServers: {
-      playwright: {
-        command: process.platform === "win32" ? "npx.cmd" : "npx",
-        // `--output-dir` lands all browser_take_screenshot files inside our
-        // workDir so the screenshot watcher can pipe them to the customer.
-        // `--headless` is conditional: admins can toggle it off from
-        // /admin/health to watch the agent drive a council portal live.
-        args: ["-y", "@playwright/mcp@latest", ...mcpHeadlessFlag(), "--output-dir", workDir],
+  try {
+    const result = await runAgentic({
+      prompt: userPrompt,
+      systemPrompt,
+      mcpServers: {
+        playwright: {
+          command: process.platform === "win32" ? "npx.cmd" : "npx",
+          // `--output-dir` lands all browser_take_screenshot files inside our
+          // workDir so the screenshot watcher can pipe them to the customer.
+          // `--headless` is conditional: admins can toggle it off from
+          // /admin/health to watch the agent drive a council portal live.
+          // `--user-data-dir` gives each run a fresh Chrome profile so
+          // back-to-back submissions can't lock each other out.
+          args: [
+            "-y",
+            "@playwright/mcp@latest",
+            ...mcpHeadlessFlag(),
+            "--output-dir",
+            workDir,
+            "--user-data-dir",
+            userDataDir,
+          ],
+        },
       },
-    },
-    allowedTools: [
-      "mcp__playwright__*",
-      "Read",
-      "Write",
-    ],
-    addDirs: [workDir],
-    timeoutMs: 5 * 60_000,
-    onEvent: (e) => {
-      events.push(e.type);
-      if (jobId) void emitToolStep(jobId, e);
-    },
-  });
-  await watcher.stop();
+      allowedTools: [
+        "mcp__playwright__*",
+        "Read",
+        "Write",
+      ],
+      addDirs: [workDir],
+      timeoutMs: 5 * 60_000,
+      onEvent: (e) => {
+        events.push(e.type);
+        if (jobId) void emitToolStep(jobId, e);
+      },
+    });
 
-  if (jobId) {
-    await appendProgress(jobId, { kind: "status", message: "Wrapping up" });
-  }
+    if (jobId) {
+      await appendProgress(jobId, { kind: "status", message: "Wrapping up" });
+    }
 
-  const screenshotPath = join(workDir, "confirmation.png");
-  const screenshot = existsSync(screenshotPath) ? screenshotPath : null;
+    const screenshotPath = join(workDir, "confirmation.png");
+    const screenshot = existsSync(screenshotPath) ? screenshotPath : null;
 
-  // Parse the agent's final JSON reply.
-  let parsed: z.infer<typeof ResultSchema> | null = null;
-  const candidate = extractJsonObject(result.finalText);
-  if (candidate) {
-    const safe = ResultSchema.safeParse(candidate);
-    if (safe.success) parsed = safe.data;
-  }
+    // Parse the agent's final JSON reply.
+    let parsed: z.infer<typeof ResultSchema> | null = null;
+    const candidate = extractJsonObject(result.finalText);
+    if (candidate) {
+      const safe = ResultSchema.safeParse(candidate);
+      if (safe.success) parsed = safe.data;
+    }
 
-  if (!parsed) {
+    if (!parsed) {
+      return {
+        success: false,
+        councilReference: null,
+        screenshotPath: screenshot,
+        error: `agent did not return a recognisable result (events=${events.length})`,
+        durationMs: Date.now() - started,
+        costUsd: result.costUsd,
+      };
+    }
+
     return {
-      success: false,
-      councilReference: null,
+      success: parsed.success,
+      councilReference: parsed.councilReference ?? null,
       screenshotPath: screenshot,
-      error: `agent did not return a recognisable result (events=${events.length})`,
+      error: parsed.success ? null : (parsed.errorMessage ?? "agent reported failure"),
       durationMs: Date.now() - started,
       costUsd: result.costUsd,
     };
-  }
-
-  return {
-    success: parsed.success,
-    councilReference: parsed.councilReference ?? null,
-    screenshotPath: screenshot,
-    error: parsed.success ? null : (parsed.errorMessage ?? "agent reported failure"),
-    durationMs: Date.now() - started,
-    costUsd: result.costUsd,
-  };
-}
-
-/**
- * Translate a Claude CLI stream event into a customer-friendly step message.
- * Most events get squashed to nothing — we only surface tool-use calls that
- * tell a story (navigate, type, click, screenshot) plus brief model thoughts.
- */
-async function emitToolStep(jobId: string, evt: AgenticStreamEvent): Promise<void> {
-  const raw = evt.raw as Record<string, unknown> | null;
-  if (!raw) return;
-  const message = raw.message as Record<string, unknown> | undefined;
-  const content = (message?.content ?? []) as Array<Record<string, unknown>>;
-
-  for (const block of content) {
-    if (block.type === "tool_use") {
-      const name = String(block.name ?? "");
-      const input = (block.input ?? {}) as Record<string, unknown>;
-      const step = describeToolUse(name, input);
-      if (step) await appendProgress(jobId, { kind: "step", message: step });
-    } else if (block.type === "text" && evt.type === "assistant") {
-      const text = String(block.text ?? "").trim();
-      if (text && text.length < 240) {
-        await appendProgress(jobId, { kind: "thought", message: text });
-      }
-    }
+  } finally {
+    await cleanup();
   }
 }
 
-function describeToolUse(toolName: string, input: Record<string, unknown>): string | null {
-  // Drop the `mcp__playwright__` prefix for matching.
-  const short = toolName.replace(/^mcp__[^_]+__/, "");
-  switch (short) {
-    case "browser_navigate":
-      return `Opening ${String(input.url ?? "the council portal")}`;
-    case "browser_navigate_back":
-      return "Going back to the previous page";
-    case "browser_snapshot":
-      return "Reading the page";
-    case "browser_take_screenshot":
-      return "Capturing what you'd see";
-    case "browser_type":
-      return `Typing into "${String(input.element ?? input.name ?? "field")}"`;
-    case "browser_fill_form":
-      return "Filling in your details";
-    case "browser_select_option":
-      return `Selecting "${String(input.values ?? input.value ?? "option")}"`;
-    case "browser_click":
-      return `Clicking "${String(input.element ?? input.text ?? "button")}"`;
-    case "browser_press_key":
-      return `Pressing ${String(input.key ?? "a key")}`;
-    case "browser_file_upload":
-      return "Uploading evidence";
-    case "browser_wait_for":
-      return "Waiting for the page to settle";
-    case "browser_evaluate":
-      return "Inspecting the form";
-    default:
-      return null;
-  }
-}
-
-function extractJsonObject(text: string): unknown | null {
-  if (!text) return null;
-  const trimmed = text.trim();
-  // Fast path: whole reply is one JSON.
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    /* fall through */
-  }
-  // Otherwise pick the last {...} block.
-  const start = trimmed.lastIndexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(trimmed.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
