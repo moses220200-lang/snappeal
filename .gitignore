@@ -70,3 +70,5 @@ pnpm-debug.log*
 # Playwright test artefacts
 /test-results/
 /playwright-report/
+
+.vercel
