@@ -16,6 +16,7 @@
 import type { ReactNode } from "react";
 import { MapPin } from "lucide-react";
 import { formatGBP, formatShortDate } from "@/lib/format";
+import { IssuerLogoReel, type ReelCouncil } from "@/components/IssuerLogoReel";
 
 interface Props {
   council: { name: string; logoUrl?: string | null; logoBg?: string | null } | null;
@@ -33,6 +34,11 @@ interface Props {
   /** Optional — when supplied, tapping the council logo tile fires
    *  this callback (typically opens a council picker sheet). */
   onCouncilClick?: () => void;
+  /** True while the PCN is being read (card kind scanning/processing).
+   *  Drives the issuer tile's slot-machine logo reel. */
+  scanning?: boolean;
+  /** Candidate councils for the reel to cycle through while scanning. */
+  reelCouncils?: ReelCouncil[];
 }
 
 export function TicketCardHeader({
@@ -45,6 +51,8 @@ export function TicketCardHeader({
   location,
   pill,
   onCouncilClick,
+  scanning = false,
+  reelCouncils,
 }: Props) {
   return (
     <header className="px-5 pt-4 pb-3 flex items-start gap-4">
@@ -57,22 +65,13 @@ export function TicketCardHeader({
         className="shrink-0 flex flex-col items-center gap-1.5"
         onClick={(e) => e.stopPropagation()}
       >
-        {onCouncilClick ? (
-          <button
-            type="button"
-            onClick={onCouncilClick}
-            className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-snappeal-primary/40 transition active:scale-[0.98]"
-            aria-label={
-              council
-                ? `Change issuer (currently ${council.name})`
-                : "Select issuer"
-            }
-          >
-            <CouncilLogoTile council={council} councilName={councilName} />
-          </button>
-        ) : (
-          <CouncilLogoTile council={council} councilName={councilName} />
-        )}
+        <IssuerLogoReel
+          scanning={scanning}
+          council={council}
+          councilName={councilName}
+          pool={reelCouncils ?? []}
+          onCouncilClick={onCouncilClick}
+        />
         <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-snappeal-muted">
           Issuer
         </span>
@@ -114,45 +113,4 @@ export function TicketCardHeader({
       </div>
     </header>
   );
-}
-
-function CouncilLogoTile({
-  council,
-  councilName,
-}: {
-  council: Props["council"];
-  councilName: Props["councilName"];
-}) {
-  return (
-    <span
-      className="size-28 rounded-2xl border border-snappeal-border shrink-0 flex items-center justify-center overflow-hidden"
-      style={{ background: council?.logoBg || "#ffffff" }}
-      aria-hidden
-    >
-      {council?.logoUrl ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={council.logoUrl}
-          alt=""
-          className="max-w-[80%] max-h-[80%] object-contain"
-        />
-      ) : councilName ? (
-        <span className="text-[24px] font-bold text-snappeal-navy">
-          {initials(councilName)}
-        </span>
-      ) : (
-        <span className="size-full bg-snappeal-bg/60 animate-pulse" />
-      )}
-    </span>
-  );
-}
-
-function initials(name: string): string {
-  const words = name
-    .replace(/\b(of|the|borough|city|council|royal|corporation)\b/gi, "")
-    .split(/\s+/)
-    .filter(Boolean);
-  if (words.length === 0) return name.charAt(0).toUpperCase();
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
 }

@@ -958,6 +958,10 @@ export function TicketCard({
               ? () => setCouncilPickerOpen(true)
               : undefined
           }
+          scanning={
+            cardState.kind === "scanning" || cardState.kind === "processing"
+          }
+          reelCouncils={councils ?? undefined}
         />
         {!isDetail && onToggle && (
           <button
