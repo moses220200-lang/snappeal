@@ -27,7 +27,16 @@ values; never return placeholders like "[NOT READABLE]" inside a field.
 - contraventionDescription: the plain-English description as printed.
 - location: street + area where the vehicle was parked.
 - issuedAt: ISO 8601 timestamp of issue (best effort, e.g. "2026-05-12T09:14:00+01:00").
-- amountPence: full penalty in pence (e.g. 16000 for £160, 13000 for £130).
+- amountPence: the FULL penalty charge in pence — the larger figure
+  labelled "Full Amount of the Penalty Charge", NOT the reduced/discounted
+  amount. Read the digits with care: 6 vs 8, 0 vs 8, 5 vs 6, 1 vs 7 are
+  easy to confuse — zoom mentally and decide deliberately.
+  SELF-CHECK: a UK PCN's reduced charge is ALWAYS exactly 50% of the full
+  charge. If the notice prints a reduced/early-payment figure, the full
+  amount MUST equal twice it. If your reading breaks that relationship you
+  have misread a digit — re-read both figures and return the consistent
+  pair. Example: a reduced charge of £80 means the full charge is £160
+  (16000), never £180. Output integer pence (e.g. 16000 for £160).
 `;
 
 const ExtractWithConfidence = z.object({
@@ -176,8 +185,13 @@ Your job is FOUR things in one response:
      "Marylebone High Street, W1U").
    - Vehicle reg: the VRM printed on the notice. Echo what's actually in
      the photo — don't normalise.
-   - Amount: the full penalty (Band A £160 or Band B £130 are typical).
-     Output amountPence as the integer pence (e.g. 16000 for £160).
+   - Amount: the FULL penalty charge (the larger figure labelled "Full
+     Amount of the Penalty Charge", NOT the reduced/early-payment amount;
+     Band A £160 or Band B £130 are typical). Read digits deliberately —
+     6 vs 8, 0 vs 8, 5 vs 6, 1 vs 7 are easily confused. SELF-CHECK: the
+     reduced charge is always exactly 50% of the full charge, so the full
+     amount must equal twice any reduced figure printed (e.g. £80 reduced
+     ⇒ £160 full, never £180). Output amountPence as integer pence.
    - councilSlug: lowercase, kebab-case, matching one of:
      westminster, kensington-chelsea, camden, lambeth, islington, tfl,
      city-of-london, hackney, southwark, tower-hamlets, ... If you can't

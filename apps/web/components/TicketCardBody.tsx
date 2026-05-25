@@ -484,18 +484,6 @@ function ProcessingStepRow({
  * by a poor-quality submission.
  */
 
-/** YYYY-MM-DD value expected by <input type="date">. Accepts ISO
- *  timestamps or already-truncated date strings; returns "" for null. */
-function toDateInputValue(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 function PendingReviewCard({
   appeal,
   ocrHandoff,
@@ -524,15 +512,15 @@ function PendingReviewCard({
   const ticket = appeal.ticket;
   const coach = ocrHandoff?.photoCoach ?? null;
   // Optimistic local state so typing feels instant even on a slow PATCH.
+  // Only the two fields the council lookup actually needs are editable
+  // here — PCN reference + registration. Amount and issue date are NOT
+  // shown/edited at this stage: the OCR'd figures are treated as a
+  // preview and the council's record is authoritative once verified, so
+  // surfacing an editable (and occasionally misread) amount here just
+  // invited mistrust.
   const [pcnRefLocal, setPcnRefLocal] = useState<string>(ticket?.pcnRef ?? "");
   const [vehicleRegLocal, setVehicleRegLocal] = useState<string>(
     ticket?.vehicleReg ?? "",
-  );
-  const [amountLocal, setAmountLocal] = useState<string>(
-    ticket?.amountPence != null ? String(Math.round(ticket.amountPence / 100)) : "",
-  );
-  const [issuedAtLocal, setIssuedAtLocal] = useState<string>(
-    toDateInputValue(ticket?.issuedAt ?? null),
   );
   // Sync local state when the appeal row refreshes (e.g. from a
   // reconciliation poll). All setStates are external-sync (prop->state).
@@ -540,18 +528,7 @@ function PendingReviewCard({
   useEffect(() => {
     setPcnRefLocal(ticket?.pcnRef ?? "");
     setVehicleRegLocal(ticket?.vehicleReg ?? "");
-    setAmountLocal(
-      ticket?.amountPence != null
-        ? String(Math.round(ticket.amountPence / 100))
-        : "",
-    );
-    setIssuedAtLocal(toDateInputValue(ticket?.issuedAt ?? null));
-  }, [
-    ticket?.pcnRef,
-    ticket?.vehicleReg,
-    ticket?.amountPence,
-    ticket?.issuedAt,
-  ]);
+  }, [ticket?.pcnRef, ticket?.vehicleReg]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Inline-validate: PCN ref + vehicle reg + council are the minimum
@@ -597,39 +574,12 @@ function PendingReviewCard({
         placeholder="AB12 CDE"
         autoCapitalize="characters"
       />
-      {/* Issuing council field has moved to the council logo tile in
-       *  the ticket header — tapping the square logo opens the same
-       *  picker. Removing it here avoids the duplicate row. */}
-      <EditableFieldRow
-        label="Amount"
-        value={amountLocal}
-        onChange={(v) => {
-          // Strip anything that isn't a digit or dot, then keep at
-          // most one dot. Persist as pence on PATCH.
-          const cleaned = v
-            .replace(/[^0-9.]/g, "")
-            .replace(/(\..*)\./g, "$1");
-          setAmountLocal(cleaned);
-          const pounds = Number(cleaned);
-          if (Number.isFinite(pounds) && pounds >= 0) {
-            onEditField?.("amountPence", String(Math.round(pounds * 100)));
-          }
-        }}
-        placeholder="130"
-        prefix="£"
-        inputMode="decimal"
-      />
-      <EditableFieldRow
-        label="Issue date"
-        value={issuedAtLocal}
-        onChange={(v) => {
-          setIssuedAtLocal(v);
-          // <input type="date"> emits YYYY-MM-DD; the backend
-          // accepts an ISO string. Empty string clears the field.
-          if (v) onEditField?.("issuedAt", new Date(v).toISOString());
-        }}
-        type="date"
-      />
+      {/* Issuing council field lives on the council logo tile in the
+       *  ticket header — tapping the square logo opens the picker.
+       *  Amount + issue date are intentionally NOT editable here: the
+       *  council's record is authoritative once verified, so we don't
+       *  surface a (sometimes misread) amount for the user to second-
+       *  guess at this stage. */}
 
       {/* Photo-coach hint (only when not "good") */}
       {coach && coach.quality !== "good" && coach.advice && (
