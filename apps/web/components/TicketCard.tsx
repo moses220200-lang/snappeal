@@ -689,52 +689,32 @@ export function TicketCard({
     }
   };
 
-  // Re-runs the drafter on the EXISTING grounds + notes but with the
-  // current evidence-photos set. Used when the strength scorer flagged
-  // the original draft as weak — adding photos and redrafting often
-  // boosts the score because the AI can splice the new evidence in.
-  //
-  // Optimistic flow: clears letterBody locally so deriveCardState
-  // routes the card back into the `drafting` state (with its own
-  // loader + polling). Server-side, generate-stream overwrites the
-  // letter + strengthScore when it settles; the drafting poll picks
-  // up the new values.
-  const redraftWithEvidence = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
+  // Re-score the EXISTING appeal with the latest evidence photos — the
+  // letter is NOT rewritten. The /rescore endpoint re-evaluates strength
+  // only; we refresh the appeal so the weak-appeal warning updates in
+  // place (and clears once the score crosses 50). Returns when done so
+  // the caller can drop its "re-scoring…" spinner.
+  const rescoreWithEvidence = async (photos: string[]): Promise<void> => {
     try {
-      // Optimistic local clear so the card immediately flips to the
-      // "drafting" loader instead of staying on the old letter.
-      refreshAppeal({
-        ...appeal,
-        letterBody: null,
-        letterSubject: null,
-        letterWordCount: null,
-        strengthScore: null,
-        strengthRationale: null,
-        strengthImprovements: null,
-      });
-      const pcnPhoto = getPcnPhoto();
-      const evidencePhotos = getEvidencePhotos();
-      void fetch("/api/generate-stream", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-snappeal-session": getOrCreateSessionId(),
+      const res = await fetch(
+        `/api/appeals/${encodeURIComponent(appeal.id)}/rescore`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-snappeal-session": getOrCreateSessionId(),
+          },
+          body: JSON.stringify({
+            sessionId: getOrCreateSessionId(),
+            evidencePhotos: photos,
+          }),
         },
-        body: JSON.stringify({
-          sessionId: getOrCreateSessionId(),
-          appealId: appeal.id,
-          pcnPhoto: pcnPhoto ?? undefined,
-          evidencePhotos,
-          confirmedTicket: appeal.ticket ?? undefined,
-        }),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't redraft");
-    } finally {
-      setBusy(false);
+      );
+      if (!res.ok) return;
+      const json = (await res.json()) as { appeal?: AppealRecord };
+      if (json.appeal) refreshAppeal(json.appeal);
+    } catch {
+      /* non-fatal — the score simply stays as it was */
     }
   };
 
@@ -903,7 +883,7 @@ export function TicketCard({
     onOverrideLookup: () => void overrideLookup(),
     onConfirmTicket: () => void confirmTicket(),
     onConfirmEvidence: (input) => void confirmEvidenceAndDraft(input),
-    onRedraftWithEvidence: () => void redraftWithEvidence(),
+    onRescoreWithEvidence: (photos) => void rescoreWithEvidence(photos),
     onEditTicketField: editTicketField,
   });
 
@@ -1282,7 +1262,7 @@ interface BuildStepArgs {
   onOverrideLookup: () => void;
   onConfirmTicket: () => void;
   onConfirmEvidence: (input: { grounds: string[]; notes: string }) => void;
-  onRedraftWithEvidence: () => void;
+  onRescoreWithEvidence: (photos: string[]) => void;
   onEditTicketField: (
     field:
       | "pcnRef"
@@ -1315,7 +1295,7 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
     onOverrideLookup,
     onConfirmTicket,
     onConfirmEvidence,
-    onRedraftWithEvidence,
+    onRescoreWithEvidence,
     onEditTicketField,
   } = args;
 
@@ -1351,7 +1331,7 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
       onOverrideLookup={onOverrideLookup}
       onConfirmTicket={onConfirmTicket}
       onConfirmEvidence={onConfirmEvidence}
-      onRedraftWithEvidence={onRedraftWithEvidence}
+      onRescoreWithEvidence={onRescoreWithEvidence}
       onEditTicketField={onEditTicketField}
       pcnImage={pcnImage}
       ocrHandoff={ocrHandoff}

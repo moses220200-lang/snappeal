@@ -410,6 +410,26 @@ export async function markAppealNotes(appealId: string, notes: string | null): P
 }
 
 /**
+ * Update ONLY the appeal-strength fields — used by the re-score flow when a
+ * customer adds more evidence to a weak appeal. The drafted letter is left
+ * untouched; only the score / rationale / improvements change.
+ */
+export async function updateAppealStrength(
+  appealId: string,
+  strength: { score: number; rationale: string; improvements: string[] },
+): Promise<void> {
+  await db()
+    .update(schema.appeals)
+    .set({
+      strengthScore: strength.score,
+      strengthRationale: strength.rationale,
+      strengthImprovements: strength.improvements,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.appeals.id, appealId));
+}
+
+/**
  * Flag an appeal whose draft generation threw so the Letter page can stop
  * polling and show a Retry button instead of looping forever. Uses `step` as
  * the state marker — `attachDraftToAppeal` resets step back to "ready" on

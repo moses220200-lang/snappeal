@@ -77,10 +77,10 @@ interface Props {
    *  gathering_evidence state. The card PATCHes grounds + notes + step
    *  sentinel atomically then triggers /api/generate-stream. */
   onConfirmEvidence?: (input: { grounds: string[]; notes: string }) => void;
-  /** Re-runs the drafter with the existing grounds + notes but the
-   *  latest evidence-photo set. Surfaced inside PaidSubmitCta when
-   *  the strength scorer flagged the draft as weak. */
-  onRedraftWithEvidence?: () => void;
+  /** Re-scores the appeal with the latest evidence photos (no redraft).
+   *  Surfaced inside PaidSubmitCta when the strength scorer flagged the
+   *  draft as weak — adding evidence updates the score in place. */
+  onRescoreWithEvidence?: (photos: string[]) => Promise<void> | void;
   /** v0.2.17 — debounced PATCH of a single ticket field (PCN ref /
    *  vehicle reg / council slug). Fired from the editable inputs +
    *  council select on PendingReviewCard. */
@@ -113,7 +113,7 @@ export function TicketCardBody({
   onOverrideLookup,
   onConfirmTicket,
   onConfirmEvidence,
-  onRedraftWithEvidence,
+  onRescoreWithEvidence,
   onEditTicketField,
   pcnImage,
   ocrHandoff,
@@ -189,7 +189,7 @@ export function TicketCardBody({
           appeal={appeal}
           busy={busy}
           onOpenPaymentSheet={onOpenPaymentSheet}
-          onRedraftWithEvidence={onRedraftWithEvidence}
+          onRescoreWithEvidence={onRescoreWithEvidence}
         />
       );
     case "submitted":
@@ -1383,40 +1383,50 @@ function PaidSubmitCta({
   appeal,
   busy,
   onOpenPaymentSheet,
-  onRedraftWithEvidence,
+  onRescoreWithEvidence,
 }: {
   appeal: AppealRecord;
   busy?: boolean;
   onOpenPaymentSheet: () => void;
-  /** Re-runs the drafter with the latest evidence-photo set. Surfaced
-   *  inside the weak-appeal warning so the user can boost a poor
-   *  draft by adding photos rather than abandoning. */
-  onRedraftWithEvidence?: () => void;
+  /** Re-scores the appeal with the latest evidence photos (no redraft).
+   *  Surfaced inside the weak-appeal warning so adding evidence updates
+   *  the score in place. */
+  onRescoreWithEvidence?: (photos: string[]) => Promise<void> | void;
 }) {
   const score = appeal.strengthScore;
   const rationale = appeal.strengthRationale;
   const improvements = appeal.strengthImprovements ?? [];
   const tone: "strong" | "solid" | "weak" | null =
     score == null ? null : score >= 80 ? "strong" : score >= 50 ? "solid" : "weak";
-  // Weak appeals gate the £2.99 submit CTA behind an explicit "Use
-  // anyway" tap. The letter is still drafted and displayed with the
-  // typewriter reveal — only the next destructive step (paying to
-  // submit a likely-doomed letter) requires acknowledging the risk.
+  // Weak appeals gate the £2.99 submit CTA behind an explicit "Submit
+  // anyway" tap. The letter is still drafted and shown — only the next
+  // destructive step (paying to submit a likely-doomed letter) needs the
+  // risk acknowledged.
   const [useAnywayPressed, setUseAnywayPressed] = useState(false);
   const ctaVisible = tone !== "weak" || useAnywayPressed;
 
-  // Evidence-boost flow. Default-collapsed; expands an EvidenceCarousel
-  // when the user taps "Add evidence". Once at least one photo has
-  // been added, the primary CTA flips to "Redraft with evidence" so
-  // the user can fire the AI again with the new context.
+  // Add-more-evidence flow. Default-collapsed; expands an EvidenceCarousel
+  // when the user taps "Add more evidence". Adding photos re-scores the
+  // appeal automatically (no redraft) — the warning updates in place and
+  // disappears once the score crosses 50.
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [evidenceCount, setEvidenceCount] = useState<number>(() =>
+  const [rescoring, setRescoring] = useState(false);
+  const lastScoredCountRef = useRef<number>(
     typeof window === "undefined" ? 0 : getEvidencePhotos().length,
   );
-  const handleRedraft = () => {
-    setUseAnywayPressed(false);
-    setEvidenceOpen(false);
-    onRedraftWithEvidence?.();
+
+  const handleEvidenceChange = (next: string[]) => {
+    // Re-score only when the photo set actually changed, one call at a
+    // time. The parent refreshes the appeal so `score` updates and the
+    // warning re-renders (or unmounts once it's ≥ 50).
+    if (!onRescoreWithEvidence) return;
+    if (next.length === lastScoredCountRef.current) return;
+    if (rescoring) return;
+    lastScoredCountRef.current = next.length;
+    setRescoring(true);
+    void Promise.resolve(onRescoreWithEvidence(next)).finally(() =>
+      setRescoring(false),
+    );
   };
   return (
     <section className="flex flex-col gap-3">
@@ -1459,84 +1469,32 @@ function PaidSubmitCta({
             </ul>
           )}
 
-          {/* Evidence-boost flow — gives the user a constructive
-           *  next step instead of just "abandon or submit weak". */}
-          {onRedraftWithEvidence && !evidenceOpen && evidenceCount === 0 && (
+          {/* Add more evidence — re-scores in place, no redraft. */}
+          {onRescoreWithEvidence && !evidenceOpen && (
             <button
               type="button"
               onClick={() => setEvidenceOpen(true)}
               className="mt-1 w-full rounded-2xl bg-snappeal-primary text-white font-bold py-3 text-[13px] hover:bg-snappeal-primary-600 transition active:scale-[0.99] inline-flex items-center justify-center gap-2"
             >
               <Camera className="size-4" strokeWidth={2.25} />
-              Add evidence to boost score
+              Add more evidence
             </button>
           )}
 
           {evidenceOpen && (
-            <div className="mt-1 rounded-2xl bg-white border border-red-200 p-3 flex flex-col gap-3">
+            <div className="mt-1 rounded-2xl bg-white border border-red-200 p-3 flex flex-col gap-2.5">
               <p className="text-[11.5px] text-snappeal-muted leading-snug">
-                Add photos of the sign, markings, or scene. Rabbit will
-                rewrite the appeal with the new evidence and re-score it.
+                Add photos of the sign, markings, or scene — Rabbit
+                re-scores your appeal automatically as you add them.
               </p>
-              <EvidenceCarousel
-                onChange={(next) => setEvidenceCount(next.length)}
-              />
-              <button
-                type="button"
-                onClick={handleRedraft}
-                disabled={evidenceCount === 0 || busy}
-                className="w-full rounded-2xl bg-snappeal-primary text-white font-bold py-3 text-[13px] hover:bg-snappeal-primary-600 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Redrafting…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles
-                      className="size-4"
-                      strokeWidth={2.25}
-                      fill="white"
-                    />
-                    {evidenceCount > 0
-                      ? `Redraft with ${evidenceCount} photo${
-                          evidenceCount === 1 ? "" : "s"
-                        }`
-                      : "Add at least one photo"}
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* Already have photos but the score is still weak? Offer a
-           *  redraft directly (the original draft may have run BEFORE
-           *  the photos were added). */}
-          {onRedraftWithEvidence && !evidenceOpen && evidenceCount > 0 && (
-            <button
-              type="button"
-              onClick={handleRedraft}
-              disabled={busy}
-              className="mt-1 w-full rounded-2xl bg-snappeal-primary text-white font-bold py-3 text-[13px] hover:bg-snappeal-primary-600 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
-            >
-              {busy ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Redrafting…
-                </>
-              ) : (
-                <>
-                  <Sparkles
-                    className="size-4"
-                    strokeWidth={2.25}
-                    fill="white"
-                  />
-                  Redraft with your {evidenceCount} photo
-                  {evidenceCount === 1 ? "" : "s"}
-                </>
+              <EvidenceCarousel onChange={handleEvidenceChange} />
+              {rescoring && (
+                <p className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-snappeal-primary">
+                  <Loader2 className="size-3.5 animate-spin" strokeWidth={2.5} />
+                  Re-scoring your appeal…
+                </p>
               )}
-            </button>
+            </div>
           )}
 
           {!useAnywayPressed && (
@@ -1545,7 +1503,7 @@ function PaidSubmitCta({
               onClick={() => setUseAnywayPressed(true)}
               className="w-full rounded-2xl bg-white border-2 border-red-300 text-red-900 font-bold py-3 text-[13px] hover:bg-red-100 transition active:scale-[0.99]"
             >
-              Use anyway
+              Submit anyway
             </button>
           )}
         </aside>

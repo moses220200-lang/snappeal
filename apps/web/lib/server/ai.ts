@@ -145,6 +145,72 @@ export async function strengthenNotes(input: {
 }
 
 /**
+ * Re-score an EXISTING appeal's strength without redrafting the letter.
+ *
+ * Used when a customer adds more evidence to a weak appeal: we re-evaluate
+ * how likely the appeal is to succeed given the (unchanged) letter + the
+ * new evidence photos, and return a fresh AppealStrength. The letter is
+ * never rewritten — only the score/rationale/improvements update.
+ */
+const SCORE_PROMPT = `You are ParkingRabbit's appeal-strength assessor for London PCN appeals.
+
+You are given a drafted appeal letter, the grounds it relies on, the user's
+notes, the issuing council, and the evidence photos the user has attached.
+Score how likely this appeal is to SUCCEED on review by the council /
+adjudicator, 0–100:
+  80–100 strong    — solid grounds AND evidence that clearly supports them
+  50–79  solid     — plausible grounds with reasonable supporting evidence
+  30–49  weak      — argument plausible but the evidence is thin / generic
+   0–29  very weak — little or no evidence supports the chosen grounds
+
+Judge the EVIDENCE PHOTOS critically and specifically. A wide, general scene
+shot is weaker than a close-up that isolates the exact issue (the specific
+faded bay markings, the obscured sign, the displayed permit/badge). More
+relevant, specific photos must RAISE the score; generic or irrelevant photos
+must not. Adding strong corroborating photos to a previously thin appeal
+should move the score up meaningfully.
+
+Return:
+  score: integer 0–100
+  rationale: <=280 chars — one or two sentences, referencing the ACTUAL
+    evidence supplied (mention the photos when relevant).
+  improvements: up to 3 short, concrete next steps that would raise the
+    score further (<=140 chars each). If the appeal is already strong,
+    return an empty array.`;
+
+export async function scoreAppealStrength(input: {
+  letterBody: string;
+  grounds: string[];
+  notes?: string | null;
+  council?: string | null;
+  evidencePhotoDataUrls?: string[];
+}): Promise<z.infer<typeof AppealStrength>> {
+  const photos = input.evidencePhotoDataUrls ?? [];
+  const parts: string[] = [];
+  if (input.council) parts.push(`Issuing council: ${input.council}`);
+  if (input.grounds.length) {
+    parts.push(`Grounds relied on: ${input.grounds.join(", ")}`);
+  }
+  if (input.notes && input.notes.trim()) {
+    parts.push(`User's account of what happened:\n${input.notes.trim()}`);
+  }
+  parts.push(`Drafted appeal letter:\n${input.letterBody}`);
+  parts.push(
+    `The user has attached ${photos.length} evidence photo${
+      photos.length === 1 ? "" : "s"
+    }${photos.length ? " — assess each one below." : "."}`,
+  );
+  const { value } = await runStructured({
+    prompt: parts.join("\n\n"),
+    schema: AppealStrength,
+    systemPrompt: SCORE_PROMPT,
+    imageDataUrls: photos,
+    timeoutMs: 45_000,
+  });
+  return value;
+}
+
+/**
  * Single-call AI extraction + drafting.
  *
  * Takes the PCN photo (and any evidence photos), the user's notes, and
