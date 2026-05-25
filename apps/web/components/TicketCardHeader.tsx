@@ -22,6 +22,10 @@ interface Props {
   council: { name: string; logoUrl?: string | null; logoBg?: string | null } | null;
   councilName: string | null;
   amountPence: number | null;
+  /** Optional explanation shown under the amount when the council's
+   *  verified figure differs from the scanned one — values are never
+   *  changed silently. Null pre-verification / when unchanged. */
+  amountNote?: string | null;
   pcnRef: string | null;
   vehicleReg: string | null;
   issuedAt: string | null;
@@ -45,6 +49,7 @@ export function TicketCardHeader({
   council,
   councilName,
   amountPence,
+  amountNote,
   pcnRef,
   vehicleReg,
   issuedAt,
@@ -91,6 +96,11 @@ export function TicketCardHeader({
             </p>
           )}
         </div>
+        {amountNote && (
+          <p className="mt-1 text-[11px] font-semibold text-amber-700 leading-snug snappeal-amount-note">
+            {amountNote}
+          </p>
+        )}
         {pill && <div className="mt-2">{pill}</div>}
         <p className="text-[12px] font-semibold text-snappeal-muted mt-2 leading-tight">
           {pcnRef ?? "Reading PCN…"}

@@ -54,6 +54,7 @@ import {
   type LifecycleStepStatus,
 } from "@/components/TicketLifecycleTimeline";
 import { formatGBP, formatShortDate } from "@/lib/format";
+import { resolveDisplayTicket, assertAmountConsistency } from "@/lib/ticketDisplay";
 import {
   deriveCardState,
   EVIDENCE_DONE_STEP,
@@ -475,24 +476,35 @@ export function TicketCard({
 
   // ─── derived display info ───
   const ticket = appeal.ticket;
-  // Prefer council-confirmed metadata over OCR'd ticket fields once
-  // portal lookup has run.
-  const meta = appeal.portalLookup?.metadata;
-  const displayPcnRef = meta?.pcnRef ?? ticket?.pcnRef ?? null;
-  const displayVehicleReg = meta?.vehicleReg ?? ticket?.vehicleReg ?? null;
-  const displayLocation = meta?.location ?? ticket?.location ?? null;
-  const displayIssuedAt = meta?.issuedAt ?? ticket?.issuedAt ?? null;
-  // Authoritative amount precedence: live council snapshot's current due >
-  // portal-lookup metadata amount > OCR'd ticket amount. The status
-  // snapshot is a live read from the issuer's portal, so its
-  // `currentDuePence` always wins over Claude's vision pass — which has
-  // been observed to hallucinate amounts (e.g. £80 when the real PCN
-  // is £130 / £65 discounted).
-  const displayAmountPence =
-    statusSnapshot?.currentDuePence ??
-    meta?.amountPence ??
-    ticket?.amountPence ??
-    null;
+  // Single source of truth for every displayed field. Trust rule: before
+  // the council has VERIFIED the PCN, all values (incl. the £ amount) come
+  // ONLY from the OCR-extracted ticket — never the eagerly-fetched
+  // status-checker balance or an inferred/discounted figure. This keeps
+  // the header amount identical to the confirm-form amount until the
+  // council confirms otherwise. See lib/ticketDisplay.ts.
+  const display = useMemo(
+    () => resolveDisplayTicket(appeal, statusSnapshot),
+    [appeal, statusSnapshot],
+  );
+  // Dev-only guardrail: scream if a pre-verification mismatch ever returns.
+  useEffect(() => {
+    assertAmountConsistency(display);
+  }, [display]);
+  const displayPcnRef = display.pcnRef;
+  const displayVehicleReg = display.vehicleReg;
+  const displayLocation = display.location;
+  const displayIssuedAt = display.issuedAt;
+  const displayAmountPence = display.amountPence;
+  // When the council's verified amount differs from what was scanned,
+  // explain it rather than swapping the number silently.
+  const amountNote =
+    display.amountChangedByCouncil && display.verifiedAmountPence != null
+      ? `Council records show ${formatGBP(display.verifiedAmountPence)}${
+          display.ocrAmountPence != null
+            ? ` — you scanned ${formatGBP(display.ocrAmountPence)}`
+            : ""
+        }`
+      : null;
 
   const council = useMemo(() => {
     if (!appeal.councilSlug || !councils) return null;
@@ -948,6 +960,7 @@ export function TicketCard({
           }
           councilName={councilName}
           amountPence={displayAmountPence}
+          amountNote={amountNote}
           pcnRef={displayPcnRef}
           vehicleReg={displayVehicleReg}
           issuedAt={displayIssuedAt}

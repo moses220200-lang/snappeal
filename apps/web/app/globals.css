@@ -449,6 +449,13 @@ html {
   animation: snappeal-issuer-glow 760ms ease-out forwards;
 }
 
+/* Gentle reveal for the "council adjusted the amount" note in the card
+ * header — when the verified figure differs from what was scanned the
+ * explanation fades in rather than the number swapping silently. */
+.snappeal-amount-note {
+  animation: snappeal-mcp-fade-in 420ms ease-out;
+}
+
 /* Respect users who want reduced motion — fall back to a quick fade */
 @media (prefers-reduced-motion: reduce) {
   .snappeal-issuer-land,
