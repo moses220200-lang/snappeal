@@ -67,12 +67,12 @@ test.describe("In-app /app", () => {
     await expect(page.getByText("Enter PCN")).toBeVisible();
   });
 
-  test("Inbox tab routes to /app/inbox", async ({ page }) => {
+  test("Support tab routes to /app/support", async ({ page }) => {
     await page.goto("/app");
-    await page.getByRole("link", { name: "Inbox", exact: true }).click();
-    await expect(page).toHaveURL(/\/app\/inbox$/);
+    await page.getByRole("link", { name: "Support", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/support$/);
     await expect(
-      page.getByRole("heading", { name: "Inbox", exact: true }),
+      page.getByRole("heading", { name: "Support", exact: true }),
     ).toBeVisible();
   });
 

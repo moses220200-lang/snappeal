@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { ExternalLink, Mail, MessageCircle } from "lucide-react";
+import { ExternalLink, Mail } from "lucide-react";
 import { ProfileSubPage } from "@/components/ProfileSubPage";
 
 const FAQ = [
@@ -63,18 +62,6 @@ export default function HelpPage() {
           </span>
           <ExternalLink className="size-4 text-snappeal-muted" />
         </a>
-        <Link
-          href="/app/inbox"
-          className="rounded-xl bg-snappeal-primary-50 border border-snappeal-primary-100 px-4 py-3 flex items-center gap-3 text-sm text-snappeal-navy"
-        >
-          <span className="size-9 rounded-xl bg-white text-snappeal-primary flex items-center justify-center">
-            <MessageCircle className="size-[1.125rem]" />
-          </span>
-          <span className="flex-1">
-            <span className="block font-semibold">Check your inbox</span>
-            <span className="block text-xs text-snappeal-muted">Council replies + receipts are all there.</span>
-          </span>
-        </Link>
       </section>
     </ProfileSubPage>
   );

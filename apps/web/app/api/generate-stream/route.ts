@@ -26,6 +26,8 @@ import {
 import { getViewer } from "@/lib/server/viewer";
 import { GenerateRequest } from "@/lib/server/contracts";
 import { generateSemaphore } from "@/lib/server/concurrency";
+import { getCardById } from "@/lib/grounds-catalog";
+import { loadKnowledgePack } from "@/lib/server/knowledge";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -38,10 +40,24 @@ function sseFrame(event: string, data: unknown): string {
 }
 
 export async function POST(request: Request) {
+  // Parse raw JSON first so we can flag the appeal row even when the
+  // strict Zod parse rejects the payload — without this, the client's
+  // 3s polling loop spins for 3 minutes on a request that already 400'd
+  // (a fire-and-forget `void fetch` swallows the response). Flagging
+  // the row flips it to `step="generation_failed"` so the card can
+  // surface a Retry CTA on the next poll tick.
+  const raw = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const rawAppealId = typeof raw.appealId === "string" ? raw.appealId : undefined;
+
   let body: z.infer<typeof Body>;
   try {
-    body = Body.parse(await request.json());
+    body = Body.parse(raw);
   } catch (err) {
+    console.error(
+      `[generate-stream] invalid body for appeal=${rawAppealId ?? "<unknown>"}:`,
+      err instanceof Error ? err.message : err,
+    );
+    if (rawAppealId) await markAppealFailed(rawAppealId).catch(() => {});
     return new Response(
       sseFrame("error", { message: `Invalid body: ${String(err)}` }),
       { status: 400, headers: { "content-type": "text/event-stream" } },
@@ -77,34 +93,73 @@ export async function POST(request: Request) {
         }
         send("appeal", { appealId });
 
+        // Pull the freshest appeal row so the drafter sees the latest
+        // notes, grounds, portal lookup, etc. — these may have been
+        // PATCHed in moments before the SSE request arrived.
+        const appealRow = await getAppealById(appealId);
+
+        // Resolve the user's selected card IDs to rich objects (label,
+        // promptHook, weight) the drafter can stitch into the letter.
+        const selectedCards = (appealRow?.grounds ?? [])
+          .map((id) => getCardById(id))
+          .filter((c): c is NonNullable<ReturnType<typeof getCardById>> => !!c)
+          .map((c) => ({
+            id: c.id,
+            label: c.label,
+            promptHook: c.promptHook,
+            weight: c.weight,
+          }));
+
+        // Load the markdown knowledge pack — precedents + code briefs +
+        // council brief filtered by the user's actual context. The
+        // contravention code comes from the portal lookup when verified
+        // (more authoritative), otherwise from OCR.
+        const knowledgePack = await loadKnowledgePack({
+          groundIds: appealRow?.grounds ?? [],
+          contraventionCode:
+            appealRow?.portalLookup?.metadata?.contraventionCode ??
+            appealRow?.ticket?.contraventionCode,
+          councilSlug:
+            appealRow?.councilSlug ?? appealRow?.ticket?.councilSlug ?? undefined,
+        });
+
         // Generate the full draft. We stream a synthetic "typing" effect
         // across the final letter body so the UI feels live even when the
         // underlying CLI call is one-shot. (Full token-stream pass-through
         // is a follow-up: switch to runAgentic with stream-json forwarding.)
         //
-        // `confirmedTicket` MUST be forwarded — without it the drafter has
-        // to re-OCR the PCN from scratch, which on real photos blows the
-        // 120s CLI timeout (the streaming cutover originally dropped this
-        // and silently failed every real-photo request).
+        // `confirmedTicket` matters for cost + latency: when complete, the
+        // drafter skips a re-OCR pass that otherwise blows the 120s CLI
+        // timeout. On the ticket-detail "Start drafting" path the client
+        // doesn't send one (no fresh /app/capture session), so we fall
+        // back to whatever the appeal row already has on file.
         // The semaphore matches `/api/generate` so a burst of concurrent
         // SSE requests doesn't fork unbounded `claude` subprocesses.
+        const confirmedTicket = body.confirmedTicket ?? appealRow?.ticket ?? undefined;
         const release = await generateSemaphore.acquire();
         let draft;
         try {
           draft = await generateDraft({
             pcnPhotoDataUrl: body.pcnPhoto,
             evidencePhotoDataUrls: body.evidencePhotos,
-            notes: body.notes,
-            confirmedTicket: body.confirmedTicket,
+            notes: appealRow?.notes ?? body.notes,
+            confirmedTicket,
+            selectedCards,
+            portalMetadata: appealRow?.portalLookup?.metadata,
+            knowledgePack,
           });
         } finally {
           release();
         }
         send("ticket", { ticket: draft.ticket });
         for (const g of draft.groundIds) send("ground", { groundId: g });
+        send("strength", { strength: draft.strength });
 
         // Persist now so the appeal page can fetch it concurrently.
-        const persisted = await attachDraftToAppeal(appealId, draft);
+        const persisted = await attachDraftToAppeal(appealId, draft, {
+          usedIds: knowledgePack.usedIds,
+          tokens: knowledgePack.approxTokens,
+        });
 
         // Stream the letter in 80-char chunks with a tiny delay so the UI
         // gets a visible typing animation.
@@ -127,6 +182,15 @@ export async function POST(request: Request) {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "stream failed";
+        // Surface the actual error in the server console — the client
+        // uses a fire-and-forget `void fetch` and never reads the SSE
+        // body, so without this log a "Drafting hit a snag" symptom is
+        // invisible to anyone debugging. The full Error stack is most
+        // useful — include it when available.
+        console.error(
+          `[generate-stream] drafting failed for appeal=${appealId ?? "<unknown>"}:`,
+          err instanceof Error ? err.stack ?? err.message : err,
+        );
         // Flag the row so a later visit to /app/letter/<id> can offer Retry
         // instead of polling forever on a null letterBody.
         if (appealId) {

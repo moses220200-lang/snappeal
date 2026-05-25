@@ -4,7 +4,7 @@
 //   { title: string, body: string, url?: string, tag?: string }
 //
 // Clicking a notification focuses an existing tab if any, otherwise opens
-// the supplied URL (defaults to the app's /app/inbox).
+// the supplied URL (defaults to the app's /app/tickets).
 
 self.addEventListener("install", () => {
   // Activate the new worker immediately; we don't pre-cache anything yet.
@@ -29,7 +29,7 @@ self.addEventListener("push", (event) => {
     icon: "/logo.svg",
     badge: "/logo.svg",
     tag: payload.tag,
-    data: { url: payload.url || "/app/inbox" },
+    data: { url: payload.url || "/app/tickets" },
     requireInteraction: false,
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -37,7 +37,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/app/inbox";
+  const url = event.notification.data?.url || "/app/tickets";
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
