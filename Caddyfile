@@ -1,5 +1,5 @@
 # Snappeal local reverse proxy
-# - `/` → the Next.js prototype running on the host at :3000
+# - `/` → the Next.js dev server running on the host at :3001
 # - `/wiki/*` → the MkDocs wiki container at wiki:8000 (strip prefix)
 # - `/docs` → redirect to /wiki/ for convenience
 #
@@ -18,8 +18,12 @@
         reverse_proxy wiki:8000
     }
 
-    # Everything else → Next.js dev server on the host
+    # Everything else → Next.js dev server on the host.
+    # Must match the dev port in apps/web/package.json (`next dev --port 3001`)
+    # and the cloudflared target in docker-compose.yml. When the dev port moved
+    # 3000 → 3001 (commit 6f7db81) this proxy was left on 3000, so the named
+    # Cloudflare tunnel (snappeal.theailab.dev) fronting this Caddy 502'd.
     handle {
-        reverse_proxy host.docker.internal:3000
+        reverse_proxy host.docker.internal:3001
     }
 }
