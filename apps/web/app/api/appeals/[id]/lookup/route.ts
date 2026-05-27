@@ -80,6 +80,18 @@ export async function POST(
           skipped: false,
           inFlight: true,
         });
+      case "cached":
+        // v0.3.12 — cache hit. The snapshot was already persisted onto
+        // appeal.portal_lookup by enqueueLookupIfAutomated, so we just
+        // hand the client the freshly-updated appeal row and a flag it
+        // can show ("Council already validated — fast-forwarded").
+        return NextResponse.json({
+          skipped: false,
+          cached: true,
+          ticketId: result.ticketId,
+          ageMs: result.ageMs,
+          appeal: await getAppealById(id),
+        });
       case "skipped":
         return NextResponse.json({
           skipped: true,

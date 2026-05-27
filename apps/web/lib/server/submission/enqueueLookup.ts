@@ -24,7 +24,7 @@
  *                   nothing was enqueued.
  *   "appeal_missing" — no appeal row for the id.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb, schema } from "../db/client";
 import { enqueue } from "../jobs/queue";
 import {
@@ -32,10 +32,22 @@ import {
   persistPortalLookup,
   DatabaseNotConfiguredError,
 } from "../appeals";
+import {
+  appealTicketIdentity,
+  getCachedSnapshot,
+  logAudit,
+  upsertTicketFromAppeal,
+} from "../tickets";
+import type { PortalLookupSnapshot } from "../db/schema";
 
 export type EnqueueLookupOutcome =
   | { outcome: "enqueued"; jobId: string }
   | { outcome: "in_flight"; jobId: string }
+  /** v0.3.12 — the (council, pcn) has a fresh-enough cached snapshot
+   *  from a previous lookup (possibly by a different user). No job
+   *  enqueued; a sanitised snapshot was written to this appeal's
+   *  portal_lookup so the UI can advance immediately. */
+  | { outcome: "cached"; ticketId: string; ageMs: number }
   | { outcome: "skipped"; reason: "council_not_automated" }
   | { outcome: "missing_data"; reason: "no_council" | "no_pcn_ref" | "no_vehicle_reg" }
   | { outcome: "appeal_missing" };
@@ -89,6 +101,78 @@ export async function enqueueLookupIfAutomated(
     return { outcome: "skipped", reason: "council_not_automated" };
   }
 
+  // v0.3.12 — promote-if-needed. By the time someone asks for a portal
+  // lookup, we have everything needed to materialise the canonical
+  // tickets row. patchAppealDraft will also do this on user-typed
+  // writes (Step 4); the call here covers the auto-fire-from-extract
+  // path (where /api/extract's PATCH lands first and this fires
+  // synchronously after).
+  //
+  // Idempotent — if the appeal already has ticket_id pointing at a
+  // matching identity, upsertTicketFromAppeal short-circuits.
+  let ticketId: string | null = appeal.ticketId ?? null;
+  const identity = appealTicketIdentity(appeal);
+  if (identity && !ticketId) {
+    const t = appeal.ticket ?? null;
+    const issuedAt = typeof t?.issuedAt === "string" && t.issuedAt.length
+      ? new Date(t.issuedAt)
+      : null;
+    ticketId = await upsertTicketFromAppeal(db, identity, {
+      issuer: t?.issuer ?? null,
+      contraventionCode: t?.contraventionCode ?? null,
+      contraventionDescription: t?.contraventionDescription ?? null,
+      issuedAt: issuedAt && !Number.isNaN(issuedAt.getTime()) ? issuedAt : null,
+      location: t?.location ?? null,
+      amountPence:
+        typeof t?.amountPence === "number" && t.amountPence > 0
+          ? t.amountPence
+          : null,
+    });
+    await db
+      .update(schema.appeals)
+      .set({ ticketId, updatedAt: new Date() })
+      .where(eq(schema.appeals.id, appealId));
+    logAudit("promoted", { ticketId, appealId }, {
+      source: "enqueueLookup",
+      identity,
+    });
+  }
+
+  // v0.3.12 — Step 2: cache READ. If a recent snapshot exists for this
+  // (council, pcn), fast-forward without firing a real lookup. Saves
+  // ~$0.30 + ~60s when the same PCN has been validated recently by
+  // ANYONE (this user OR a different user).
+  //
+  // getCachedSnapshot enforces the verdict-aware TTL ladder
+  // (paid/closed 30d, open 1h, etc.) and refuses to return per-user
+  // 'overridden' state — see lib/server/tickets.ts.
+  if (ticketId && identity) {
+    const cached = await getCachedSnapshot(identity.councilSlug, identity.pcnRef);
+    if (cached) {
+      // Build a fresh per-appeal snapshot from the cached shape.
+      // Critically: jobId=null and status derived from the verdict
+      // — never copy A's jobId or status to B (Plan agent concern #2).
+      const perAppealStatus: PortalLookupSnapshot["status"] =
+        cached.snapshot.verdict === "open" ? "verified" : "invalid";
+      const newSnapshot: PortalLookupSnapshot = {
+        jobId: null,
+        status: perAppealStatus,
+        verdict: cached.snapshot.verdict,
+        verdictReason: cached.snapshot.verdictReason,
+        photoUrls: cached.snapshot.photoUrls,
+        metadata: cached.snapshot.metadata,
+        fetchedAt: cached.snapshot.fetchedAt,
+      };
+      await persistPortalLookup({ appealId, snapshot: newSnapshot });
+      logAudit("cache_hit", { ticketId: cached.ticketId, appealId }, {
+        verdict: cached.snapshot.verdict,
+        ageMs: cached.ageMs,
+        source: cached.snapshot.source,
+      });
+      return { outcome: "cached", ticketId: cached.ticketId, ageMs: cached.ageMs };
+    }
+  }
+
   // Idempotency layer 1 — a pcn_lookup already in flight for this
   // appeal. Catches concurrent enqueues (e.g. two API calls fired
   // before either has run).
@@ -105,6 +189,50 @@ export async function enqueueLookupIfAutomated(
     .limit(1);
   if (existing[0]) {
     return { outcome: "in_flight", jobId: existing[0].id };
+  }
+
+  // v0.3.12 — Idempotency layer 1.5: cross-ticket in-flight. A
+  // pcn_lookup for ANY OTHER appeal that shares this ticket_id counts
+  // as in-flight for us too. When that job completes, the worker's
+  // propagateSnapshotToSiblings call will write the verdict onto this
+  // appeal's portal_lookup automatically.
+  //
+  // Until then this appeal also stamps status='pending' below pointing
+  // at the sibling job's id — its card shows "Validating with
+  // [council]…" same as if its own job were running. Critically: when
+  // mergeDuplicateDraftIfAny later deletes a duplicate appeal whose
+  // job was the in-flight one (Plan agent concern #5), the merge
+  // transaction TRANSFERS the job's appealId to the survivor — so this
+  // sibling reference stays valid.
+  if (ticketId) {
+    const siblingJob = await db
+      .select({ id: schema.jobs.id })
+      .from(schema.jobs)
+      .innerJoin(schema.appeals, eq(schema.appeals.id, schema.jobs.appealId))
+      .where(
+        and(
+          eq(schema.jobs.kind, "pcn_lookup"),
+          inArray(schema.jobs.status, ["queued", "running"]),
+          eq(schema.appeals.ticketId, ticketId),
+          ne(schema.appeals.id, appealId),
+        ),
+      )
+      .limit(1);
+    if (siblingJob[0]) {
+      // Stamp pending snapshot pointing at the sibling job. When the
+      // worker lands the verdict, propagateSnapshotToSiblings will
+      // overwrite this with a 'verified'/'invalid' snapshot.
+      await persistPortalLookup({
+        appealId,
+        snapshot: {
+          jobId: siblingJob[0].id,
+          status: "pending",
+          photoUrls: [],
+          fetchedAt: new Date().toISOString(),
+        },
+      });
+      return { outcome: "in_flight", jobId: siblingJob[0].id };
+    }
   }
 
   // Idempotency layer 2 — a previous lookup already SETTLED on this
