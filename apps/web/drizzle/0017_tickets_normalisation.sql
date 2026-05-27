@@ -54,12 +54,23 @@ CREATE TABLE IF NOT EXISTS tickets (
   updated_at                    timestamptz NOT NULL DEFAULT now()
 );
 
--- Functional unique index — enforces identity on (council, normalised
--- pcn_ref) regardless of whether the application pre-normalised. If
--- two concurrent INSERTs race for the same PCN they collide here and
--- the application's `ON CONFLICT DO UPDATE SET updated_at = now()
--- RETURNING id` upsert resolves both to the same ticket id.
-CREATE UNIQUE INDEX IF NOT EXISTS tickets_council_pcn_unique_idx
+-- Two layers of identity enforcement:
+--
+--   1. A PLAIN UNIQUE constraint on (council_slug, pcn_ref) — this is
+--      what `ON CONFLICT (council_slug, pcn_ref) DO UPDATE … RETURNING
+--      id` in `lib/server/tickets.ts:upsertTicketFromAppeal` targets.
+--      Postgres won't accept a functional index as the arbiter for
+--      column-list ON CONFLICT, so we need a real constraint.
+--   2. A functional UNIQUE INDEX on the NORMALISED form — defence in
+--      depth. If any future code path forgets to call
+--      `normalisePcnRef` before insert, this catches it. Application
+--      always normalises (centralised in lib/server/tickets.ts), so
+--      both layers stay in sync without divergence.
+ALTER TABLE tickets
+  ADD CONSTRAINT tickets_council_pcn_unique
+    UNIQUE (council_slug, pcn_ref);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tickets_council_pcn_normalised_idx
   ON tickets (council_slug, upper(regexp_replace(pcn_ref, '\s+', '', 'g')));
 
 CREATE INDEX IF NOT EXISTS tickets_vehicle_reg_idx ON tickets (vehicle_reg);
