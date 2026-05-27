@@ -145,6 +145,15 @@ export interface AppealRecord {
   councilSlug: string | null;
   councilLogoUrl: string | null;
   councilLogoBg: string | null;
+  /** v0.3.12 — FK into the normalised `tickets` table. NULL while the
+   *  appeal is still being built (no pcnRef yet) or for legacy rows
+   *  pre-backfill. When set, the canonical (council, pcn, vehicle)
+   *  identity + shared portal_snapshot live in tickets; many appeals
+   *  from different users can reference the same ticket_id and share
+   *  the cached council verdict. Per-user display data (this user's
+   *  typed ticket fields) continues to live in `appeals.ticket`
+   *  jsonb — never overwritten by the shared cache. */
+  ticketId: string | null;
   createdAt: string;
   updatedAt: string;
   /** Latest queued/running job for this appeal, used by the smart ticket
@@ -199,6 +208,7 @@ function toRecord(
     councilSlug: row.councilSlug,
     councilLogoUrl: council?.logoUrl ?? null,
     councilLogoBg: council?.logoBg ?? null,
+    ticketId: row.ticketId ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     activeJobId: activeJob?.id ?? null,
@@ -811,6 +821,25 @@ export async function mergeDuplicateDraftIfAny(
   // Wrapping in db().transaction makes the UPDATE + cleanup + DELETE
   // either all succeed or all roll back.
   await db().transaction(async (tx) => {
+    // v0.3.12 — propagate ticket_id during merge. Plan agent concern
+    // #4: if both rows had a ticket_id but they differ, keep the
+    // older's and log the conflict; if only one had a ticket_id,
+    // surface it on the survivor (so cross-user cache reads keep
+    // working after dedup).
+    const olderTicketId = older.ticketId ?? null;
+    const dupTicketId = fresh.ticketId ?? null;
+    let mergedTicketId: string | null = olderTicketId ?? dupTicketId;
+    if (olderTicketId && dupTicketId && olderTicketId !== dupTicketId) {
+      // Conflict — keep older's, audit the discard for human review.
+      const { logAudit } = await import("./tickets");
+      logAudit("merge_ticket_id_conflict", { ticketId: olderTicketId, appealId: older.id }, {
+        olderTicketId,
+        discardedDupTicketId: dupTicketId,
+        dupAppealId: appealId,
+      });
+      mergedTicketId = olderTicketId;
+    }
+
     await tx
       .update(schema.appeals)
       .set({
@@ -820,6 +849,7 @@ export async function mergeDuplicateDraftIfAny(
         pcnImageUrl: older.pcnImageUrl ?? fresh.pcnImageUrl ?? null,
         ticket: mergedTicket as AppealView["ticket"],
         councilSlug: resolvedCouncilSlug,
+        ticketId: mergedTicketId,
         // Bump updatedAt so the reconciliation poll picks the merged
         // row up on its next tick and the client's local list state
         // refreshes.
@@ -827,8 +857,36 @@ export async function mergeDuplicateDraftIfAny(
       })
       .where(eq(schema.appeals.id, older.id));
 
+    // v0.3.12 — transfer pcn_lookup jobs to the survivor BEFORE the
+    // blanket delete-jobs below. Plan agent concern #5: if a sibling
+    // appeal (different sessionId, same ticket) dedup'd against this
+    // duplicate's in-flight pcn_lookup, deleting that job leaves the
+    // sibling pointing at a row that no longer exists — it never
+    // gets a verdict. Transferring the appealId reference keeps the
+    // job alive on the survivor; the worker's
+    // propagateSnapshotToSiblings call on completion still fans the
+    // verdict out across all siblings sharing the (now-survivor's)
+    // ticket_id.
+    //
+    // We only transfer pcn_lookup specifically. Other job kinds
+    // (submit_appeal, generate_draft) are per-appeal user choices
+    // that don't have the cross-ticket sharing semantics — the
+    // blanket delete-jobs below still cleans those up.
+    await tx
+      .update(schema.jobs)
+      .set({ appealId: older.id })
+      .where(
+        and(
+          eq(schema.jobs.appealId, appealId),
+          eq(schema.jobs.kind, "pcn_lookup"),
+          inArray(schema.jobs.status, ["queued", "running"]),
+        ),
+      );
+
     // Sweep child rows that don't cascade so the appeal DELETE below
     // never trips an FK and the worker never sees an orphaned job.
+    // After the transfer above this is a no-op for any still-active
+    // pcn_lookup; other kinds + completed pcn_lookups get deleted.
     await tx.delete(schema.jobs).where(eq(schema.jobs.appealId, appealId));
     await tx
       .delete(schema.payments)
