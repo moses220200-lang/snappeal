@@ -610,6 +610,60 @@ export async function patchAppealDraft(
   if (patch.serviceTier !== undefined) updates.serviceTier = patch.serviceTier;
   if (patch.grounds !== undefined) updates.grounds = patch.grounds;
   await db().update(schema.appeals).set(updates).where(eq(schema.appeals.id, appealId));
+
+  // v0.3.12 — Step 4a: promote to a canonical tickets row the moment
+  // we have the identity (council + pcn + vehicle reg).
+  //
+  // Two ways to reach this code path with full identity:
+  //   1. /api/extract pass-2 OCR PATCHes the full ticket here.
+  //   2. /app/manual-entry's submit handler PATCHes user-typed fields.
+  // Both must promote so the cross-user cache (see Step 2 in
+  // lib/server/submission/enqueueLookup.ts) has something to match
+  // against. enqueueLookupIfAutomated also runs an idempotent
+  // upsertTicketFromAppeal — so this call is the "promote earlier" hop
+  // that catches cases where the lookup never fires (non-automated
+  // council, user pays without appealing).
+  //
+  // Idempotent and cheap: when the appeal already has a ticket_id and
+  // the identity matches, upsertTicketFromAppeal's ON CONFLICT resolves
+  // to the same row id. No-op when identity is incomplete.
+  try {
+    const refreshed = await getAppealById(appealId);
+    if (refreshed) {
+      const { appealTicketIdentity, upsertTicketFromAppeal, logAudit } = await import("./tickets");
+      const identity = appealTicketIdentity(refreshed);
+      if (identity && !refreshed.ticketId) {
+        const t = refreshed.ticket ?? null;
+        const issuedAtRaw = typeof t?.issuedAt === "string" ? t.issuedAt : null;
+        const issuedAt = issuedAtRaw ? new Date(issuedAtRaw) : null;
+        const ticketId = await upsertTicketFromAppeal(db(), identity, {
+          issuer: t?.issuer ?? null,
+          contraventionCode: t?.contraventionCode ?? null,
+          contraventionDescription: t?.contraventionDescription ?? null,
+          issuedAt: issuedAt && !Number.isNaN(issuedAt.getTime()) ? issuedAt : null,
+          location: t?.location ?? null,
+          amountPence:
+            typeof t?.amountPence === "number" && t.amountPence > 0
+              ? t.amountPence
+              : null,
+        });
+        await db()
+          .update(schema.appeals)
+          .set({ ticketId, updatedAt: new Date() })
+          .where(eq(schema.appeals.id, appealId));
+        logAudit("promoted", { ticketId, appealId }, {
+          source: "patchAppealDraft",
+          identity,
+        });
+      }
+    }
+  } catch {
+    // Promotion is best-effort. The patch above already succeeded;
+    // the tickets-row promote/cache can self-heal on the next call
+    // (enqueueLookupIfAutomated also promotes). Never break the
+    // user-facing patch on a tickets-table write failure.
+  }
+
   return getAppealById(appealId);
 }
 
@@ -882,6 +936,66 @@ export async function persistPortalLookup(input: {
     .update(schema.appeals)
     .set(updates)
     .where(eq(schema.appeals.id, input.appealId));
+
+  // v0.3.12 — Step 3: dual-write + sibling propagation.
+  //
+  // The per-appeal `appeals.portal_lookup` write above is the historic
+  // record. We ALSO mirror the council-facing parts of the snapshot
+  // into the shared `tickets.portal_snapshot` so future appeals (this
+  // user or anyone else) that scan the same PCN can hit the cache.
+  //
+  // cacheSnapshot is the gate-keeper: it refuses to write
+  //   - status === 'overridden' (per-user gesture, not council data)
+  //   - verdict === 'unknown' / undefined (didn't determine anything)
+  //   - status === 'skipped' (no verdict at all)
+  //   - status === 'pending' (no verdict yet — caller is just stamping
+  //     the in-flight marker before the real lookup completes)
+  // So calling it unconditionally here is safe; everything that isn't
+  // a real council read gets dropped.
+  //
+  // After mirroring, if this lookup landed a real verdict
+  // (status === 'verified' | 'invalid'), propagate to any sibling
+  // appeals that were waiting on this lookup via the cross-ticket
+  // in-flight dedup branch in enqueueLookupIfAutomated. Without this
+  // propagation those siblings would stay stuck on
+  // status='pending'+jobId=<this completed job> forever.
+  if (existing?.councilSlug && existing.ticket?.pcnRef) {
+    try {
+      const { cacheSnapshot, propagateSnapshotToSiblings } = await import("./tickets");
+      const sourceKind: "deterministic" | "cli" =
+        snapshot.verdictReason?.includes("recipe") ? "deterministic" : "cli";
+      const result = await cacheSnapshot(
+        { councilSlug: existing.councilSlug, pcnRef: existing.ticket.pcnRef },
+        snapshot,
+        sourceKind,
+        // costUsd lives on `ai_calls` per-call; the denormalised
+        // summary on tickets is best-effort — left null here because
+        // persistPortalLookup doesn't have the cost in scope. The
+        // worker writes it via cacheSnapshot directly when needed.
+        null,
+      );
+      if (
+        result.ticketId &&
+        (snapshot.status === "verified" || snapshot.status === "invalid") &&
+        snapshot.verdict &&
+        snapshot.verdict !== "unknown"
+      ) {
+        await propagateSnapshotToSiblings(result.ticketId, input.appealId, {
+          verdict: snapshot.verdict,
+          verdictReason: snapshot.verdictReason,
+          photoUrls: snapshot.photoUrls,
+          metadata: snapshot.metadata,
+          fetchedAt: snapshot.fetchedAt,
+          source: sourceKind,
+        });
+      }
+    } catch {
+      // Cache write or sibling propagation must NEVER break the
+      // per-appeal write that already succeeded above. Audit table
+      // would normally log this; swallow and move on.
+    }
+  }
+
   return getAppealById(input.appealId);
 }
 
