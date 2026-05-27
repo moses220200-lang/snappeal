@@ -36,18 +36,35 @@ import {
   ChevronDown,
   Images,
   Loader2,
+  Pencil,
   RefreshCw,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import { LetterActions } from "@/components/LetterActions";
 import { MCPLiveStrip } from "@/components/MCPLiveStrip";
-import { NotificationPermissionSheet } from "@/components/NotificationPermissionSheet";
+import { NotificationPromptGate } from "@/components/NotificationPromptGate";
 import { CouncilPickerSheet } from "@/components/CouncilPickerSheet";
 import { PaymentSheet } from "@/components/PaymentSheet";
 import { ScanningOverlay } from "@/components/ScanningOverlay";
 import { TicketCardBody } from "@/components/TicketCardBody";
 import { TicketCardHeader } from "@/components/TicketCardHeader";
+// Extracted sub-components — `components/ticket/*` modules own one
+// thing each, keeping TicketCard.tsx focused on orchestration. See
+// each file's top docblock for the boundary contract.
+import { StatusPill } from "@/components/ticket/StatusPill";
+import { DeleteTicketButton } from "@/components/ticket/DeleteTicketButton";
+import { Field } from "@/components/ticket/Field";
+import {
+  ReadingFailureActions,
+  CouncilFailureActions,
+  ExtractedStream,
+} from "@/components/ticket/FailureActions";
+import {
+  OutstandingDetail,
+  StuckSubmittingNotice,
+  isSubmissionStuck,
+} from "@/components/ticket/SubmissionStatusBits";
 import {
   TicketLifecycleTimeline,
   type LifecycleStep,
@@ -58,6 +75,7 @@ import { resolveDisplayTicket, assertAmountConsistency } from "@/lib/ticketDispl
 import {
   deriveCardState,
   EVIDENCE_DONE_STEP,
+  TICKET_CONFIRMED_STEP,
   type CardKind,
   type CardPillTone,
   type CardState,
@@ -77,6 +95,13 @@ import {
   type OcrHandoff,
 } from "@/lib/client/session";
 import { useAppealLiveState } from "@/hooks/useAppealLiveState";
+import { useAutoValidate } from "@/hooks/useAutoValidate";
+// ActivityIndicator + activityKindFor were used here to render an
+// absolute "Agent at work" pill in the card's top-right corner. The pill
+// collided with the £ amount and duplicated the inline status pill in
+// the header, so it's no longer mounted from this card. The component
+// itself still ships and is used by the global nav (busy-indicator).
+import { getDeadlineProximity } from "@/lib/deriveDeadlineProximity";
 import { useFlags } from "@/lib/client/flags";
 import type { AppealRecord } from "@/lib/server/appeals";
 import type { TicketStatusSnapshot } from "@/lib/server/connectors/types";
@@ -84,7 +109,16 @@ import type { TicketStatusSnapshot } from "@/lib/server/connectors/types";
 interface CouncilOption {
   slug: string;
   name: string;
+  /** `automated_beta` / `automated_ga` means we have a real MCP recipe
+   *  that can drive the portal. The card uses this to decide whether
+   *  the validating gate should fire (automated) or whether to fall
+   *  back to OCR + Unverified chip (manual). */
+  automationStatus?: "manual" | "automated_beta" | "automated_ga";
   appealPortalUrl?: string | null;
+  /** Optional separate Pay-yourself URL — used when a council runs its
+   *  appeal portal and payment portal on different hosts (Lambeth). When
+   *  present, the Pay tile opens this URL instead of `appealPortalUrl`. */
+  paymentPortalUrl?: string | null;
   logoUrl?: string | null;
   logoBg?: string | null;
 }
@@ -160,7 +194,13 @@ export function TicketCard({
   //   frames entirely.
   //   ON: disclosure renders and auto-expands on every new job.
   const { showMcpLiveView } = useFlags();
-  const [notifPromptTrigger, setNotifPromptTrigger] = useState(0);
+  // Two trigger counters — one per moment we may prompt. The Gate
+  // wrapper handles the skip-once logic so we don't have to.
+  const [notifPromptTriggerAppealTap, setNotifPromptTriggerAppealTap] = useState(0);
+  const [notifPromptTriggerSubmitDone, setNotifPromptTriggerSubmitDone] = useState(0);
+  // Latch so we only fire the submitDone prompt once per local
+  // submission lifecycle (not on every poll showing status=submitted).
+  const submitPromptFiredRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   // v0.2.14 — pending-review handoff from /app/capture: the OCR result is
   // already on the appeal row, but the PCN image data URL + confidence
@@ -214,6 +254,19 @@ export function TicketCard({
   }, [councils]);
 
   // ─── status snapshot fetch — async, fire-and-forget ───
+  //
+  // v0.3.10 — added `appeal.portalLookup?.status` to the dep array. Without
+  // it, the very-first fetch (when portal_lookup is null) cached the
+  // validating-stub snapshot `{stage: "status_check_pending"}`. When the
+  // worker later flipped portal_lookup.status to "verified" the per-card
+  // appeal poll picked that up, but statusSnapshot stayed stale —
+  // deriveCardState's `portalRunning` check was still true because of
+  // `statusSnapshot?.stage === "status_check_pending"`, and the card was
+  // stuck on "Validating" until a full page refresh remounted the card
+  // and rebuilt the snapshot from the now-verified portal_lookup. The
+  // updatedAt dep is a belt-and-braces signal so any other portal_lookup
+  // shape change (verdict text, photo url additions) also refreshes the
+  // derived snapshot.
   useEffect(() => {
     if (!appeal.ticket?.pcnRef || !appeal.ticket.vehicleReg) return;
     let alive = true;
@@ -221,7 +274,7 @@ export function TicketCard({
       try {
         const res = await fetch(`/api/appeals/${encodeURIComponent(appeal.id)}/status`, {
           cache: "no-store",
-          headers: { "x-snappeal-session": getOrCreateSessionId() },
+          headers: { "x-parkingrabbit-session": getOrCreateSessionId() },
         });
         if (!res.ok || !alive) return;
         const json = (await res.json()) as { snapshot?: TicketStatusSnapshot };
@@ -233,14 +286,20 @@ export function TicketCard({
     return () => {
       alive = false;
     };
-  }, [appeal.id, appeal.ticket?.pcnRef, appeal.ticket?.vehicleReg]);
+  }, [
+    appeal.id,
+    appeal.ticket?.pcnRef,
+    appeal.ticket?.vehicleReg,
+    appeal.portalLookup?.status,
+    appeal.portalLookup?.fetchedAt,
+  ]);
 
   // ─── live SSE subscription ───
   const fetchAppealRow = async (): Promise<AppealRecord | null> => {
     try {
       const res = await fetch(`/api/appeals/${encodeURIComponent(appeal.id)}`, {
         cache: "no-store",
-        headers: { "x-snappeal-session": getOrCreateSessionId() },
+        headers: { "x-parkingrabbit-session": getOrCreateSessionId() },
       });
       if (!res.ok) return null;
       const json = (await res.json()) as { appeal: AppealRecord };
@@ -301,7 +360,7 @@ export function TicketCard({
           `/api/appeals/${encodeURIComponent(appeal.id)}/submit-progress`,
           {
             cache: "no-store",
-            headers: { "x-snappeal-session": getOrCreateSessionId() },
+            headers: { "x-parkingrabbit-session": getOrCreateSessionId() },
           },
         );
         if (!res.ok || !alive) return;
@@ -391,10 +450,21 @@ export function TicketCard({
   // useAppealLiveState above.
   const cardState = deriveCardState(appeal, statusSnapshot, live, timeouts);
   useEffect(() => {
+    // v0.3.5 — gathering_evidence is polled while the lazy lookup is
+    // in flight, so the CouncilCheckChip at the top of the Build-appeal
+    // surface transitions pending → verified live without requiring a
+    // user gesture or page refresh. Without this poll, the chip would
+    // freeze at whatever portalLookup.status was when the user landed
+    // in gathering_evidence (typically "pending") and only update when
+    // the user finally tapped "Start drafting".
+    const gatheringWithPendingLookup =
+      cardState.kind === "gathering_evidence" &&
+      appeal.portalLookup?.status === "pending";
     if (
       cardState.kind !== "processing" &&
       cardState.kind !== "drafting" &&
-      cardState.kind !== "validating"
+      cardState.kind !== "validating" &&
+      !gatheringWithPendingLookup
     ) {
       return;
     }
@@ -403,13 +473,31 @@ export function TicketCard({
     // the verified snapshot mid-job (while it keeps capturing warden photos
     // in the background), and this poll picks up `portalLookup.status`
     // flipping out of "pending" without waiting for the whole job to settle.
+    //
+    // v0.3.5 — in `drafting`, the poll also covers the lazy-lookup window:
+    // while step === EVIDENCE_DONE_STEP and portalLookup is still pending,
+    // we tick at the same cadence as `validating` so the draft-kickoff
+    // useEffect re-fires the moment the verdict lands. Longer cap too,
+    // since the user can sit in this state through both the lookup AND
+    // the actual AI draft.
+    const draftingWaitingOnLookup =
+      cardState.kind === "drafting" &&
+      appeal.step === EVIDENCE_DONE_STEP &&
+      appeal.portalLookup?.status === "pending";
     const interval =
       cardState.kind === "processing"
         ? 2000
-        : cardState.kind === "validating"
+        : cardState.kind === "validating" ||
+            draftingWaitingOnLookup ||
+            gatheringWithPendingLookup
           ? 2500
           : 3000;
-    const maxPolls = cardState.kind === "validating" ? 80 : 60;
+    const maxPolls =
+      cardState.kind === "validating" ||
+      draftingWaitingOnLookup ||
+      gatheringWithPendingLookup
+        ? 120
+        : 60;
     let alive = true;
     let polls = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -429,6 +517,14 @@ export function TicketCard({
         // The council has confirmed (or rejected) — advance immediately.
         const portal = next?.portalLookup;
         if (portal && portal.status !== "pending") return;
+      } else if (cardState.kind === "gathering_evidence") {
+        // v0.3.5 — lookup verdict has landed (or errored). The chip
+        // transitions to "verified" / amber via the refreshAppeal
+        // above; we can stop polling now. If the user hasn't tapped
+        // Start drafting yet, no further server-side state will
+        // change until they do.
+        const portal = next?.portalLookup;
+        if (portal && portal.status !== "pending") return;
       }
       if (polls < maxPolls) timer = setTimeout(tick, interval);
     };
@@ -438,8 +534,19 @@ export function TicketCard({
       if (timer) clearTimeout(timer);
     };
     // Intentionally only on state.kind transitions.
+    // v0.3.7 — also re-mount when step or letterBody changes. Without
+    // appeal.step the Retry flow stalls: after a generation_failed →
+    // retryDraft() PATCH, cardState.kind stays "drafting" (the v0.3.6
+    // widened branch keeps the kind stable across the failure→retry
+    // cycle), so the previous tick chain dies on the
+    // step==="generation_failed" stop condition and never restarts.
+    // Including step here re-mounts the effect when the retry stamps
+    // EVIDENCE_DONE_STEP, kicking off a fresh poll chain that catches
+    // the new letterBody. appeal.letterBody is included as a belt-and-
+    // -braces signal so the poll also terminates cleanly when the
+    // letter lands in any code path that doesn't go via step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardState.kind]);
+  }, [cardState.kind, appeal.step, appeal.letterBody]);
 
   // ─── auto-scroll on lifecycle transitions ───
   //
@@ -529,8 +636,67 @@ export function TicketCard({
     return councils.find((c) => c.slug === appeal.councilSlug) ?? null;
   }, [appeal.councilSlug, councils]);
 
+  // `councilAutomated` drives the validate-first gate. We treat the
+  // automation flag as authoritative only once the councils list has
+  // loaded (avoids a one-frame mis-classification while the fetch is
+  // in-flight). For old tickets where the slug doesn't match any
+  // current council row (legacy data) we default to false — safer to
+  // show the OCR fallback than to lock the user into a never-arriving
+  // validating gate.
+  const councilAutomated = useMemo(() => {
+    if (!council) return false;
+    return (
+      council.automationStatus === "automated_beta" ||
+      council.automationStatus === "automated_ga"
+    );
+  }, [council]);
+
+  // Auto-validate old tickets the moment the user opens them. Old =
+  // automated council, no usable portal_lookup, no active job. The hook
+  // dedups per appeal id so a re-mount doesn't double-fire; the server
+  // route is idempotent regardless.
+  useAutoValidate({
+    appeal,
+    councilAutomated,
+    hasActiveJob: activeJobId !== null,
+  });
+
+  // Moment B — submission-done. Fire the NotificationPromptGate the
+  // FIRST time we observe a successful submission on this card. The
+  // ref latch prevents re-firing on every subsequent poll that still
+  // sees status=submitted. The Gate handles the skip-once persistence
+  // server-side so a user who already saw this prompt at submitDone
+  // won't see it again on a future ticket.
+  useEffect(() => {
+    if (submitPromptFiredRef.current) return;
+    const submitted =
+      appeal.status === "submitted" ||
+      appeal.status === "under_review" ||
+      appeal.status === "decision_pending";
+    if (submitted) {
+      submitPromptFiredRef.current = true;
+      setNotifPromptTriggerSubmitDone((n) => n + 1);
+    }
+  }, [appeal.status]);
+
   const councilName = council?.name ?? ticket?.issuer ?? null;
-  const payUrl = statusSnapshot?.paymentUrl ?? council?.appealPortalUrl ?? null;
+
+  // Deadline proximity for the card header pill (≤7 days = ribbon).
+  // Computed inline because it's a pure function of fields already on
+  // the appeal — no extra fetches, recomputed each render. Cheap.
+  const deadlineProximity = useMemo(
+    () => getDeadlineProximity(appeal),
+    [appeal],
+  );
+  // Pay-tile URL fall-through (Lambeth uses a distinct payment host):
+  //   1) per-appeal `statusSnapshot.paymentUrl` (connector-derived deep link)
+  //   2) council `paymentPortalUrl` (e.g. lambethparking.paypcn.com)
+  //   3) council `appealPortalUrl` (legacy single-URL behaviour)
+  const payUrl =
+    statusSnapshot?.paymentUrl ??
+    council?.paymentPortalUrl ??
+    council?.appealPortalUrl ??
+    null;
 
   // ─── handlers ───
   // v0.2.16 — Appeal tap NO LONGER triggers drafting directly. Two-phase:
@@ -550,7 +716,7 @@ export function TicketCard({
       method: "PATCH",
       headers: {
         "content-type": "application/json",
-        "x-snappeal-session": getOrCreateSessionId(),
+        "x-parkingrabbit-session": getOrCreateSessionId(),
       },
       body: JSON.stringify(body),
     });
@@ -619,11 +785,33 @@ export function TicketCard({
     setBusy(true);
     setError(null);
     try {
-      const updated = await patchThisAppeal({ preferredMethod: "portal" });
-      refreshAppeal(updated);
-      // No generate-stream here — drafting fires after the grounds quiz
-      // + evidence are submitted via `confirmEvidenceAndDraft` below.
-      setNotifPromptTrigger((n) => n + 1);
+      // v0.3.9 — the council-portal lookup was moved EARLIER in the
+      // flow: it fires from `agreeTicket` when the customer taps
+      // "Confirm & validate with council" on pending_review. By the
+      // time we reach `startAppeal` (the Appeal £2.99 tile tap on
+      // needs_decision) the lookup is already in flight or settled.
+      // The previous v0.3.5 design POSTed a fresh `/lookup` here too;
+      // that double-enqueued the job once the first lookup had
+      // completed (server idempotency only catches queued/running
+      // siblings). We just PATCH preferredMethod now and re-derive —
+      // `useAutoValidate` is the backstop for the legacy case where
+      // a confirmed appeal somehow ended up without a lookup.
+      //
+      // The Pay tile is an external deep-link out — it never hits
+      // this handler and never enqueues a lookup. That's the cost-
+      // saving unit: customers who pay burn zero AI tokens.
+      await patchThisAppeal({ preferredMethod: "portal" });
+      const next = await fetchAppealRow();
+      if (next) refreshAppeal(next);
+      // OCR handoff cleanup — previously lived in confirmTicket(), which
+      // is gone in v0.3.5. Without this the review pills can flash back
+      // on a refresh after Appeal is tapped.
+      clearOcrResult();
+      setOcrHandoff(null);
+      // Moment A — Appeal-tap. The Gate consults
+      // /api/users/me/notification-prefs to skip if we already asked
+      // at this moment OR if native permission isn't 'default'.
+      setNotifPromptTriggerAppealTap((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't start appeal");
     } finally {
@@ -676,36 +864,84 @@ export function TicketCard({
         step: EVIDENCE_DONE_STEP,
       });
       refreshAppeal(updated);
-      // Fire generate-stream — the drafting-state poll picks up the
-      // letter when it lands and flips the card to letter_ready.
-      //
-      // The server's GenerateRequest schema requires `pcnPhoto` and uses
-      // `confirmedTicket` to skip a re-OCR pass that otherwise blows the
-      // 120s CLI timeout. Photos still live in sessionStorage (Blob
-      // upload is on the roadmap) so we forward them here; the confirmed
-      // ticket comes off the freshly PATCHed appeal row.
-      const pcnPhoto = getPcnPhoto();
-      const evidencePhotos = getEvidencePhotos();
-      void fetch("/api/generate-stream", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-snappeal-session": getOrCreateSessionId(),
-        },
-        body: JSON.stringify({
-          sessionId: getOrCreateSessionId(),
-          appealId: updated.id,
-          pcnPhoto: pcnPhoto ?? undefined,
-          evidencePhotos,
-          confirmedTicket: updated.ticket ?? undefined,
-        }),
-      });
+      // v0.3.5 — /api/generate-stream is NOT fired here any more.
+      // The draft-kickoff useEffect below watches for (step ===
+      // EVIDENCE_DONE_STEP && lookup-settled && verdict-not-bad) and
+      // fires generate-stream then. This is the parallelism gate the
+      // user asked for: drafting waits for the lookup verdict so the
+      // letter sees authoritative council metadata, AND we never burn
+      // AI tokens drafting a letter we can't file (paid/closed/
+      // not_found verdicts route to the appeal_not_possible card
+      // upstream of the kickoff).
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't start drafting");
     } finally {
       setBusy(false);
     }
   };
+
+  // v0.3.5 — draft kickoff watcher. Fires /api/generate-stream exactly
+  // once per appeal, the moment BOTH conditions are met:
+  //
+  //   1. The user has finished Build-appeal (step === EVIDENCE_DONE_STEP).
+  //   2. The lazy council lookup has either settled (verdict in) or
+  //      explicitly failed (status === "error", or status missing
+  //      because the POST never landed). Bad verdicts (paid / closed /
+  //      not_found) abort — the appeal_not_possible state takes over
+  //      and we burn no AI tokens drafting a letter we can't file.
+  //
+  // Whichever finishes second wins the race — a slow user / fast lookup
+  // OR a fast user / slow lookup both end up here and the letter
+  // streams in. The poll loop above keeps the appeal row fresh while
+  // step === EVIDENCE_DONE_STEP && portalLookup is pending, so this
+  // effect re-evaluates as soon as the verdict lands.
+  //
+  // Ref-guarded so React strict-mode double-fire (or a rapid prop
+  // refresh) can't enqueue two generate-stream jobs for the same row.
+  const draftKickedOffRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (appeal.step !== EVIDENCE_DONE_STEP) return;
+    if (appeal.letterBody) return;
+    const portal = appeal.portalLookup;
+    if (portal?.status === "pending") return; // still checking council
+    const verdict = portal?.verdict;
+    if (
+      portal?.status !== "overridden" &&
+      (verdict === "paid" || verdict === "closed" || verdict === "not_found")
+    ) {
+      // appeal_not_possible card takes over — don't burn tokens.
+      return;
+    }
+    if (draftKickedOffRef.current === appeal.id) return;
+    draftKickedOffRef.current = appeal.id;
+    const pcnPhoto = getPcnPhoto();
+    const evidencePhotos = getEvidencePhotos();
+    void fetch("/api/generate-stream", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-parkingrabbit-session": getOrCreateSessionId(),
+      },
+      body: JSON.stringify({
+        sessionId: getOrCreateSessionId(),
+        appealId: appeal.id,
+        pcnPhoto: pcnPhoto ?? undefined,
+        evidencePhotos,
+        confirmedTicket: appeal.ticket ?? undefined,
+      }),
+    }).catch(() => {
+      // Soft failure — the drafting-state poll will surface
+      // step === "generation_failed" if the server side errors. We let
+      // the user retry there rather than ringing alarms inline.
+      draftKickedOffRef.current = null;
+    });
+  }, [
+    appeal.id,
+    appeal.step,
+    appeal.letterBody,
+    appeal.portalLookup,
+    appeal.ticket,
+  ]);
 
   // Re-score the EXISTING appeal with the latest evidence photos — the
   // letter is NOT rewritten. The /rescore endpoint re-evaluates strength
@@ -720,7 +956,7 @@ export function TicketCard({
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-snappeal-session": getOrCreateSessionId(),
+            "x-parkingrabbit-session": getOrCreateSessionId(),
           },
           body: JSON.stringify({
             sessionId: getOrCreateSessionId(),
@@ -736,44 +972,114 @@ export function TicketCard({
     }
   };
 
-  // v0.2.14 — pending-review confirm: POSTs /api/appeals/[id]/lookup,
-  // refreshes the appeal so the card flips into the validating state.
-  const confirmTicket = async () => {
+  // v0.3.9 — "Confirm & validate with council". The customer's
+  // explicit confirmation that the OCR'd PCN ref + VRM look right.
+  // ONLY now do we burn MCP tokens by firing the lookup.
+  //
+  // Sequence:
+  //   1. PATCH step → TICKET_CONFIRMED_STEP (cheap; locks in the
+  //      ticket fields so the user can't keep editing while the
+  //      lookup runs).
+  //   2. POST /api/appeals/[id]/lookup — kicks the pcn_lookup job
+  //      against the council portal IF the council is automated.
+  //      For non-automated councils the route writes a "skipped"
+  //      snapshot and the card flips straight to needs_decision
+  //      with the OCR fallback.
+  //   3. Card refresh — deriveCardState now sees portal_lookup
+  //      pending → flips into the validating gate (with the live
+  //      MCP screenshot strip + agent thought bubble).
+  //
+  // Cost economics: if OCR misreads pcnRef/VRM, the user catches it
+  // here before we spend ~$0.30 on a guaranteed-not-found MCP run.
+  const agreeTicket = async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/appeals/${encodeURIComponent(appeal.id)}/lookup`,
-        {
+      const updated = await patchThisAppeal({ step: TICKET_CONFIRMED_STEP });
+      refreshAppeal(updated);
+      // Fire the council-portal lookup. Best-effort: if the POST
+      // fails (council not automated, missing data, network blip)
+      // the card stays in needs_decision and the user can still
+      // pay/appeal via the OCR fallback. The route is idempotent;
+      // a retry from useAutoValidate later is safe.
+      try {
+        await fetch(`/api/appeals/${appeal.id}/lookup`, {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-snappeal-session": getOrCreateSessionId(),
+            // Required for guest viewers — viewer.ts:canViewAppeal
+            // rejects with 403 otherwise. Was the silent failure
+            // path before v0.3.10 that kept guests stuck on
+            // pending_review with no lookup ever firing.
+            "x-parkingrabbit-session": getOrCreateSessionId(),
           },
-        },
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          body?.error?.message ?? `Couldn't start validation (${res.status})`,
-        );
+        });
+      } catch {
+        /* swallow — useAutoValidate hook will retry on next mount */
       }
-      await res.json().catch(() => null);
-      // Clear the OCR handoff — once the user has confirmed, we don't
-      // want the review UI to flash back on a refresh.
+      // The pending_review OCR handoff is no longer relevant once the
+      // user has confirmed — clear it so a refresh doesn't bring the
+      // confidence pills back.
       clearOcrResult();
       setOcrHandoff(null);
-      const next = await fetchAppealRow();
-      if (next) refreshAppeal(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't start validation");
+      setError(err instanceof Error ? err.message : "Couldn't confirm details");
     } finally {
       setBusy(false);
     }
   };
+
+  // v0.3.6 — "Edit details" inside the needs_decision surface. PATCHes
+  // step BACK to the default so the card returns to pending_review with
+  // the editable fields surfaced. The user can fix typos and tap Agree
+  // again.
+  const editTicket = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await patchThisAppeal({ step: "photos" });
+      refreshAppeal(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't reopen edit");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // v0.3.6 — retry drafting after a generation_failed. PATCHes step
+  // back to EVIDENCE_DONE_STEP and clears the draft-kickoff ref so the
+  // useEffect that fires /api/generate-stream re-runs. Also clears the
+  // processing.draft.error so the failure row dismisses immediately on
+  // the next poll tick.
+  const retryDraft = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await patchThisAppeal({
+        step: EVIDENCE_DONE_STEP,
+        processing: {
+          ...(appeal.processing ?? {}),
+          draft: { status: "pending" },
+        },
+      });
+      refreshAppeal(updated);
+      draftKickedOffRef.current = null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't retry");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // v0.3.5 — the old `confirmTicket()` handler (the "I agree to T&Cs"
+  // path that POSTed /api/appeals/[id]/lookup) is gone. Pay/Appeal
+  // tiles now render on the pending_review surface itself, and the
+  // lookup is enqueued lazily inside `startAppeal()` above — only when
+  // the user actually picks the Appeal path, so customers who pay
+  // don't trigger the expensive Playwright MCP + Claude vision run.
 
   const overrideLookup = async () => {
     if (overriding) return;
@@ -785,7 +1091,7 @@ export function TicketCard({
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-snappeal-session": getOrCreateSessionId(),
+            "x-parkingrabbit-session": getOrCreateSessionId(),
           },
         },
       );
@@ -807,7 +1113,7 @@ export function TicketCard({
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-snappeal-session": getOrCreateSessionId(),
+          "x-parkingrabbit-session": getOrCreateSessionId(),
         },
         body: JSON.stringify({
           sessionId: getOrCreateSessionId(),
@@ -887,6 +1193,18 @@ export function TicketCard({
   // read/written from event handlers, never during render, so the
   // disable is intentional.
   // eslint-disable-next-line react-hooks/refs
+  // v0.3.6 — live MCP agent thought during the council lookup. Fed
+  // into the CouncilCheckChip inside the gathering_evidence body so
+  // the chip narrates the agent's progress ("Filling in PCN ref",
+  // "Navigating to ticket details") rather than a static caption.
+  // Empty unless the pcn_lookup job is queued or running.
+  const liveCouncilThought =
+    live &&
+    live.kind === "pcn_lookup" &&
+    (live.status === "queued" || live.status === "running")
+      ? live.latestThought ?? live.latestStep ?? null
+      : null;
+
   const lifecycleSteps = buildLifecycleSteps({
     appeal,
     state: cardState,
@@ -901,11 +1219,14 @@ export function TicketCard({
     busy,
     submitting,
     mcpPanel,
+    liveCouncilThought,
     onStartAppeal: () => void startAppeal(),
+    onAgreeTicket: () => void agreeTicket(),
+    onEditTicket: () => void editTicket(),
     onOpenPaymentSheet: () => setPaySheetOpen(true),
     onOverrideLookup: () => void overrideLookup(),
-    onConfirmTicket: () => void confirmTicket(),
     onConfirmEvidence: (input) => void confirmEvidenceAndDraft(input),
+    onRetryDraft: () => void retryDraft(),
     onRescoreWithEvidence: (photos) => void rescoreWithEvidence(photos),
     onEditTicketField: editTicketField,
   });
@@ -915,18 +1236,27 @@ export function TicketCard({
     <article
       ref={rootRef}
       className={`relative rounded-3xl bg-white border ${
-        cardState.inFlight ? "border-snappeal-primary/40 shadow-lg shadow-snappeal-primary/10" : "border-snappeal-border"
+        cardState.inFlight ? "border-parkingrabbit-primary/40 shadow-lg shadow-parkingrabbit-primary/10" : "border-parkingrabbit-border"
       } overflow-hidden transition-all duration-300`}
     >
       {/* Top-of-card progress bar — extra-thin, only when in-flight. */}
       {cardState.inFlight && cardState.progress != null && (
-        <div className="h-0.5 bg-snappeal-primary/15 relative overflow-hidden">
+        <div className="h-0.5 bg-parkingrabbit-primary/15 relative overflow-hidden">
           <div
-            className="absolute inset-y-0 left-0 bg-snappeal-primary transition-[width] duration-500 ease-out"
+            className="absolute inset-y-0 left-0 bg-parkingrabbit-primary transition-[width] duration-500 ease-out"
             style={{ width: `${Math.round(cardState.progress * 100)}%` }}
           />
         </div>
       )}
+
+      {/* Note: the legacy absolute "Agent at work" ActivityIndicator
+       *  used to render here in the top-right corner of the card and
+       *  visually collided with the £ amount + the inline status pill
+       *  in the header (both communicated the same in-flight state).
+       *  The status pill in `<TicketCardHeader pill={…} />` is now the
+       *  single source of truth for "what's happening" on a card; the
+       *  ActivityIndicator stays mounted only as the global nav pill
+       *  (see /app/tickets header). */}
 
       {/* Header — tappable to expand/collapse on list pages. The
        *  wide "View Details" footer button has been removed; tapping
@@ -969,13 +1299,35 @@ export function TicketCard({
           issuedAt={displayIssuedAt}
           location={displayLocation}
           pill={<StatusPill state={cardState} />}
+          deadlineProximity={deadlineProximity}
           onCouncilClick={
             councils && councils.length > 0
               ? () => setCouncilPickerOpen(true)
               : undefined
           }
+          // The reel spins through the entire scanning + processing
+          // window so the "looking for your council" affordance always
+          // gets its full beat — the reel's own settle logic then
+          // glides onto the detected council the instant `processing`
+          // ends (which is when OCR finishes and councilSlug is final).
+          //
+          // We DELIBERATELY don't latch on the council pre-pass's early
+          // PATCH of `councilSlug` here: that PATCH can land within the
+          // first ~200ms, before the reel has even mounted, which made
+          // the animation disappear entirely. Pinning the spin to
+          // cardState.kind keeps the runway visible until OCR settles.
+          //
+          // v0.3.10 — also stop the spinner the moment the cheap
+          // council-id pass (pass 1 of `/api/extract`, ~2–3s) writes a
+          // councilSlug onto the appeal. Without this gate the reel
+          // keeps shuffling for the full ~10–15s extract even though we
+          // already know which council to land on. The slug presence
+          // implies the FK-hoist in patchAppealDraft matched a real
+          // councils row, so the council logo is ready to render.
           scanning={
-            cardState.kind === "scanning" || cardState.kind === "processing"
+            (cardState.kind === "scanning" ||
+              cardState.kind === "processing") &&
+            !appeal.councilSlug
           }
           reelCouncils={councils ?? undefined}
         />
@@ -987,7 +1339,7 @@ export function TicketCard({
               e.stopPropagation();
               handleToggleWithScroll();
             }}
-            className="absolute top-3 right-3 size-7 rounded-full bg-snappeal-bg/80 hover:bg-snappeal-bg text-snappeal-muted hover:text-snappeal-navy flex items-center justify-center transition"
+            className="absolute top-3 right-3 size-7 rounded-full bg-parkingrabbit-bg/80 hover:bg-parkingrabbit-bg text-parkingrabbit-muted hover:text-parkingrabbit-navy flex items-center justify-center transition"
           >
             <ChevronDown
               className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -1050,7 +1402,17 @@ export function TicketCard({
         busy={submitting}
         councilName={councilName}
       />
-      <NotificationPermissionSheet trigger={notifPromptTrigger > 0} />
+      {/* Moment A — fired when the user taps Appeal (see startAppeal). */}
+      <NotificationPromptGate
+        trigger={notifPromptTriggerAppealTap}
+        moment="appealTap"
+      />
+      {/* Moment B — fired the first time we observe status=submitted
+       *  on this card's lifecycle. */}
+      <NotificationPromptGate
+        trigger={notifPromptTriggerSubmitDone}
+        moment="submitDone"
+      />
       {councilPickerOpen && councils && (
         <CouncilPickerSheet
           councils={councils}
@@ -1066,176 +1428,9 @@ export function TicketCard({
   );
 }
 
-/* ─────────────────────── pill ─────────────────────── */
-
-function StatusPill({ state }: { state: CardState }) {
-  const palette = pillPaletteFor(state.kind, state.pillTone);
-  const showLoader =
-    state.kind === "validating" ||
-    state.kind === "drafting" ||
-    state.kind === "submitting" ||
-    state.kind === "scanning";
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide whitespace-nowrap transition-colors duration-500 ${palette}`}
-    >
-      {showLoader ? (
-        <Loader2 className="size-3 animate-spin" strokeWidth={2.5} />
-      ) : state.kind === "letter_ready" ? (
-        <Sparkles className="size-3" strokeWidth={2.5} fill="currentColor" />
-      ) : state.kind === "submitted" || state.kind === "terminal" ? (
-        state.pillTone === "success" ? (
-          <CheckCircle2 className="size-3" strokeWidth={2.5} />
-        ) : (
-          <Check className="size-3" strokeWidth={2.5} />
-        )
-      ) : (
-        <span className="size-1.5 rounded-full bg-current snappeal-mcp-tick-dot" />
-      )}
-      {state.pillLabel}
-    </span>
-  );
-}
-
-function pillPaletteFor(kind: CardKind, tone: CardPillTone): string {
-  if (tone === "info" || kind === "scanning") {
-    return "bg-snappeal-primary-50 text-snappeal-primary border border-snappeal-primary/20";
-  }
-  if (tone === "positive") {
-    return "bg-green-50 text-green-700 border border-green-200";
-  }
-  if (tone === "success") {
-    return "bg-green-100 text-green-800 border border-green-300";
-  }
-  if (tone === "warn") {
-    return "bg-amber-50 text-amber-800 border border-amber-200";
-  }
-  if (tone === "danger") {
-    return "bg-red-50 text-red-700 border border-red-200";
-  }
-  return "bg-snappeal-bg text-snappeal-muted border border-snappeal-border";
-}
-
-/* ─────────────────────── delete button ─────────────────────── */
-
-function DeleteTicketButton({ onConfirm }: { onConfirm: () => void }) {
-  const [confirming, setConfirming] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const handleClick = () => {
-    if (confirming) {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      setConfirming(false);
-      onConfirm();
-      return;
-    }
-    setConfirming(true);
-    timerRef.current = setTimeout(() => {
-      setConfirming(false);
-      timerRef.current = null;
-    }, 4000);
-  };
-
-  if (confirming) {
-    return (
-      <button
-        type="button"
-        onClick={handleClick}
-        autoFocus
-        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 text-white border border-red-700 hover:bg-red-700 transition py-3 text-[12px] font-bold shadow-sm active:scale-[0.99]"
-      >
-        <Trash2 className="size-4" strokeWidth={2.25} />
-        Tap again to confirm
-      </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-white border border-snappeal-border text-snappeal-muted hover:text-red-700 hover:border-red-200 hover:bg-red-50/40 transition py-3 text-[12px] font-semibold"
-    >
-      <Trash2 className="size-4" strokeWidth={2} />
-      Delete
-    </button>
-  );
-}
-
-/* ─────────────────────── small helpers ─────────────────────── */
-
-function Field({ label, value }: { label: string; value: string }) {
-  const display = formatFieldValue(label, value);
-  return (
-    <div className="min-w-0">
-      <dt className="text-[10px] uppercase tracking-wide text-snappeal-muted">
-        {humanize(label)}
-      </dt>
-      <dd className="text-snappeal-navy font-semibold truncate" title={display}>
-        {display}
-      </dd>
-    </div>
-  );
-}
-
-function humanize(field: string): string {
-  return field
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (c) => c.toUpperCase())
-    .replace(/\s*Pence$/, "");
-}
-
-/** SSE-driven `extracted` events arrive as raw stringified pence /
- *  ISO timestamps because that's what the connector emits. Format on
- *  display so the customer doesn't see "16000" under "Amount" or a
- *  raw ISO under "Issued At". */
-function formatFieldValue(field: string, raw: string): string {
-  if (raw == null || raw === "") return "—";
-  // Amounts — any field name ending in "Pence" carries integer pence.
-  if (/Pence$/.test(field)) {
-    const n = Number(raw);
-    if (Number.isFinite(n)) {
-      return new Intl.NumberFormat("en-GB", {
-        style: "currency",
-        currency: "GBP",
-        maximumFractionDigits: 0,
-      }).format(n / 100);
-    }
-  }
-  // Timestamps — issuedAt, paidAt, fetchedAt, dueDateAt, discountUntil,
-  // fullChargeFrom — anything that parses cleanly as a date.
-  if (/At$|Date$|Until$|From$|Date[A-Z]/.test(field)) {
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) {
-      // Same-day events get a time too — daily deadlines just need
-      // the date.
-      const hasTime = /T\d{2}:/.test(raw);
-      return hasTime
-        ? d.toLocaleString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : d.toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          });
-    }
-  }
-  return raw;
-}
+/* StatusPill, pillPaletteFor → components/ticket/StatusPill.tsx
+ * DeleteTicketButton          → components/ticket/DeleteTicketButton.tsx
+ * Field, humanize, formatFieldValue → components/ticket/Field.tsx */
 
 // Re-export to allow consumers like the list page to peek at status without
 // re-deriving (rare).
@@ -1275,16 +1470,21 @@ interface BuildStepArgs {
    *  past-job gallery exists. NULL when the admin flag is OFF or
    *  nothing's running. */
   mcpPanel: React.ReactNode | null;
+  /** v0.3.6 — live MCP agent thought during a council lookup. Forwarded
+   *  to the CouncilCheckChip in the gathering_evidence body. */
+  liveCouncilThought: string | null;
   /** Card expand state. Children are mounted only when expanded so the
    *  collapsed timeline stays compact in the list view. */
   expanded: boolean;
   busy: boolean;
   submitting: boolean;
   onStartAppeal: () => void;
+  onAgreeTicket: () => void;
+  onEditTicket: () => void;
   onOpenPaymentSheet: () => void;
   onOverrideLookup: () => void;
-  onConfirmTicket: () => void;
   onConfirmEvidence: (input: { grounds: string[]; notes: string }) => void;
+  onRetryDraft: () => void;
   onRescoreWithEvidence: (photos: string[]) => void;
   onEditTicketField: (
     field:
@@ -1310,14 +1510,17 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
     ocrHandoff,
     extracted,
     mcpPanel,
+    liveCouncilThought,
     expanded,
     busy,
     submitting,
     onStartAppeal,
+    onAgreeTicket,
+    onEditTicket,
     onOpenPaymentSheet,
     onOverrideLookup,
-    onConfirmTicket,
     onConfirmEvidence,
+    onRetryDraft,
     onRescoreWithEvidence,
     onEditTicketField,
   } = args;
@@ -1350,14 +1553,17 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
       councils={councils}
       statusSnapshot={statusSnapshot}
       onStartAppeal={onStartAppeal}
+      onAgreeTicket={onAgreeTicket}
+      onEditTicket={onEditTicket}
       onOpenPaymentSheet={onOpenPaymentSheet}
       onOverrideLookup={onOverrideLookup}
-      onConfirmTicket={onConfirmTicket}
       onConfirmEvidence={onConfirmEvidence}
+      onRetryDraft={onRetryDraft}
       onRescoreWithEvidence={onRescoreWithEvidence}
       onEditTicketField={onEditTicketField}
       pcnImage={pcnImage}
       ocrHandoff={ocrHandoff}
+      liveCouncilThought={liveCouncilThought}
       busy={busy || submitting}
     />
   );
@@ -1410,11 +1616,12 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
     // confirmation form below is where their attention should be.
     children: (() => {
       if (!expanded) return null;
-      if (readingStatus === "failed") return renderReadingFailureActions(kind);
+      if (readingStatus === "failed")
+        return <ReadingFailureActions kind={kind} appealId={appeal.id} />;
       if (readingStatus !== "active") return null;
       if (!pcnImage) return null;
       return (
-        <div className="relative rounded-2xl overflow-hidden border border-snappeal-border bg-snappeal-bg">
+        <div className="relative rounded-2xl overflow-hidden border border-parkingrabbit-border bg-parkingrabbit-bg">
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
           <img
             src={pcnImage}
@@ -1427,9 +1634,14 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
     })(),
   });
 
-  // 2) Information collected — required fields exist OR the user is in
-  //    the pending_review surface (active w/ confirmation form). The
-  //    PendingReviewCard surface lives here.
+  // 2) Information collected. v0.3.6 — re-introduced the active branch
+  //    for pending_review. The user must verify (or edit) the OCR'd
+  //    PCN ref / registration / council and tap "Agree to continue"
+  //    before the Pay/Appeal decision tiles appear. The agree gesture
+  //    is purely a confirmation — no server cost (the lookup is still
+  //    lazy and only fires on Appeal). PendingReviewCard (editable
+  //    fields + photo coach + Agree button) mounts as the children
+  //    here when active.
   const infoStatus: LifecycleStepStatus =
     readingStatus === "failed"
       ? "upcoming"
@@ -1452,7 +1664,7 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
       infoStatus === "failed"
         ? "We need a few details to continue."
         : infoStatus === "active"
-          ? "Check the details below."
+          ? "Check these details below and tap Agree when they look right."
           : infoStatus === "done"
             ? "PCN details confirmed."
             : "Up next, once the photo is read.",
@@ -1471,99 +1683,110 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
   //    whether the discount window is open — so the legacy
   //    "Outstanding" step has been removed entirely and that info is
   //    surfaced inside "Pay / appeal" once verified.
-  const councilStatus: LifecycleStepStatus =
-    kind === "council_lookup_failed"
+  // v0.3.6 — "Checking council" timeline step is GONE. The
+  // CouncilCheckChip inside the Build-appeal body is the single
+  // ambient surface for the lookup signal (pending / verified-with-diffs
+  // / error) AND the live MCP agent thought streams into it
+  // (liveAgentThought prop) so the user sees "Filling in PCN ref…",
+  // "Navigating to ticket details…" etc. inline. We only re-introduce
+  // the step here for the explicit failure card (council_lookup_failed),
+  // which still needs the retry / override surface.
+  if (kind === "council_lookup_failed") {
+    steps.push({
+      id: "council",
+      title: "Council check needed",
+      supporting: "We couldn't check the council portal.",
+      status: "failed",
+      tint: "warn",
+      children: expanded ? (
+        <CouncilFailureActions onOverrideLookup={onOverrideLookup} />
+      ) : null,
+    });
+  }
+  // The mcpPanel + extracted-field stream still belong to the LIVE
+  // validating fallback (when preferredMethod hasn't been picked).
+  // The chip and the inline thought handle the gathering_evidence /
+  // drafting cases.
+  if (kind === "validating") {
+    steps.push({
+      id: "council",
+      title: "Checking council",
+      supporting:
+        state.caption ??
+        "Checking the issuer portal for payment status, deadlines, and available options.",
+      status: "active",
+      busy: true,
+      children: expanded
+        ? (
+            <div className="flex flex-col gap-3">
+              {mcpPanel}
+              {Object.keys(extracted).length > 0 && (
+                <ExtractedStream extracted={extracted} />
+              )}
+            </div>
+          )
+        : null,
+    });
+  }
+
+  // 4) Pay / appeal — the decision point. v0.3.6 — only active in
+  //    needs_decision (which now also fires PRE-lookup once the user
+  //    has tapped Agree on pending_review; see deriveCardState's
+  //    ticket-confirmed branch). pending_review keeps its own step
+  //    above (Confirm details) so the Agree gesture has visible
+  //    ownership on the rail. Failed when the lazy lookup verdict
+  //    says paid/closed/not_found (appeal_not_possible).
+  const payAppealStatus: LifecycleStepStatus =
+    kind === "appeal_not_possible"
       ? "failed"
-      : kind === "validating"
+      : kind === "needs_decision"
         ? "active"
-        : portalDone
+        : draftPicked ||
+            kind === "gathering_evidence" ||
+            kind === "drafting" ||
+            kind === "letter_ready" ||
+            kind === "submitting" ||
+            kind === "submitted" ||
+            kind === "terminal"
           ? "done"
           : "upcoming";
   steps.push({
-    id: "council",
-    title:
-      councilStatus === "failed" ? "Council check needed" : "Checking council",
-    supporting:
-      councilStatus === "failed"
-        ? "We couldn't check the council portal."
-        : councilStatus === "active"
-          ? state.caption ??
-            "Checking the issuer portal for payment status, deadlines, and available options."
-          : councilStatus === "done"
-            ? "Confirmed with the council."
-            : "Up next, once the PCN details are confirmed.",
-    status: councilStatus,
-    busy: councilStatus === "active",
-    tint: councilStatus === "failed" ? "warn" : undefined,
-    // Live agent browser (MCPLiveStrip) + extracted-field stream sit
-    // inside this step ONLY while the check is active (or a failure
-    // surface needs the retry action). The moment the council
-    // confirms and we move on to "Pay / appeal", everything inside
-    // Checking council collapses — the user's already seen the
-    // browser do its work, and the verified amount / discount line
-    // now lives inside the Pay / appeal step.
-    children: expanded
-      ? councilStatus === "failed"
-        ? renderCouncilFailureActions(onOverrideLookup)
-        : councilStatus === "active"
-          ? (
-              <div className="flex flex-col gap-3">
-                {mcpPanel}
-                {Object.keys(extracted).length > 0 &&
-                  renderExtractedStream(extracted)}
-              </div>
-            )
-          : null
-      : null,
-  });
-
-  // 4) Pay / appeal — the decision point. Active when needs_decision;
-  //    done once the user has either picked a path (preferredMethod
-  //    stamped) or the ticket is terminally paid. The three choice
-  //    cards (Appeal with Rabbit / Pay yourself / Pay instantly) live
-  //    inside this step's children, AS DO the verified payment
-  //    options + due-amount / discount line surfaced by the
-  //    council snapshot (legacy "Outstanding" step folded into here
-  //    so the timeline never claims a discount before the council has
-  //    confirmed it).
-  const payAppealStatus: LifecycleStepStatus =
-    kind === "needs_decision"
-      ? "active"
-      : draftPicked ||
-          kind === "gathering_evidence" ||
-          kind === "drafting" ||
-          kind === "letter_ready" ||
-          kind === "submitting" ||
-          kind === "submitted" ||
-          kind === "terminal"
-        ? "done"
-        : "upcoming";
-  steps.push({
     id: "pay-appeal",
-    title: "Pay / appeal",
+    title:
+      payAppealStatus === "failed" ? "Appeal not possible" : "Pay / appeal",
     supporting:
-      payAppealStatus === "active"
-        ? "Review your options below"
-        : payAppealStatus === "done"
-          ? draftPicked
-            ? "You chose to appeal with Rabbit."
-            : "Decision made."
-          : councilStatus === "done"
-            ? "Review your options below"
-            : "Rabbit will show your options once the council check is complete.",
+      payAppealStatus === "failed"
+        ? state.caption ??
+          "The council's record means an appeal can't be filed for this PCN."
+        : payAppealStatus === "active"
+          ? "Review your options below"
+          : payAppealStatus === "done"
+            ? draftPicked
+              ? "You chose to appeal with Rabbit."
+              : "Decision made."
+            : portalDone
+              ? "Review your options below"
+              : "Rabbit will show your options once the council check is complete.",
     // Verified status line ("Due: £X · £Y if paid by Z") only appears
-    // once the council snapshot has landed AND we're actively offering
-    // the decision. Never claim a discount pre-validation.
+    // once the COUNCIL LOOKUP has verified the PCN AND we're actively
+    // offering the decision. Never claim a discount pre-validation —
+    // the /api/appeals/[id]/status snapshot is cheap and runs early,
+    // but its figures are not the council's record until the lazy
+    // pcn_lookup (Playwright MCP) confirms them.
     detail:
-      outstanding && payAppealStatus === "active" ? (
+      outstanding && payAppealStatus === "active" && portalDone ? (
         <OutstandingDetail snapshot={statusSnapshot} />
       ) : null,
     status: payAppealStatus,
+    tint: payAppealStatus === "failed" ? "warn" : undefined,
     // No outer yellow wrapper around the decision tiles — the
     // "Appeal expired" / "Open" copy + the "Due: £X" line carry the
     // urgency on their own. The choice cards inside are designed to
     // stand full-width without any tinted parent.
-    children: expanded && payAppealStatus === "active" ? renderBody() : null,
+    children:
+      expanded && (payAppealStatus === "active" || payAppealStatus === "failed")
+        ? renderBody()
+        : null,
     // Decision tiles escape the rail indent so they span the full
     // card width (matching the Delete button in the footer below).
     childrenFullBleed: payAppealStatus === "active",
@@ -1572,7 +1795,9 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
   // 5) Build appeal — the grounds + evidence + dictation surface. Only
   //    shown once the user has chosen the appeal path. The
   //    GatheringEvidenceCard lives here as children when active.
-  if (draftPicked || hasLetter) {
+  //    Skipped entirely when appeal_not_possible — there's nothing to
+  //    build if the council refuses the appeal.
+  if ((draftPicked || hasLetter) && kind !== "appeal_not_possible") {
     const buildStatus: LifecycleStepStatus =
       kind === "gathering_evidence"
         ? "active"
@@ -1629,12 +1854,19 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
               : "Up next.",
       status: draftingStatus,
       busy: kind === "drafting",
+      // v0.3.6 — mount the drafting body during the actual drafting
+      // phase too. The body now renders the Council-confirms details
+      // block while the AI writes, so the user sees what their letter
+      // is being drafted from. Previously the body was only mounted
+      // once a letterBody existed (letter_ready / submitting).
       children:
-        expanded && hasLetter && (kind === "letter_ready" || kind === "submitting")
+        expanded && kind === "drafting"
           ? renderBody()
-          : expanded && hasLetter
-            ? renderLetterActions(appeal)
-            : null,
+          : expanded && hasLetter && (kind === "letter_ready" || kind === "submitting")
+            ? renderBody()
+            : expanded && hasLetter
+              ? renderLetterActions(appeal)
+              : null,
     });
   }
 
@@ -1647,7 +1879,10 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
           (kind === "terminal" && hasLetter)
         ? "done"
         : "upcoming";
-  if (draftPicked || hasLetter || submitStatus !== "upcoming") {
+  if (
+    (draftPicked || hasLetter || submitStatus !== "upcoming") &&
+    kind !== "appeal_not_possible"
+  ) {
     steps.push({
       id: "submit",
       title:
@@ -1705,74 +1940,8 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
   return steps;
 }
 
-function renderReadingFailureActions(kind: CardKind): React.ReactElement {
-  const body =
-    kind === "image_issue"
-      ? "Please upload a clear photo of the Penalty Charge Notice, including the PCN number, issuer, date, amount, and vehicle registration."
-      : kind === "image_unclear"
-        ? "Please retake the photo in good light and make sure the whole notice is visible."
-        : "Please try again, upload another photo, or enter the details manually.";
-  return (
-    <div className="flex flex-col gap-2.5">
-      <p className="text-[12px] text-amber-900/90 leading-snug">{body}</p>
-      <div className="flex flex-col gap-2">
-        <Link
-          href="/app/capture"
-          className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-snappeal-navy text-white font-semibold text-[12.5px] px-4 py-2.5 hover:bg-snappeal-navy/90 transition"
-        >
-          <Camera className="size-3.5" strokeWidth={2.25} />
-          Retake photo
-        </Link>
-        <Link
-          href="/app/capture?source=library"
-          className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-white border border-snappeal-border text-snappeal-navy font-semibold text-[12.5px] px-4 py-2.5 hover:border-snappeal-primary transition"
-        >
-          <Images className="size-3.5" strokeWidth={2.25} />
-          Choose another photo
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function renderCouncilFailureActions(
-  onOverrideLookup: () => void,
-): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-2.5">
-      <p className="text-[12px] text-amber-900/90 leading-snug">
-        You can still continue, but please review the details carefully.
-      </p>
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onOverrideLookup}
-          className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-snappeal-navy text-white font-semibold text-[12.5px] px-4 py-2.5 hover:bg-snappeal-navy/90 transition"
-        >
-          <RefreshCw className="size-3.5" strokeWidth={2.25} />
-          Continue anyway
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function renderExtractedStream(
-  extracted: Record<string, string>,
-): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="text-[10.5px] font-bold uppercase tracking-wide text-snappeal-success">
-        Council confirms
-      </p>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11.5px]">
-        {Object.entries(extracted).map(([field, value]) => (
-          <Field key={field} label={field} value={value} />
-        ))}
-      </dl>
-    </div>
-  );
-}
+/* ReadingFailureActions, CouncilFailureActions, ExtractedStream
+ *   → components/ticket/FailureActions.tsx                         */
 
 function renderLetterActions(appeal: AppealRecord): React.ReactElement | null {
   if (!appeal.letterBody) return null;
@@ -1784,97 +1953,6 @@ function renderLetterActions(appeal: AppealRecord): React.ReactElement | null {
   );
 }
 
-/** Renders the "Due: £X · £Y if paid by Z" line under the Outstanding
- *  step once the council has confirmed the ticket. */
-function OutstandingDetail({
-  snapshot,
-}: {
-  snapshot: TicketStatusSnapshot | null;
-}) {
-  if (!snapshot) return null;
-  if (
-    snapshot.status !== "unpaid" &&
-    snapshot.status !== "charge_certificate_issued"
-  ) {
-    return null;
-  }
-  const due =
-    snapshot.currentDuePence != null
-      ? formatGBP(snapshot.currentDuePence)
-      : null;
-  const discounted =
-    snapshot.discountedDuePence != null
-      ? formatGBP(snapshot.discountedDuePence)
-      : null;
-  const discountUntil = formatShortDate(snapshot.discountUntil);
-  if (!due) return null;
-  return (
-    <p className="text-amber-900/90">
-      <span className="font-bold text-snappeal-navy">
-        {snapshot.status === "charge_certificate_issued" ? "Now due: " : "Due: "}
-        {due}
-      </span>
-      {discounted && discountUntil && (
-        <span className="text-snappeal-muted">
-          {" · "}
-          {discounted} if paid by {discountUntil}
-        </span>
-      )}
-    </p>
-  );
-}
+/* OutstandingDetail, isSubmissionStuck, StuckSubmittingNotice, STUCK_THRESHOLD_MS
+ *   → components/ticket/SubmissionStatusBits.tsx                            */
 
-/* ─────────────────────── stuck-submission notice ─────────────────────── */
-
-/** A submission is "stuck" when the appeal has been in `status="submitting"`
- *  longer than the worker's job-level timeout PLUS a small grace window
- *  (worker has 10 min for the submit_appeal kind — see `JOB_TIMEOUT_MS` in
- *  `lib/server/jobs/worker.ts`). The worker bounces the appeal back to
- *  "ready" on timeout, but a worker that's down or a server that crashed
- *  won't run that recovery — so we still need a client-side fallback so
- *  the customer isn't trapped on a permanently-spinning card. 12 minutes
- *  is the worker cap (10) + 2 min of headroom for clock skew + DB write
- *  propagation. */
-const STUCK_THRESHOLD_MS = 12 * 60_000;
-
-function isSubmissionStuck(appeal: AppealRecord): boolean {
-  if (appeal.status !== "submitting") return false;
-  if (!appeal.updatedAt) return false;
-  const updatedAtMs = new Date(appeal.updatedAt).getTime();
-  if (!Number.isFinite(updatedAtMs)) return false;
-  return Date.now() - updatedAtMs > STUCK_THRESHOLD_MS;
-}
-
-/** Surfaces the stuck-submission state to the customer with a manual
- *  refresh affordance. Deliberately minimal — no destructive actions;
- *  the worker's job timeout is the authoritative recovery mechanism. */
-function StuckSubmittingNotice() {
-  return (
-    <section className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4 flex items-start gap-3">
-      <span className="size-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-        <AlertTriangle className="size-5" strokeWidth={2.25} />
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-bold text-amber-900 leading-tight">
-          This is taking longer than expected
-        </p>
-        <p className="text-[11.5px] text-amber-900/80 mt-1 leading-snug">
-          The council portal is slow or our automation hit a snag.
-          Refresh to check the latest state — if it stays stuck, the
-          system will auto-retry or bounce the appeal back to ready so
-          you can try again.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            if (typeof window !== "undefined") window.location.reload();
-          }}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white border border-amber-300 text-amber-900 text-[11.5px] font-semibold px-3 py-1.5 hover:bg-amber-100 transition"
-        >
-          <RefreshCw className="size-3.5" strokeWidth={2.25} />
-          Refresh
-        </button>
-      </div>
-    </section>
-  );
-}

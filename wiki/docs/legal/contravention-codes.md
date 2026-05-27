@@ -1,5 +1,7 @@
 # Contravention codes
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 Every PCN issued under TMA 2004 carries a **contravention code** — a two-digit number that tells the motorist (and the adjudicator) exactly which rule the council says was broken. The list below covers the most common codes in London.
 
 The full official list is maintained by London Councils' Traffic Enforcement Centre. Use this table as a reference for what each code means in plain English and which ground(s) are most often relevant.

@@ -8,10 +8,10 @@
  */
 import { readFile } from "node:fs/promises";
 
-const BASE = process.env.SNAPPEAL_BASE ?? "http://127.0.0.1:3001";
+const BASE = process.env.PARKINGRABBIT_BASE ?? "http://127.0.0.1:3001";
 const PCN_IMAGE_PATH =
-  process.env.SNAPPEAL_TEST_PCN ??
-  "C:\\Users\\User\\desktop\\parkingappeal\\snappeal-home-final.png";
+  process.env.PARKINGRABBIT_TEST_PCN ??
+  "C:\\Users\\User\\desktop\\parkingappeal\\parkingrabbit-home-final.png";
 
 interface AppealRecordView {
   id: string;
@@ -19,7 +19,6 @@ interface AppealRecordView {
   councilSlug: string | null;
   letterSubject: string | null;
   letterWordCount: number | null;
-  modelUsed: string | null;
   grounds: string[];
 }
 
@@ -71,7 +70,11 @@ async function main() {
   // ── 3. Re-fetch from DB ─────────────────────────────────────────────────
   const fetchRes = await fetch(`${BASE}/api/appeals/${appealId}`);
   const { appeal } = (await fetchRes.json()) as { appeal: AppealRecordView };
-  console.info(`✓ persisted: status=${appeal.status}, council=${appeal.councilSlug}, words=${appeal.letterWordCount}, model=${appeal.modelUsed}`);
+  // model attribution moved out of appeals.modelUsed into per-call
+  // ai_calls rows (migration 0015). The audit signal lives in the
+  // /api/generate response (logged above as genJson.modelUsed) and
+  // can be queried per-stage from ai_calls.
+  console.info(`✓ persisted: status=${appeal.status}, council=${appeal.councilSlug}, words=${appeal.letterWordCount}`);
 
   // ── 4. Submit ───────────────────────────────────────────────────────────
   const submitRes = await fetch(`${BASE}/api/submit`, {

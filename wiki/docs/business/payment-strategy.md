@@ -1,5 +1,7 @@
 # Payment strategy
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 ParkingRabbit handles three customer-facing payment surfaces — live, planned, or off-limits:
 
 | Surface | Live? | What we charge | What we touch |
@@ -18,7 +20,7 @@ This doc explains the reasoning behind that table and the work needed before Rab
 - **VAT.** Single-currency (GBP) Stripe account; VAT treatment is "out of scope" at launch volume but should be reviewed once monthly turnover crosses the threshold.
 - **Server-side gates** (`/api/submit`):
   - **Council-portal verdict gate.** Returns `409 PCN_NOT_APPEALABLE` if the portal lookup says the PCN is paid / closed / not_found and the user hasn't overridden the verdict. Defence in depth against accidentally charging the card for an appeal that can't go anywhere.
-  - **PaymentIntent verification.** The submit job is only enqueued after Stripe confirms the PaymentIntent succeeded (skippable with `SNAPPEAL_SKIP_PAYMENT_CHECK=1` in dev).
+  - **PaymentIntent verification.** The submit job is only enqueued after Stripe confirms the PaymentIntent succeeded (skippable with `PARKINGRABBIT_SKIP_PAYMENT_CHECK=1` in dev).
 
 ## Today — Pay yourself (deep-link, free)
 
@@ -77,7 +79,7 @@ When Rabbit Pay launches, we surface ONLY the issuers we've actually wired up. T
 
 ## Code anchors
 
-- **Disabled placeholder.** `<TicketCardBody>` in `apps/web/components/TicketCardBody.tsx` renders the Rabbit Pay block as a non-interactive `<div aria-disabled>` with the Coming soon pill inside the `needs_decision` flavored "recommendation" state (and the `escalated` flavor's escalation card). There is no onClick handler.
+- **Disabled placeholder.** `<PayAppealTiles>` in `apps/web/components/PayAppealTiles.tsx` renders the Rabbit Pay (Apple/Google Pay) block as a non-interactive `<div aria-disabled>` with the "Coming soon" pill. The component is mounted by both `<PendingReviewCard>` (the post-OCR Pay/Appeal surface) and `<ReviewRecommendation>` (the `needs_decision` flavored "recommendation" / "expired" surfaces). There is no onClick handler.
 - **Existing PaymentSheet.** `apps/web/components/PaymentSheet.tsx` handles the £2.99 appeal-flow charge. Its Stripe-Elements wiring is the starting point for Rabbit Pay — same `<PaymentElement>`, different `PaymentIntent` purpose, different post-confirm flow (issuer settle vs job enqueue).
 - **Future API surface.** `POST /api/appeals/[id]/rabbit-pay` (not yet built) would mirror `/api/submit` — verify the PaymentIntent, enqueue a `pay_pcn` job kind, return `submissionId`. The `pay_pcn` job kind would replace `submit_appeal` with the issuer-payment connector.
 

@@ -46,24 +46,44 @@ Steps:
      • Vehicle registration (preserve spacing — "AB12 CDE" not "AB12CDE").
    Submit it.
 6. Take screenshot "02-ticket-found.png".
-7. Read the page text. Emit the verdict using the same bracket-tag
-   protocol as the metadata lines below — TWO lines, each on its own:
+7. Read the page text. **Affirmatively verify the appeal pathway**
+   before declaring "open" — a PCN at Charge Certificate / Order for
+   Recovery stage may still be readable but the Challenge route is
+   gone, and the right verdict in that case is "expired", not "open".
+
+   Look for an affirmative Challenge signal:
+     • A button or link labelled "Make representation", "Challenge",
+       "Challenge this PCN", "Dispute", or "Reasons".
+     • Or, in Variant B, the post-lookup actions page must offer that
+       route alongside View images / Pay.
+
+   Look for closed-appeal signals:
+     • Only View images / Pay buttons visible (no Challenge).
+     • "Charge Certificate issued" / "Notice of Order to Owner
+       served" / "Order for Recovery filed".
+     • "No further representations may be made" / "You are no longer
+       entitled to make representations".
+
+   Emit the verdict using the same bracket-tag protocol as the metadata
+   lines below — TWO lines, each on its own:
 
      [verdict]<one of: open|paid|closed|expired|not_found|unknown>
-     [verdictReason]<one-sentence reason citing the page text>
+     [verdictReason]<one-sentence reason citing the page text — must
+       state whether the Challenge button is visible>
 
    Verdict values:
-     • "open"      — the PCN is live, the page offers View / Pay /
-                     Challenge options, no "paid"/"closed" notice visible.
+     • "open"      — the PCN is live AND a Challenge/Representation
+                     route is visible, no "paid"/"closed"/"recovery"
+                     notice present.
      • "paid"      — the page explicitly says paid in full, balance £0,
                      or the View/Pay/Challenge buttons are gone with a
                      "this PCN has been paid" notice.
      • "closed"    — the page says the case has been closed, cancelled,
                      withdrawn, or that the council is no longer pursuing
                      the PCN.
-     • "expired"   — the page says the statutory window to challenge has
-                     passed (often phrased "you are no longer entitled to
-                     make representations").
+     • "expired"   — page reaches the PCN but Challenge route is gone:
+                     statutory window passed, CC issued, OfR filed, or
+                     only Pay/View buttons present.
      • "not_found" — the lookup returned "PCN not found", "no record
                      matches", or similar.
      • "unknown"   — you reached a page but cannot determine state with
@@ -109,18 +129,55 @@ Steps:
    the verdict-page metadata you've already captured is enough — skip
    to step 12.)
 10. Wait for the photos page to load. There are usually 2–6 warden-camera
-    images plus sometimes a "context" wide shot. For EACH visible photo,
-    call \`mcp__playwright__browser_take_screenshot\` with filename:
-      "warden-1.png", "warden-2.png", ... in display order.
-    If the page shows photos as a carousel, click through to expose each
-    one and screenshot it individually.
-11. Take screenshot "03-photos-summary.png" of the photos page overview.
+    images plus sometimes a "context" wide shot.
+
+    **HARVEST URLs, DO NOT SCREENSHOT.** Run ONE
+    \`mcp__playwright__browser_evaluate\` call with this function body to
+    collect every visible warden-photo URL in display order:
+
+      () => Array.from(
+        document.querySelectorAll(
+          'img.warden-photo, .ticket-image img, .gallery-item img, .photo-gallery img, .photos-list img, main img'
+        )
+      )
+        .map((el) => ({
+          src: el.getAttribute('src') || '',
+          alt: el.getAttribute('alt') || '',
+          width: el.naturalWidth || 0,
+          height: el.naturalHeight || 0,
+        }))
+        // Drop layout chrome (icons, logos) by requiring a real image
+        // and a non-trivial intrinsic size.
+        .filter((r) => r.src && r.width >= 200 && r.height >= 200)
+        .map((r) => ({
+          url: new URL(r.src, location.href).href,
+          alt: r.alt || null,
+        }));
+
+    For EACH result, emit one bracket-tag line on its own:
+
+      [photoUrl]<absolute-url>
+
+    Example (three photos):
+      [photoUrl]https://appeals.westminster.gov.uk/photos/abc-1.jpg
+      [photoUrl]https://appeals.westminster.gov.uk/photos/abc-2.jpg
+      [photoUrl]https://appeals.westminster.gov.uk/photos/abc-3.jpg
+
+    The wrapper fetches each URL server-side and re-hosts the bytes on
+    our CDN before they reach the customer.
+
+    **DO NOT** call \`browser_take_screenshot\` for the individual
+    warden photos. We only want the audit-trail screenshots listed
+    below — one per major navigation milestone, not one per photo.
+11. Take screenshot "03-photos-summary.png" of the photos page overview
+    (ONCE). This is the audit-only milestone shot — the customer never
+    sees it, but legal records require proof the page loaded.
 12. **You do NOT need to return a JSON object.** The wrapper reads the
-    [verdict], [verdictReason], and [metadata] lines you emit during
-    the run — those ARE the validation result. Just emit them once
-    each in any assistant message, then end your turn with a one-line
-    plain-text summary so it's clear you finished, e.g.
-    "Done — open ticket, 7 warden photos captured."
+    [verdict], [verdictReason], [metadata], and [photoUrl] lines you
+    emit during the run — those ARE the validation result. Just emit
+    them once each in any assistant message, then end your turn with a
+    one-line plain-text summary so it's clear you finished, e.g.
+    "Done — open ticket, 7 warden photo URLs harvested."
 
 Hard rules (repeat):
 - Stop after 30 navigation/form steps maximum.

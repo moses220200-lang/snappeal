@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Apple, Smartphone, X } from "lucide-react";
 
-const DISMISSED_KEY = "snappeal.installBanner.dismissedAt";
+const DISMISSED_KEY = "parkingrabbit.installBanner.dismissedAt";
 const DISMISS_FOR_DAYS = 7;
 
 type Variant = "landing" | "app";
@@ -63,7 +63,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
 
     // Same mount-once pattern as the splash — the new react-hooks rule
     // has a false positive on conditional state-flipping inside the
-    // post-mount effect. (See SnappealSplash for the matching note.)
+    // post-mount effect. (See ParkingRabbitSplash for the matching note.)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShow(true);
 
@@ -108,7 +108,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
         <div
           role="dialog"
           aria-label="Install ParkingRabbit"
-          className="pointer-events-auto mx-auto max-w-2xl rounded-2xl bg-snappeal-navy text-white shadow-2xl shadow-black/30 border border-white/10 overflow-hidden animate-[install-slide-up_400ms_cubic-bezier(0.22,1,0.36,1)_both]"
+          className="pointer-events-auto mx-auto max-w-2xl rounded-2xl bg-parkingrabbit-navy text-white shadow-2xl shadow-black/30 border border-white/10 overflow-hidden animate-[install-slide-up_400ms_cubic-bezier(0.22,1,0.36,1)_both]"
         >
           <div className="flex items-center gap-4 px-5 py-4">
             <ShieldGlyph />
@@ -128,7 +128,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
             <button
               type="button"
               onClick={triggerInstall}
-              className="hidden sm:inline rounded-xl bg-snappeal-primary text-white text-sm font-semibold px-4 py-2.5 hover:bg-snappeal-primary-600 transition whitespace-nowrap"
+              className="hidden sm:inline rounded-xl bg-parkingrabbit-primary text-white text-sm font-semibold px-4 py-2.5 hover:bg-parkingrabbit-primary-600 transition whitespace-nowrap"
             >
               Install
             </button>
@@ -146,7 +146,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
             <button
               type="button"
               onClick={triggerInstall}
-              className="flex-1 rounded-xl bg-snappeal-primary text-white text-sm font-semibold py-2.5 hover:bg-snappeal-primary-600 transition"
+              className="flex-1 rounded-xl bg-parkingrabbit-primary text-white text-sm font-semibold py-2.5 hover:bg-parkingrabbit-primary-600 transition"
             >
               Install ParkingRabbit
             </button>
@@ -158,7 +158,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
 
   /* ── App variant: inline card at the top of /app ─────────────────── */
   return (
-    <div className="rounded-2xl bg-snappeal-navy text-white shadow-md border border-white/5 overflow-hidden animate-[install-fade-in_400ms_cubic-bezier(0.22,1,0.36,1)_both]">
+    <div className="rounded-2xl bg-parkingrabbit-navy text-white shadow-md border border-white/5 overflow-hidden animate-[install-fade-in_400ms_cubic-bezier(0.22,1,0.36,1)_both]">
       <div className="flex items-center gap-3 px-4 py-3.5">
         <ShieldGlyph small />
         <div className="flex-1 min-w-0">
@@ -170,7 +170,7 @@ export function InstallBanner({ variant = "landing" }: { variant?: Variant }) {
         <button
           type="button"
           onClick={triggerInstall}
-          className="rounded-lg bg-snappeal-primary text-white text-xs font-semibold px-3 py-2 hover:bg-snappeal-primary-600 transition whitespace-nowrap"
+          className="rounded-lg bg-parkingrabbit-primary text-white text-xs font-semibold px-3 py-2 hover:bg-parkingrabbit-primary-600 transition whitespace-nowrap"
         >
           Install
         </button>

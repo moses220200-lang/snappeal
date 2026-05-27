@@ -1,8 +1,8 @@
 /**
  * Canonical ParkingRabbit logo system.
  *
- *   <SnappealMark  size={n} variant="dark|light" />     // shield only
- *   <SnappealLogo  size={n} variant="dark|light" layout="horizontal|stacked" />
+ *   <ParkingRabbitMark  size={n} variant="dark|light" />     // shield only
+ *   <ParkingRabbitLogo  size={n} variant="dark|light" layout="horizontal|stacked" />
  *
  * One shield definition. All sizes scale via the `size` prop; all colour
  * shifts happen via `variant`. The dark variant is the production default
@@ -31,7 +31,7 @@ type MarkProps = {
  * reads cleanly when laid over dark hero sections; the source PNG itself
  * stays in its dark form.
  */
-export function SnappealMark({
+export function ParkingRabbitMark({
   size = 40,
   variant = "dark",
   className = "",
@@ -58,7 +58,7 @@ type LogoProps = {
   className?: string;
 };
 
-export function SnappealLogo({
+export function ParkingRabbitLogo({
   size = 40,
   variant = "dark",
   layout = "horizontal",
@@ -66,15 +66,15 @@ export function SnappealLogo({
   className = "",
 }: LogoProps) {
   const wordmarkColor =
-    variant === "dark" ? "text-snappeal-navy" : "text-white";
+    variant === "dark" ? "text-parkingrabbit-navy" : "text-white";
   const taglineColor =
-    variant === "dark" ? "text-snappeal-muted" : "text-white/75";
+    variant === "dark" ? "text-parkingrabbit-muted" : "text-white/75";
   const wordmarkSize = size <= 32 ? "text-base" : size <= 44 ? "text-xl" : "text-2xl";
 
   if (layout === "stacked") {
     return (
       <div className={`flex flex-col items-center gap-2 ${className}`}>
-        <SnappealMark size={size} variant={variant} />
+        <ParkingRabbitMark size={size} variant={variant} />
         <span
           className={`${wordmarkSize} font-bold tracking-tight ${wordmarkColor}`}
         >
@@ -89,7 +89,7 @@ export function SnappealLogo({
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
-      <SnappealMark size={size} variant={variant} />
+      <ParkingRabbitMark size={size} variant={variant} />
       <div className="flex flex-col leading-tight">
         <span
           className={`${wordmarkSize} font-bold tracking-tight ${wordmarkColor}`}
@@ -108,13 +108,13 @@ export function SnappealLogo({
  * `app/page.tsx`, `app/terms`, and `app/privacy` import `Wordmark` (the
  * full lockup with the "we draft & submit your parking-ticket appeal"
  * tagline). Keep the name so those callsites don't churn — it maps to
- * the canonical `SnappealLogo` above.
+ * the canonical `ParkingRabbitLogo` above.
  *
  * The sibling `ShieldLogo` alias was removed 2026-05-21 (zero importers).
  */
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <SnappealLogo
+    <ParkingRabbitLogo
       size={40}
       variant="dark"
       layout="horizontal"

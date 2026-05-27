@@ -119,7 +119,7 @@ export async function runStructured<T>(
 
   // Write image / audio data URLs to a fresh temp dir so Claude's Read
   // tool can pick them up. Cleaned up in `finally`.
-  const workDir = await mkdtemp(join(tmpdir(), "snappeal-"));
+  const workDir = await mkdtemp(join(tmpdir(), "parkingrabbit-"));
   const imageRefs: string[] = [];
   const audioRefs: string[] = [];
   try {
@@ -253,7 +253,7 @@ export async function runAgentic(opts: AgenticOptions): Promise<AgenticResult> {
   const model = opts.model ?? DEFAULT_MODEL;
   const timeoutMs = opts.timeoutMs ?? 180_000;
 
-  const workDir = await mkdtemp(join(tmpdir(), "snappeal-mcp-"));
+  const workDir = await mkdtemp(join(tmpdir(), "parkingrabbit-mcp-"));
   try {
     const mcpConfigPath = join(workDir, "mcp.json");
     await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: opts.mcpServers }, null, 2));
@@ -466,16 +466,37 @@ function spawnClaude(
       if (opts.onStdoutLine && lineRemainder) opts.onStdoutLine(lineRemainder);
       if (code === 0) {
         resolve({ stdout: stdoutBuf, stderr: stderrBuf });
-      } else {
-        reject(
-          new ClaudeCliError(
-            `claude exited with code ${code}`,
-            code,
-            stderrBuf,
-            stdoutBuf.slice(-2_000),
-          ),
-        );
+        return;
       }
+      // v0.3.7 — Windows salvage path. The Claude CLI on Windows
+      // sometimes exits with `code: null` (signal kill — but no signal
+      // we sent) AFTER it has already written its complete JSON
+      // result to stdout. Without this branch the structured-output
+      // callers (drafting in particular) throw "claude exited with
+      // code null" even though the payload is right there in
+      // stdoutBuf. We accept the run only if stdoutBuf trims to a
+      // syntactically valid JSON — otherwise it's a real mid-stream
+      // failure and we fall through to the reject.
+      if (code === null) {
+        const trimmed = stdoutBuf.trim();
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+          try {
+            JSON.parse(trimmed);
+            resolve({ stdout: stdoutBuf, stderr: stderrBuf });
+            return;
+          } catch {
+            /* fall through to reject below */
+          }
+        }
+      }
+      reject(
+        new ClaudeCliError(
+          `claude exited with code ${code}`,
+          code,
+          stderrBuf,
+          stdoutBuf.slice(-2_000),
+        ),
+      );
     });
 
     child.stdin!.write(opts.stdinPrompt);

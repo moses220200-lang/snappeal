@@ -19,6 +19,7 @@ export async function GET() {
       type: schema.councils.type,
       automationStatus: schema.councils.automationStatus,
       appealPortalUrl: schema.councils.appealPortalUrl,
+      paymentPortalUrl: schema.councils.paymentPortalUrl,
       logoUrl: schema.councils.logoUrl,
       logoBg: schema.councils.logoBg,
     })

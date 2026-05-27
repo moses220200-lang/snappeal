@@ -105,7 +105,7 @@ export default function PersonalDetailsPage() {
   if (loading) {
     return (
       <ProfileSubPage title="Personal details">
-        <div className="flex items-center gap-2 text-sm text-snappeal-muted">
+        <div className="flex items-center gap-2 text-sm text-parkingrabbit-muted">
           <Loader2 className="size-4 animate-spin" /> Loading…
         </div>
       </ProfileSubPage>
@@ -115,7 +115,7 @@ export default function PersonalDetailsPage() {
   if (!me) {
     return (
       <ProfileSubPage title="Personal details" subtitle="Sign in to manage your details.">
-        <p className="text-sm text-snappeal-muted">
+        <p className="text-sm text-parkingrabbit-muted">
           You&apos;re using ParkingRabbit as a guest right now. Create an account or sign in to add a display name and lock your appeals to your email.
         </p>
       </ProfileSubPage>
@@ -134,7 +134,7 @@ export default function PersonalDetailsPage() {
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Your name"
             autoComplete="name"
-            className="w-full bg-white border border-snappeal-border focus:border-snappeal-primary rounded-xl px-3 py-2.5 text-sm outline-none"
+            className="w-full bg-white border border-parkingrabbit-border focus:border-parkingrabbit-primary rounded-xl px-3 py-2.5 text-sm outline-none"
           />
         </Field>
 
@@ -142,7 +142,7 @@ export default function PersonalDetailsPage() {
           <input
             value={me.email}
             disabled
-            className="w-full bg-snappeal-bg/60 border border-snappeal-border rounded-xl px-3 py-2.5 text-sm text-snappeal-muted cursor-not-allowed"
+            className="w-full bg-parkingrabbit-bg/60 border border-parkingrabbit-border rounded-xl px-3 py-2.5 text-sm text-parkingrabbit-muted cursor-not-allowed"
           />
         </Field>
 
@@ -157,18 +157,18 @@ export default function PersonalDetailsPage() {
             autoComplete="tel"
             inputMode="tel"
             type="tel"
-            className="w-full bg-white border border-snappeal-border focus:border-snappeal-primary rounded-xl px-3 py-2.5 text-sm outline-none"
+            className="w-full bg-white border border-parkingrabbit-border focus:border-parkingrabbit-primary rounded-xl px-3 py-2.5 text-sm outline-none"
           />
         </Field>
 
         <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-snappeal-muted">
+          <span className="text-xs font-semibold uppercase tracking-wide text-parkingrabbit-muted">
             Registered keeper address
           </span>
-          <div className="rounded-2xl border border-snappeal-border bg-white p-3.5">
+          <div className="rounded-2xl border border-parkingrabbit-border bg-white p-3.5">
             <AddressAutocomplete value={address} onChange={setAddress} />
           </div>
-          <span className="text-[11px] text-snappeal-muted">
+          <span className="text-[11px] text-parkingrabbit-muted">
             Loaded into the portal-automation agent when a council form requires
             it. Postcode lookup uses the free <code className="font-mono text-[10px]">postcodes.io</code>{" "}
             API.
@@ -187,7 +187,7 @@ export default function PersonalDetailsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-2xl bg-snappeal-action text-white font-semibold py-3.5 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-60"
+          className="rounded-2xl bg-parkingrabbit-action text-white font-semibold py-3.5 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-action/40 hover:bg-parkingrabbit-action-600 transition disabled:opacity-60"
         >
           {saving ? (
             <>
@@ -207,11 +207,11 @@ export default function PersonalDetailsPage() {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-snappeal-muted">
+      <span className="text-xs font-semibold uppercase tracking-wide text-parkingrabbit-muted">
         {label}
       </span>
       {children}
-      {hint && <span className="text-[11px] text-snappeal-muted">{hint}</span>}
+      {hint && <span className="text-[11px] text-parkingrabbit-muted">{hint}</span>}
     </label>
   );
 }

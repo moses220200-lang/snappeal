@@ -4,7 +4,7 @@
  *   - Password hashing: pbkdf2-sha256 with a random 16-byte salt. Stored as
  *     `<saltHex>:<hashHex>` in `users.password_hash`.
  *   - Session: stateless HS256 JWT signed with AUTH_SECRET. Carried in an
- *     httpOnly Secure cookie named `snappeal.token` so XSS can't steal it.
+ *     httpOnly Secure cookie named `parkingrabbit.token` so XSS can't steal it.
  *   - Sign-out just clears the cookie — there's no server-side session
  *     state to revoke. Token TTL is 30 days.
  *
@@ -16,7 +16,7 @@ import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db/client";
 
-const COOKIE_NAME = "snappeal.token";
+const COOKIE_NAME = "parkingrabbit.token";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const PBKDF2_ITERATIONS = 210_000; // OWASP 2023 minimum for sha256
 const PBKDF2_KEYLEN = 32;

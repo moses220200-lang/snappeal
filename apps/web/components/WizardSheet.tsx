@@ -53,7 +53,7 @@ export function WizardSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] bg-snappeal-navy/95 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-[120] bg-parkingrabbit-navy/95 backdrop-blur-md overflow-y-auto">
       <div
         aria-hidden
         className="absolute inset-0 opacity-15 pointer-events-none"

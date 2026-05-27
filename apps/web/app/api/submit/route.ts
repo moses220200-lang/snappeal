@@ -6,6 +6,7 @@ import { startWorker } from "@/lib/server/jobs/worker";
 import { stripe } from "@/lib/server/stripe";
 import { env } from "@/lib/server/env";
 import { canViewAppeal, getRequestSessionId, getViewer } from "@/lib/server/viewer";
+import { getSettings } from "@/lib/server/settings";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -79,7 +80,10 @@ export async function POST(request: Request) {
     // still reachable inside `runSubmission` as a portal-fallback for
     // unautomated councils, but not as a customer-facing free path.
     // (The earlier v0.2.11 free-email branch is removed.)
-    if (process.env.SNAPPEAL_SKIP_PAYMENT_CHECK !== "1") {
+    // Single source of truth for the skip — env→mode-default→admin-
+    // override layering lives in `getSettings()`. Dev mode auto-skips;
+    // prod requires it.
+    if (!getSettings().skipPaymentCheck) {
       if (!body.paymentIntentId) {
         return NextResponse.json(
           jsonError("BAD_REQUEST", "paymentIntentId required for £2.99 portal submission"),

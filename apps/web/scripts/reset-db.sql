@@ -6,7 +6,9 @@
 -- a real PCN with a clean slate.
 --
 -- Run:
---   docker exec -i snappeal-db psql -U snappeal -d snappeal < apps/web/scripts/reset-db.sql
+--   docker exec -i parkingrabbit-db psql -U snappeal -d snappeal < apps/web/scripts/reset-db.sql
+-- (Postgres role + db kept as "snappeal" for volume compat; only the docker
+--  container name is rebranded.)
 --
 -- After running, also clear the on-disk artifact directories:
 --   rm -rf apps/web/public/submissions/* apps/web/public/dev-blobs/*

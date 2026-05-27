@@ -1,36 +1,88 @@
 # Notifications
 
-How ParkingRabbit lets users know when something changes — locally (haptics + confetti) and remotely (Web Push).
+Last refreshed **2026-05-27 (v0.3.10)**.
+
+How ParkingRabbit lets users know when something changes — locally (haptics + confetti + in-app store) and remotely (Web Push + transactional email). The v0.3.9 server-side overhaul added a proper dispatcher + audit log; v0.3.10 added the two-moment prompt gate refinement.
 
 ## Layers
 
 | Layer | When it fires | Surface | Implementation |
 |---|---|---|---|
 | **Haptic feedback** | Tap, success, error, warning, select | Vibration API via `lib/client/haptics.ts → haptic(intent)` | One-line call; no-op when unsupported |
-| **Confetti burst** | Appeal flips to `cancelled` | Visual overlay via `components/Confetti.tsx` | Pre-computed particles, sessionStorage-gated to fire once per appeal id |
-| **In-app notification store** (v0.3.2) | Portal-lookup verdict landing, draft letter ready (or failing), submission settling | `lib/client/notifications.ts` + bottom-nav Tickets-tab counter badge | localStorage-backed, capped at 50, idempotent on `id`, three `NotificationKind`s aggregated by `TICKETS_BUCKET` |
-| **Native browser notifications** (v0.3.2) | Same three deltas as above | `new Notification("ParkingRabbit", { tag: appealId })` | Only fires when `Notification.permission === "granted"`; `tag` overwrites earlier per-appeal alerts; `onclick` focuses tab + routes to `/app/tickets/<id>` |
-| **`<NotificationWatcher>` poller** (v0.3.2) | Mounted in `app/app/layout.tsx`; polls `/api/appeals` for state transitions | Pure client-side, no Web Push provider | 5 s foreground / 30 s `visibilityState === "hidden"`; re-ticks on focus regain; first-poll seed map suppresses backlog on reload |
-| **`<NotificationPermissionSheet>`** (v0.3.2) | Context-sensitive opt-in fired at validation / draft / submit kickoff | Bottom-sheet with three benefit bullets | Gated on `nativePermission() === "default"`; "Not now" in sessionStorage (re-asks once per session, never silently suppresses forever) |
-| **In-app toast / overlay** | AI photo coach result, "Strengthen my notes" preview | `components/WizardSheet.tsx` (reusable bottom-sheet) | Same navy-glass aesthetic. Post-payment generation no longer uses a full-page overlay — `letter_ready` state on the smart card hosts the strength badge + Pay flow inline. |
-| **Web Push** (scaffolded; not load-bearing today) | Future cross-session push channel | Service worker `public/sw.js` + `components/PushPermission.tsx` | VAPID + `PushManager.subscribe`, subscription stored on `users.notificationPrefs`. v0.3.2's in-session polling covers the same UX without requiring the provider; Web Push is the future cross-session play. |
-| **Transactional email** | Submission confirmation, council reply summary, password-reset (future) | Resend-compatible via `lib/server/submission/email.ts` | Stub-friendly; real Resend kicks in when `RESEND_API_KEY` is set |
+| **Confetti burst** | Appeal flips to `cancelled` | Visual overlay via `components/Confetti.tsx` | sessionStorage-gated to fire once per appeal id |
+| **In-app notification store** | Portal-lookup verdict, draft letter ready, submission settling | `lib/client/notifications.ts` + bottom-nav Tickets-tab counter badge | localStorage-backed, capped at 50, idempotent on `id`, three `NotificationKind`s aggregated by `TICKETS_BUCKET` |
+| **Native browser notifications** | Same three deltas as above | `new Notification("ParkingRabbit", { tag: appealId })` | Only fires when `Notification.permission === "granted"`; `tag` overwrites earlier per-appeal alerts |
+| **`<NotificationWatcher>` poller** | Mounted in `app/app/layout.tsx`; polls `/api/appeals` for state transitions | Pure client-side | 5 s foreground / 30 s `visibilityState === "hidden"`; re-ticks on focus regain |
+| **`<NotificationPromptGate>`** (v0.3.9) | Two-moment opt-in — `appealTap` + `submitDone` | Bottom-sheet wrapper around server-backed prefs | Skip-once persists server-side via `/api/users/me/notification-prefs/asked` |
+| **Web Push dispatcher** (v0.3.9) | Worker hooks on `pcn_lookup` verdict + `submit_appeal` success/failure + inbound mail classification | `dispatchAppealEvent(event, appealId)` in `lib/server/notifications/dispatchAppealEvent.ts` | `web-push` package + VAPID + 410-Gone cleanup |
+| **`notification_dispatches` audit table** (v0.3.9) | EVERY dispatch attempt incl. no-ops | Postgres row per attempt | Ops grep for "why wasn't user X notified?" |
+| **Transactional email** | Submission receipt, council reply digest | Provider-agnostic via `lib/server/submission/email.ts` | Resend / Postmark / Brevo / SES |
 
-## Haptic grammar (`lib/client/haptics.ts`)
+## Server-side dispatcher (v0.3.9)
 
-Five named intents map to vibration patterns. Use the intent, not the duration — the patterns can be re-tuned centrally.
+`dispatchAppealEvent(event, appealId)` in `lib/server/notifications/dispatchAppealEvent.ts` is the single orchestrator. Called from:
+
+- The `pcn_lookup` worker handler on verdict success/failure → `validation_done` / `validation_failed`.
+- The `submit_appeal` worker handler on success/failure → `submission_done` / `submission_failed`.
+- `/api/inbound` after classifying an inbound council reply → `council_replied`.
+
+Flow:
+
+1. **Load the appeal**. If missing, log `result: 'no_appeal'` and return.
+2. **Load the owner**. If guest (no `userId`), log `result: 'no_owner'` and return.
+3. **Check notification prefs** (`isTogglePassed(userId, event)`). If toggle is off for this event, log `result: 'toggle_off'` and return.
+4. **Check VAPID keys** present. If `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` aren't configured, log `result: 'no_vapid'` and return.
+5. **Check stored subscription**. If the user has no `notification_prefs.push.subscription`, log `result: 'no_subscription'` and return.
+6. **Format payload** via the per-event COPY registry (`lib/server/notifications/copy.ts`).
+7. **Send** via `sendPush(subscription, payload)` from `lib/server/push.ts`. On 410-Gone (subscription expired), clear it from the user's prefs. On 4xx/5xx, log `result: 'send_failed'`. On success, log `result: 'sent'`.
+8. **Log to `notification_dispatches`** in EVERY branch — sent, toggle off, no subscription, no VAPID, send failed, send gone, no owner, no appeal.
+
+The dispatcher is best-effort — it never throws to break the caller's primary work. The audit table is the recovery path.
+
+### COPY registry
+
+`lib/server/notifications/copy.ts` exports one function per event, each returning a `PushPayload`:
 
 ```ts
-haptic("tap");     // 8 ms — button press
-haptic("select");  // 12 ms — option pick
-haptic("success"); // 12-40-18 — appeal submitted, draft ready, confidence boost
-haptic("warning"); // 20-50-20 — photo coach says "ok, but"
-haptic("error");   // 40-60-40-60-40 — network / submission failure
+type PushPayload = {
+  title: string;     // <55 chars (iOS truncates)
+  body: string;      // <110 chars
+  url: string;       // deep-link, e.g. /app/tickets?expand=<appealId>
+  tag: string;       // appeal:<appealId> — OS-level dedup; same appeal replaces prior push
+};
 ```
 
-Used inline through the smart-card lifecycle (extract success/fail, validating spinner morph, drafting milestones, Pay button taps), the dictation panel ("Strengthen" + voice note start/stop), and the auth pages (sign-in success/fail).
+Five events:
 
-## In-app notification store (v0.3.2)
+- `validation_done` — "Council confirmed your PCN" / "PCN already paid" / "PCN not found"
+- `validation_failed` — "We couldn't reach the council"
+- `submission_done` — "Appeal filed with Westminster · ref RX12345"
+- `submission_failed` — "Filing hit a snag — tap to try again"
+- `council_replied` — "Westminster cancelled your appeal 🎉" / "Westminster wants more evidence"
+
+Context the COPY functions consume: `appeal.councilSlug` (for council name), `appeal.ticket.pcnRef`, `appeal.ticket.amountPence`, `daysLeftToAppeal`, `inbound.classification`.
+
+### `notification_dispatches` audit
+
+Schema in [`data-model.md`](data-model.md). One row per `dispatchAppealEvent` call, regardless of outcome. The admin notifications page (`/admin/notifications`) reads this with filters (event, result, 7-day stats) so ops can:
+
+- See the full event stream for a specific user (`userId` filter).
+- See every notification attempt for a specific appeal (`appealId` filter).
+- See per-event success/failure rates (the dashboard).
+- Spot regressions (`result='send_failed'` spike).
+
+## Two-moment prompt gate (v0.3.9)
+
+`<NotificationPromptGate>` (`components/NotificationPromptGate.tsx`) wraps the moments where we ask for push permission:
+
+1. **`appealTap`** — fires after the user picks Appeal £2.99 on `needs_decision`. The lookup is in flight; the customer is waiting; this is the right time to offer to ping them when it lands.
+2. **`submitDone`** — fires after a successful submission. The council has the letter; the customer is on the confirmation surface; this is the right time to offer to ping them when the council replies.
+
+Skip-once persists **server-side** via `/api/users/me/notification-prefs/asked` (not localStorage like v0.3.2's version). One row per `(userId, moment)`. Re-ask after 30 days or never (per user pref). The pattern: asks at the moment of value, not on app launch — higher grant rate.
+
+Gated on `nativePermission() === "default"` — never double-asks once granted or denied.
+
+## In-app notification store (client)
 
 `lib/client/notifications.ts` is the canonical client-side store. Backs the bell icon in `<AppHeader>` (where wired) and drives the Tickets-tab badge in `<BottomNav>`.
 
@@ -45,114 +97,67 @@ const TICKETS_BUCKET: NotificationKind[] = ["validation", "draft", "submit"];
 
 | Function | Purpose |
 |---|---|
-| `addNotification({id, appealId, kind, title, body?})` | Push a new notification. Idempotent on `id` — re-adding updates the existing row in place. Fires the native browser notification as a side effect. Caps the store at 50 most-recent. |
-| `listNotifications()` | Read the full list (newest first). |
-| `unreadCount()` / `unreadCountForKinds(kinds)` | Counters for the bell + per-tab badge. |
+| `addNotification({id, appealId, kind, title, body?})` | Push a new notification. Idempotent on `id`. Fires native browser notification as a side effect. Caps the store at 50 most-recent. |
+| `listNotifications()` | Read full list (newest first). |
+| `unreadCount()` / `unreadCountForKinds(kinds)` | Counters. |
 | `markRead(id)` / `dismissNotification(id)` / `clearAllNotifications()` | Mutations. |
-| `clearKinds(kinds)` | Bulk-clear by kind. Called when the user opens the relevant tab (`/app/tickets` clears the `TICKETS_BUCKET`). |
-| `subscribe(listener)` | React-friendly subscription — fires on every mutation + on cross-tab `storage` events. |
-| `nativePermission()` / `requestNotificationPermission()` / `shouldOfferNotificationPermission()` | Native-Notification permission helpers. |
+| `clearKinds(kinds)` | Bulk-clear by kind. Called when the user opens the relevant tab. |
+| `subscribe(listener)` | React-friendly subscription — fires on mutation + cross-tab `storage` events. |
+| `nativePermission()` / `requestNotificationPermission()` | Native permission helpers. |
 
-**Persistence:** `localStorage["snappeal.notifications"]`. The store is purely client-side — no server endpoint. Cross-tab sync via the `storage` event.
+Persistence: `localStorage["parkingrabbit.notifications"]`. Cross-tab sync via the `storage` event.
 
-**Native browser notifications** fire from `fireNativeNotification(record)` inside `addNotification()`:
-
-```ts
-new Notification("ParkingRabbit", {
-  body: `${n.title}${n.body ? ` — ${n.body}` : ""}`,
-  icon: "/icon.png",
-  tag: n.appealId,  // overwrites earlier per-appeal alerts to avoid noise
-});
-```
-
-`onclick` focuses the tab and routes to `/app/tickets/<n.appealId>` (which redirects to the smart card on the list).
-
-## `<NotificationWatcher>` (v0.3.2)
+## `<NotificationWatcher>`
 
 Mounted once at the top of `app/app/layout.tsx`. Polls `/api/appeals?sessionId=...` watching for three state transitions per appeal:
 
-| Transition | Notification kind | Title example |
-|---|---|---|
-| `portalLookup.status` transitions out of `pending` | `validation` | "Council says PCN WE12345678 is paid" / "Validation done — PCN WE12345678" |
-| `letterBody` becomes non-null | `draft` | "Your appeal letter is ready — PCN WE12345678" |
-| `step` transitions to `generation_failed` | `draft` | "Drafting hit a snag — PCN WE12345678" |
-| `appeal.status` transitions out of `submitting` | `submit` | "Appeal filed — PCN WE12345678" / "🎉 PCN cancelled — PCN WE12345678" / "Appeal rejected — PCN WE12345678" |
+| Transition | Notification kind |
+|---|---|
+| `portalLookup.status` transitions out of `pending` | `validation` |
+| `letterBody` becomes non-null OR `step === 'generation_failed'` | `draft` |
+| `appeal.status` transitions out of `submitting` | `submit` |
 
-**Polling cadence:** `FG_INTERVAL_MS = 5_000` while `visibilityState === "visible"`, `BG_INTERVAL_MS = 30_000` when hidden. Re-ticks immediately on `visibilitychange → visible`.
+Polling cadence: 5 s foreground / 30 s when hidden. Re-ticks on `visibilitychange → visible`. Backlog suppression on first poll (seeds the `knownRef` map without emitting). This is the client-side complement to the server-side dispatcher — the client store + native notification are always-on; Web Push is the cross-session channel.
 
-**Backlog suppression:** the very first poll seeds an internal `knownRef: Map<appealId, fingerprint>` without emitting — only deltas observed AFTER the seed pass fire notifications. Prevents a backlog dump every time the user reloads.
+## Web Push subscribe flow
 
-**Fingerprint shape:**
-```ts
-interface AppealFingerprint {
-  portalStatus: string;    // appeal.portalLookup?.status ?? "none"
-  hasLetter: boolean;      // Boolean(appeal.letterBody)
-  step: string;            // appeal.step
-  appealStatus: string;    // appeal.status
-}
-```
-
-## `<NotificationPermissionSheet>` (v0.3.2)
-
-Context-sensitive permission prompt. Asked at the **moment of value** (right after the user kicks off validation / drafting / submission), not on app launch — the higher-grant-rate pattern.
-
-- Bottom-sheet UI: `<Bell>` icon + "Get notified when it's done" headline + three benefit bullets + "Allow notifications" / "Not now".
-- Gated on `nativePermission() === "default"` — never double-asks once granted or denied.
-- "Not now" persists in **sessionStorage** under `snappeal.notifications.prompt.dismissed`. Re-asks once per session — the prior `localStorage` pattern silently suppressed forever, which broke load-bearing notifications for returning users. Migrates the old localStorage flag on first sight.
-- Triggered by callers passing a `trigger` tick counter prop — typically incremented when the user taps "I agree to T&Cs" / "Start drafting" / Pay.
-
-## Web Push
-
-### Subscribe
-
-`components/PushPermission.tsx` renders an inline opt-in button (only when push is supported and permission hasn't been granted yet). On grant:
+`components/PushPermission.tsx` renders the inline opt-in (only when push is supported and permission hasn't been granted). On grant:
 
 1. `Notification.requestPermission()` → `granted`.
-2. `navigator.serviceWorker.register('/sw.js')` registers the worker.
-3. `reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: VAPID_PUBLIC_KEY })` produces a subscription.
-4. POST the subscription JSON to `/api/push/subscribe` which stores it on `users.notificationPrefs.push`.
+2. `navigator.serviceWorker.register('/sw.js')`.
+3. `reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: VAPID_PUBLIC_KEY })`.
+4. POST the subscription JSON to `/api/users/me/notification-prefs` which writes it to `users.notification_prefs.push.subscription`.
 
-### Deliver
+`public/sw.js` handles `push` events and shows a system notification; `notificationclick` focuses an existing tab or opens the `url` from the payload.
 
-Inbound mail webhook (`/api/inbound`) classifies the council reply, updates `appeals.status`, and **(planned)** fires a push to the user whose appeal it was. The payload contract:
-
-```ts
-{ title: "Westminster cancelled your appeal 🎉",
-  body: "PCN WC12345678 has been cancelled — open to see the full reply.",
-  url: "/app/tickets/<id>",
-  tag: "appeal-<id>" }
-```
-
-(The Inbox tab was retired in v0.3.2; council replies surface inline on the smart card now.)
-
-`public/sw.js` handles `push` events and shows a system notification; `notificationclick` focuses an existing tab or opens the URL.
-
-### Env
+## VAPID env
 
 | Var | Purpose |
 |---|---|
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser-side application server key for `pushManager.subscribe` |
-| `VAPID_PRIVATE_KEY` | Server-side, used by `web-push` (TBD) to sign outbound notifications |
+| `VAPID_PRIVATE_KEY` | Server-side, used by `web-push` to sign outbound notifications |
 
-Generate a key pair with `npx web-push generate-vapid-keys`. (Previous versions of this doc listed `VAPID_SUBJECT` — it isn't referenced in the codebase and was removed in v0.1.5.)
+Generate with `npx web-push generate-vapid-keys`. Until both are set, `dispatchAppealEvent` logs every attempt as `result: 'no_vapid'` — the dispatcher still runs (audit row written), nothing is sent.
 
-## Transactional email — pending provider pick
+## Transactional email
 
-ParkingRabbit sends three transactional email categories:
+Three categories:
 
 1. **Submission receipt** — "We submitted your appeal to Westminster" (with council reference + screenshot link).
-2. **Council reply digest** — when `/api/inbound` classifies, send a one-line summary email + push.
-3. **Care Plan billing events** — Stripe-driven (paid, failed, cancelled).
+2. **Council reply digest** — when `/api/inbound` classifies, send a one-line summary email.
+3. **Care Plan billing events** — Stripe-driven.
 
-`lib/server/submission/email.ts` is Resend-compatible; falls back to a stub `<stub-...@appeals.parkingrabbit.com>` message id in dev. Provider pick is a Phase-C v0.2 deliverable (Postmark Inbound is the front-runner because it also handles the inbound parse).
-
-## In-app toasts
-
-ParkingRabbit doesn't use Sonner / react-hot-toast. The `WizardSheet` covers the "thing happened" UX — full-screen, focused, dismissible. For lighter feedback (network failure, "Saved ✓"), we use inline error/success boxes in each screen rather than a toast layer. Keeps the platform feel.
+`lib/server/submission/email.ts` is provider-agnostic; falls back to a stub `<stub-...@appeals.parkingrabbit.com>` message-id in dev. Provider pick is on the external-action TODO list.
 
 ## Open work
 
-- `web-push` server library wired so `/api/inbound` actually fires notifications.
-- Per-user notification prefs editable in `/app/profile/notifications` (UI exists, persistence-to-user-record pending).
-- Email provider pick + DNS for `appeals.parkingrabbit.com`.
-- Apple Wallet pass updates (separate channel — see `architecture/apple-wallet.md` TBD).
+- Per-user notification prefs are server-backed; the UI at `/app/profile/notifications` lets users flip each toggle.
+- Email provider pick + DNS for `appeals.parkingrabbit.com` (see [`../todo.md`](../todo.md)).
+- Apple Wallet pass updates — separate channel, not yet built.
+
+## Cross-refs
+
+- The audit-log table: [`data-model.md`](data-model.md) → `notification_dispatches`.
+- The admin dashboard for the audit log: [`admin.md`](admin.md) → `/admin/notifications`.
+- The events the worker fires from: [`submission-engine.md`](submission-engine.md), [`job-queue.md`](job-queue.md).
+- Per-user prefs storage: [`auth.md`](auth.md) → `users.notification_prefs`.

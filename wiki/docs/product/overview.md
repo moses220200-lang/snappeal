@@ -1,5 +1,7 @@
 # Product overview
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 **ParkingRabbit is a single-card mobile app for appealing a London parking ticket.**
 
 The user opens the app, snaps a photo of their Penalty Charge Notice, picks the situations that match their case from a deep grounds quiz, speaks (or types) a couple of sentences about what happened, pays £2.99, and ParkingRabbit drafts a formal representation letter — citing the correct statutory ground and contravention code, addressed to the right council, framed using a private knowledge base of past wins — and submits it through the council's online portal via a headless Claude + Playwright MCP agent. Email is the fallback channel when a council isn't automated yet.

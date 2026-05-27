@@ -104,7 +104,7 @@ export default function ProfilePage() {
       <AppHeader title="Profile" />
       <div className="px-5 pb-6 flex flex-col gap-4">
         {loading ? (
-          <div className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-center gap-2 text-sm text-snappeal-muted">
+          <div className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex items-center gap-2 text-sm text-parkingrabbit-muted">
             <Loader2 className="size-4 animate-spin" /> Loading…
           </div>
         ) : me ? (
@@ -121,7 +121,7 @@ export default function ProfilePage() {
             type="button"
             onClick={onSignOut}
             disabled={signingOut}
-            className="rounded-2xl bg-white border border-red-200 text-snappeal-action font-semibold px-5 py-3.5 flex items-center justify-between hover:bg-red-50 transition disabled:opacity-60"
+            className="rounded-2xl bg-white border border-red-200 text-parkingrabbit-action font-semibold px-5 py-3.5 flex items-center justify-between hover:bg-red-50 transition disabled:opacity-60"
           >
             <span className="flex items-center gap-2">
               {signingOut ? <Loader2 className="size-5 animate-spin" /> : <LogOut className="size-5" />}
@@ -133,17 +133,17 @@ export default function ProfilePage() {
           <>
             <Link
               href="/sign-in"
-              className="rounded-2xl bg-white border border-snappeal-border text-snappeal-navy font-semibold px-5 py-3.5 flex items-center justify-between hover:border-snappeal-primary transition"
+              className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy font-semibold px-5 py-3.5 flex items-center justify-between hover:border-parkingrabbit-primary transition"
             >
               <span className="flex items-center gap-2">
-                <LogIn className="size-5 text-snappeal-primary" />
+                <LogIn className="size-5 text-parkingrabbit-primary" />
                 Sign in
               </span>
-              <ChevronRight className="size-5 text-snappeal-muted" />
+              <ChevronRight className="size-5 text-parkingrabbit-muted" />
             </Link>
             <Link
               href="/sign-up"
-              className="rounded-2xl bg-snappeal-action !text-white font-semibold px-5 py-3.5 flex items-center justify-between shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition"
+              className="rounded-2xl bg-parkingrabbit-action !text-white font-semibold px-5 py-3.5 flex items-center justify-between shadow-lg shadow-parkingrabbit-action/40 hover:bg-parkingrabbit-action-600 transition"
             >
               <span className="flex items-center gap-2 text-white">
                 <UserPlus className="size-5 text-white" />
@@ -157,7 +157,7 @@ export default function ProfilePage() {
         {me?.role === "admin" && (
           <Link
             href="/admin"
-            className="rounded-2xl bg-snappeal-navy !text-white p-4 flex items-center gap-3 hover:bg-snappeal-navy-soft transition shadow-lg shadow-snappeal-navy/30"
+            className="rounded-2xl bg-parkingrabbit-navy !text-white p-4 flex items-center gap-3 hover:bg-parkingrabbit-navy-soft transition shadow-lg shadow-parkingrabbit-navy/30"
           >
             <span className="size-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
               <ShieldAlert className="size-5 text-white" />
@@ -175,8 +175,8 @@ export default function ProfilePage() {
         {/* Appeal stats — pulled above the Account/Help sections so the
          *  customer's three numbers are the first thing they see after
          *  their identity card. */}
-        <section className="rounded-2xl bg-white border border-snappeal-border p-4">
-          <p className="text-sm font-bold text-snappeal-navy mb-3">Appeal stats</p>
+        <section className="rounded-2xl bg-white border border-parkingrabbit-border p-4">
+          <p className="text-sm font-bold text-parkingrabbit-navy mb-3">Appeal stats</p>
           <div className="grid grid-cols-3 gap-2">
             <StatTile icon={ScrollText} value={stats.total} label="Total appeals" />
             <StatTile icon={ShieldCheck} value={stats.won} label="Won" tone="success" />
@@ -198,7 +198,7 @@ export default function ProfilePage() {
 
         <Link
           href="/app/profile/care-plan"
-          className="rounded-2xl bg-gradient-to-br from-snappeal-primary to-snappeal-primary-700 text-white p-4 flex items-start gap-3 hover:shadow-lg hover:shadow-snappeal-primary/30 transition"
+          className="rounded-2xl bg-gradient-to-br from-parkingrabbit-primary to-parkingrabbit-primary-700 text-white p-4 flex items-start gap-3 hover:shadow-lg hover:shadow-parkingrabbit-primary/30 transition"
         >
           <span className="size-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <Sparkles className="size-5 text-white" />
@@ -214,7 +214,7 @@ export default function ProfilePage() {
           </span>
         </Link>
 
-        <div className="text-center text-[11px] text-snappeal-muted py-2">
+        <div className="text-center text-[11px] text-parkingrabbit-muted py-2">
           ParkingRabbit · © 2026
         </div>
       </div>
@@ -224,9 +224,9 @@ export default function ProfilePage() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <ul className="rounded-2xl bg-white border border-snappeal-border overflow-hidden divide-y divide-snappeal-border">
-      <li className="px-4 py-2 bg-snappeal-bg/60">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-snappeal-muted">{title}</p>
+    <ul className="rounded-2xl bg-white border border-parkingrabbit-border overflow-hidden divide-y divide-parkingrabbit-border">
+      <li className="px-4 py-2 bg-parkingrabbit-bg/60">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-parkingrabbit-muted">{title}</p>
       </li>
       {children}
     </ul>
@@ -244,12 +244,12 @@ function Row({
 }) {
   return (
     <li>
-      <Link href={href} className="flex items-center gap-3 px-4 py-3.5 hover:bg-snappeal-bg/40 transition">
-        <span className="size-9 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">
+      <Link href={href} className="flex items-center gap-3 px-4 py-3.5 hover:bg-parkingrabbit-bg/40 transition">
+        <span className="size-9 rounded-xl bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center flex-shrink-0">
           <Icon className="size-[1.125rem]" />
         </span>
-        <p className="flex-1 text-sm font-semibold text-snappeal-navy">{label}</p>
-        <ChevronRight className="size-4 text-snappeal-muted" />
+        <p className="flex-1 text-sm font-semibold text-parkingrabbit-navy">{label}</p>
+        <ChevronRight className="size-4 text-parkingrabbit-muted" />
       </Link>
     </li>
   );
@@ -269,27 +269,27 @@ function StatTile({
   const iconBg =
     tone === "success"
       ? "bg-green-100 text-green-700"
-      : "bg-snappeal-primary-100 text-snappeal-primary";
+      : "bg-parkingrabbit-primary-100 text-parkingrabbit-primary";
   return (
-    <div className="rounded-2xl bg-snappeal-bg/50 p-3">
+    <div className="rounded-2xl bg-parkingrabbit-bg/50 p-3">
       <span className={`size-9 rounded-xl ${iconBg} flex items-center justify-center mb-2`}>
         <Icon className="size-5" />
       </span>
-      <p className="text-2xl font-bold text-snappeal-navy leading-none">{value}</p>
-      <p className="text-[11px] text-snappeal-muted mt-1">{label}</p>
+      <p className="text-2xl font-bold text-parkingrabbit-navy leading-none">{value}</p>
+      <p className="text-[11px] text-parkingrabbit-muted mt-1">{label}</p>
     </div>
   );
 }
 
 function GuestCard() {
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-center gap-4">
-      <span className="size-14 rounded-full bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center">
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex items-center gap-4">
+      <span className="size-14 rounded-full bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center">
         <UserIcon className="size-7" />
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-base font-bold text-snappeal-navy">Guest</p>
-        <p className="text-xs text-snappeal-muted mt-0.5">
+        <p className="text-base font-bold text-parkingrabbit-navy">Guest</p>
+        <p className="text-xs text-parkingrabbit-muted mt-0.5">
           Your appeals live on this device. Create an account to sync across devices and track replies.
         </p>
       </div>
@@ -300,17 +300,17 @@ function GuestCard() {
 function SignedInCard({ user }: { user: Me }) {
   const initial = (user.displayName || user.email)[0]?.toUpperCase() ?? "U";
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-center gap-4">
-      <span className="size-14 rounded-full bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center text-lg font-bold">
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex items-center gap-4">
+      <span className="size-14 rounded-full bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center text-lg font-bold">
         {initial}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-base font-bold text-snappeal-navy">{user.displayName ?? "ParkingRabbit user"}</p>
-        <p className="text-xs text-snappeal-muted truncate">{user.email}</p>
+        <p className="text-base font-bold text-parkingrabbit-navy">{user.displayName ?? "ParkingRabbit user"}</p>
+        <p className="text-xs text-parkingrabbit-muted truncate">{user.email}</p>
         <span
           className={`mt-1.5 inline-flex items-center gap-1 rounded-full text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 ${
             user.role === "admin"
-              ? "bg-snappeal-navy !text-white"
+              ? "bg-parkingrabbit-navy !text-white"
               : "bg-green-100 text-green-700"
           }`}
         >

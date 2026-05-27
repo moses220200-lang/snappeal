@@ -88,6 +88,11 @@ export type Council = {
   name: string;
   type: "borough" | "tfl" | "corporation" | "royal_parks";
   appealPortalUrl: string;
+  /** Optional separate Pay-yourself URL — used when the council runs
+   *  appeals and payments on different hosts (e.g. Lambeth uses
+   *  pcnevidence.lambeth.gov.uk for challenges but lambethparking.paypcn.com
+   *  for payments). Null = reuse `appealPortalUrl` for the Pay tile. */
+  paymentPortalUrl?: string | null;
   appealEmail: string | null;
   postalAddress: string | null;
   automationStatus: "manual" | "automated_beta" | "automated_ga";
@@ -262,13 +267,19 @@ export const councils: Council[] = [
   },
   {
     slug: "lambeth",
+    // Lambeth runs its appeal flow on a third-party Imperial Civil
+    // Enforcement portal (pcnevidence.lambeth.gov.uk) and its payments
+    // on a different host (lambethparking.paypcn.com). The MCP agent
+    // must drive the challenge URL; the customer-facing Pay tile must
+    // open the paypcn URL — they are NOT the same link.
     name: "London Borough of Lambeth",
     type: "borough",
-    appealPortalUrl:
-      "https://www.lambeth.gov.uk/parking/parking-fines-and-penalty-charge-notices-pcns/appeal-penalty-charge-notice-pcn-or-removal-your-vehicle",
-    appealEmail: null,
-    postalAddress: null,
-    automationStatus: "manual",
+    appealPortalUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
+    paymentPortalUrl: "https://lambethparking.paypcn.com/default.aspx",
+    appealEmail: "parkingservices@lambeth.gov.uk",
+    postalAddress:
+      "London Borough of Lambeth, PO Box 333, Darlington, DL1 9LG",
+    automationStatus: "automated_beta",
   },
   {
     slug: "islington",

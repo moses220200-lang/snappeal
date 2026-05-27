@@ -40,11 +40,11 @@ const ICON: Record<TicketStatus, LucideIcon> = {
 
 const TONE_CLASS: Record<StatusTone, { bg: string; text: string; border: string; iconBg: string; iconText: string }> = {
   neutral: {
-    bg: "bg-snappeal-bg/50",
-    text: "text-snappeal-navy",
-    border: "border-snappeal-border",
+    bg: "bg-parkingrabbit-bg/50",
+    text: "text-parkingrabbit-navy",
+    border: "border-parkingrabbit-border",
     iconBg: "bg-white",
-    iconText: "text-snappeal-muted",
+    iconText: "text-parkingrabbit-muted",
   },
   positive: {
     bg: "bg-green-50",
@@ -68,10 +68,10 @@ const TONE_CLASS: Record<StatusTone, { bg: string; text: string; border: string;
     iconText: "text-red-700",
   },
   info: {
-    bg: "bg-snappeal-primary-50",
-    text: "text-snappeal-navy",
-    border: "border-snappeal-primary-100",
-    iconBg: "bg-snappeal-primary",
+    bg: "bg-parkingrabbit-primary-50",
+    text: "text-parkingrabbit-navy",
+    border: "border-parkingrabbit-primary-100",
+    iconBg: "bg-parkingrabbit-primary",
     iconText: "text-white",
   },
 };
@@ -127,7 +127,7 @@ export function TicketStatusBadge({ snapshot, variant = "banner" }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           <p className={`text-sm font-bold ${tone.text}`}>{label}</p>
           {isMock && (
-            <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wide rounded-full bg-snappeal-bg/60 border border-snappeal-border px-1.5 py-0.5 text-snappeal-muted">
+            <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wide rounded-full bg-parkingrabbit-bg/60 border border-parkingrabbit-border px-1.5 py-0.5 text-parkingrabbit-muted">
               Preview · connector not live yet
             </span>
           )}
@@ -141,7 +141,7 @@ export function TicketStatusBadge({ snapshot, variant = "banner" }: Props) {
             {snapshot.status === "charge_certificate_issued" ? "Now due: " : "Due: "}
             <span>{due}</span>
             {discounted && discountUntil && (
-              <span className="text-snappeal-muted font-normal">
+              <span className="text-parkingrabbit-muted font-normal">
                 {" "}
                 · {discounted} if paid by {discountUntil}
               </span>

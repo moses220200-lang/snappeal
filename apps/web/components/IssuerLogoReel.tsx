@@ -141,12 +141,12 @@ function LogoFace({
   }
   if (name) {
     return (
-      <span className="text-[24px] font-bold text-snappeal-navy">
+      <span className="text-[24px] font-bold text-parkingrabbit-navy">
         {initials(name)}
       </span>
     );
   }
-  return <Building2 className="size-7 text-snappeal-muted" strokeWidth={1.75} />;
+  return <Building2 className="size-7 text-parkingrabbit-muted" strokeWidth={1.75} />;
 }
 
 export function IssuerLogoReel({
@@ -198,14 +198,14 @@ function IdleTile({
 }) {
   const tile = (
     <span
-      className="size-28 rounded-2xl border border-snappeal-border shrink-0 flex items-center justify-center overflow-hidden"
+      className="size-28 rounded-2xl border border-parkingrabbit-border shrink-0 flex items-center justify-center overflow-hidden"
       style={{ background: council?.logoBg || "#ffffff" }}
       aria-hidden
     >
       {council?.logoUrl || councilName ? (
         <LogoFace logoUrl={council?.logoUrl} name={councilName} />
       ) : (
-        <span className="size-full bg-snappeal-bg/60 animate-pulse" />
+        <span className="size-full bg-parkingrabbit-bg/60 animate-pulse" />
       )}
     </span>
   );
@@ -215,7 +215,7 @@ function IdleTile({
     <button
       type="button"
       onClick={onCouncilClick}
-      className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-snappeal-primary/40 transition active:scale-[0.98]"
+      className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-parkingrabbit-primary/40 transition active:scale-[0.98]"
       aria-label={
         council ? `Change issuer (currently ${council.name})` : "Select issuer"
       }
@@ -426,17 +426,17 @@ function SpinningReel({
   return (
     <div
       ref={viewportRef}
-      className="size-28 rounded-2xl border border-snappeal-border shrink-0 relative overflow-hidden bg-white"
+      className="size-28 rounded-2xl border border-parkingrabbit-border shrink-0 relative overflow-hidden bg-white"
       role="img"
       aria-label="Identifying the issuing council"
     >
       {landed && finalFace ? (
         <div
-          className="absolute inset-0 flex items-center justify-center snappeal-issuer-land"
+          className="absolute inset-0 flex items-center justify-center parkingrabbit-issuer-land"
           style={{ background: finalFace.logoBg || "#ffffff" }}
         >
           <LogoFace logoUrl={finalFace.logoUrl} name={finalFace.name} />
-          <span className="pointer-events-none absolute inset-0 rounded-2xl snappeal-issuer-glow" />
+          <span className="pointer-events-none absolute inset-0 rounded-2xl parkingrabbit-issuer-glow" />
         </div>
       ) : (
         <div

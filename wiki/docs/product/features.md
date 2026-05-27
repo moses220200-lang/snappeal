@@ -1,5 +1,7 @@
 # Features
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 What is in scope, by version. ✅ shipped, 🟡 in progress, ⬜ planned, ⛔ deliberately out.
 
 | Feature | v0.1 | v0.2 | v0.3 |

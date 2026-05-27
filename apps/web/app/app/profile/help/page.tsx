@@ -35,32 +35,32 @@ export default function HelpPage() {
     <ProfileSubPage title="Help & Support" subtitle="FAQ and how to reach us.">
       <ul className="flex flex-col gap-2.5">
         {FAQ.map((item) => (
-          <li key={item.q} className="rounded-2xl bg-white border border-snappeal-border p-4">
+          <li key={item.q} className="rounded-2xl bg-white border border-parkingrabbit-border p-4">
             <details>
-              <summary className="cursor-pointer text-sm font-semibold text-snappeal-navy list-none flex items-center justify-between gap-2">
+              <summary className="cursor-pointer text-sm font-semibold text-parkingrabbit-navy list-none flex items-center justify-between gap-2">
                 {item.q}
-                <span className="text-snappeal-primary text-xs">tap</span>
+                <span className="text-parkingrabbit-primary text-xs">tap</span>
               </summary>
-              <p className="mt-2 text-xs text-snappeal-muted leading-relaxed">{item.a}</p>
+              <p className="mt-2 text-xs text-parkingrabbit-muted leading-relaxed">{item.a}</p>
             </details>
           </li>
         ))}
       </ul>
 
-      <section className="rounded-2xl bg-white border border-snappeal-border p-5 flex flex-col gap-3">
-        <p className="text-sm font-bold text-snappeal-navy">Still stuck?</p>
+      <section className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex flex-col gap-3">
+        <p className="text-sm font-bold text-parkingrabbit-navy">Still stuck?</p>
         <a
           href="mailto:support@parkingrabbit.com"
-          className="rounded-xl bg-snappeal-primary-50 border border-snappeal-primary-100 px-4 py-3 flex items-center gap-3 text-sm text-snappeal-navy"
+          className="rounded-xl bg-parkingrabbit-primary-50 border border-parkingrabbit-primary-100 px-4 py-3 flex items-center gap-3 text-sm text-parkingrabbit-navy"
         >
-          <span className="size-9 rounded-xl bg-white text-snappeal-primary flex items-center justify-center">
+          <span className="size-9 rounded-xl bg-white text-parkingrabbit-primary flex items-center justify-center">
             <Mail className="size-[1.125rem]" />
           </span>
           <span className="flex-1">
             <span className="block font-semibold">Email support</span>
-            <span className="block text-xs text-snappeal-muted">support@parkingrabbit.com · replies within 24h</span>
+            <span className="block text-xs text-parkingrabbit-muted">support@parkingrabbit.com · replies within 24h</span>
           </span>
-          <ExternalLink className="size-4 text-snappeal-muted" />
+          <ExternalLink className="size-4 text-parkingrabbit-muted" />
         </a>
       </section>
     </ProfileSubPage>

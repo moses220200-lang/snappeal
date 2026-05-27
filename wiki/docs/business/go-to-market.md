@@ -1,5 +1,7 @@
 # Go-to-market
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 ## Target user
 
 A Londoner who:

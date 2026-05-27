@@ -14,10 +14,10 @@ const WIKI_URL = process.env.NEXT_PUBLIC_WIKI_URL ?? "http://localhost:8800";
 export default function AdminWikiPage() {
   return (
     <div className="flex-1 flex flex-col">
-      <div className="border-b border-snappeal-border bg-white px-6 py-3 flex items-center justify-between">
+      <div className="border-b border-parkingrabbit-border bg-white px-6 py-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold text-snappeal-navy">ParkingRabbit Wiki</p>
-          <p className="text-[11px] text-snappeal-muted">
+          <p className="text-sm font-bold text-parkingrabbit-navy">ParkingRabbit Wiki</p>
+          <p className="text-[11px] text-parkingrabbit-muted">
             MkDocs Material build — business, product, architecture, councils, legal, users.
           </p>
         </div>
@@ -25,7 +25,7 @@ export default function AdminWikiPage() {
           href={WIKI_URL}
           target="_blank"
           rel="noopener"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-snappeal-primary hover:underline"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-parkingrabbit-primary hover:underline"
         >
           Open in new tab
           <ExternalLink className="size-3.5" />
@@ -40,7 +40,7 @@ export default function AdminWikiPage() {
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
       />
       <noscript>
-        <Link href={WIKI_URL} className="text-snappeal-primary p-4 block">
+        <Link href={WIKI_URL} className="text-parkingrabbit-primary p-4 block">
           Open the wiki ({WIKI_URL})
         </Link>
       </noscript>

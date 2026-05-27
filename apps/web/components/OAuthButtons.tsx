@@ -57,14 +57,14 @@ export function OAuthButtons({ next = "/app" }: { next?: string }) {
         type="button"
         onClick={() => start("google")}
         disabled={pending !== null}
-        className="inline-flex items-center justify-center gap-2.5 w-full rounded-xl bg-white border border-snappeal-border text-snappeal-navy text-[15px] font-semibold py-3 hover:bg-snappeal-bg transition disabled:opacity-60"
+        className="inline-flex items-center justify-center gap-2.5 w-full rounded-xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy text-[15px] font-semibold py-3 hover:bg-parkingrabbit-bg transition disabled:opacity-60"
         aria-label="Continue with Google"
       >
         <GoogleGlyph />
         <span>{pending === "google" ? "Opening Google…" : "Continue with Google"}</span>
       </button>
       {error && (
-        <p className="text-[11px] text-snappeal-action text-center">{error}</p>
+        <p className="text-[11px] text-parkingrabbit-action text-center">{error}</p>
       )}
     </div>
   );

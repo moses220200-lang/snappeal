@@ -32,7 +32,7 @@ export function JobRowActions({ id, status }: { id: string; status: string }) {
           type="button"
           disabled={busy !== null}
           onClick={() => act("retry")}
-          className="inline-flex items-center gap-1 text-snappeal-primary hover:text-snappeal-primary-700 font-semibold text-[11px] disabled:opacity-60"
+          className="inline-flex items-center gap-1 text-parkingrabbit-primary hover:text-parkingrabbit-primary-700 font-semibold text-[11px] disabled:opacity-60"
         >
           {busy === "retry" ? <Loader2 className="size-3 animate-spin" /> : <RotateCw className="size-3" />}
           Retry

@@ -1,120 +1,225 @@
 /**
  * Runtime-mutable settings used across the app.
  *
- * Two layers:
+ * Three layers (innermost wins):
  *
- *   1. **Env vars** are the production default — set in `.env.local` (dev)
- *      or the Vercel dashboard (prod). Read once at module load.
- *   2. **In-memory overrides** let an admin flip behaviour from /admin/settings
- *      without a redeploy. Lost on process restart by design — these are
- *      operational knobs, not config.
+ *   1. **Mode-derived defaults.** `getMode()` resolves "dev" or
+ *      "production" from `PARKINGRABBIT_MODE` (explicit) or falls back to
+ *      `NODE_ENV`. Each setting has a sensible per-mode default — e.g.
+ *      `stopAtReview` is ON in dev, OFF in production; `claudeMode`
+ *      is 'cli' in dev, 'sdk' in production; `fakePayment` is ON in
+ *      dev, OFF in production.
  *
- * Pin a value permanently by setting the matching env var; the override layer
- * is only ever applied on top of the env-defined default.
+ *   2. **Env-var pins.** A specific env var (`PARKINGRABBIT_MCP_HEADED=1`)
+ *      overrides the mode default. Set in `.env.local` (dev) or the
+ *      Vercel dashboard (prod).
+ *
+ *   3. **In-memory overrides.** Admin toggles `/admin/settings` flip
+ *      the live process without a restart. Lost on reboot by design —
+ *      pin a value permanently via env var. NULL on an override means
+ *      "follow env / mode default".
+ *
+ * **Important**: NO consumer reads `process.env.PARKINGRABBIT_*` directly
+ * outside this file. Every callsite goes through `getSettings()` so
+ * the three-layer resolution stays in one place. The settings audit
+ * (2026-05-26) found three files violating that rule; they're being
+ * migrated in P4 of the consolidation.
  */
 
-/* ───── runtime override state ───── */
+/* ───── mode ─────
+ *
+ * Coarse-grained dev vs production switch. Most toggles take their
+ * sensible default from this. Setting `PARKINGRABBIT_MODE` explicitly is
+ * the cleanest way to pin behaviour for staging environments where
+ * NODE_ENV would lie.
+ */
+export type ParkingRabbitMode = "dev" | "production";
 
-interface BooleanOverrides {
-  /** Show the Playwright MCP browser window instead of running it headless.
-   *  Useful for watching the agent drive a council portal in real time. */
-  mcpHeaded: boolean;
-  /** Hard safety brake — when ON, the portal-automation agent drives the
-   *  council portal up to the REVIEW page but NEVER clicks the final
-   *  submit/Finish button. */
-  stopAtReview: boolean;
-  /** Override the submission engine. `null` = use SNAPPEAL_SUBMISSION_LIVE env. */
-  submissionLiveOverride: boolean | null;
-  /** Override the in-process worker. `null` = use SNAPPEAL_DISABLE_WORKER env. */
-  workerDisabledOverride: boolean | null;
-  /** Override the dev fake-payment buttons. `null` = use env. */
-  fakePaymentOverride: boolean | null;
-  /** Override the Stripe payment-verification skip. `null` = use env. */
-  skipPaymentCheckOverride: boolean | null;
-  /** Customer-facing toggle (v0.2.10, repurposed v0.2.13). When ON, the
-   *  smart ticket card on `/app/tickets/[id]` opens the "Watch live"
-   *  disclosure by default and subscribes to screenshot frames. When OFF
-   *  (default), the card stays calm — live MCP screenshots are still
-   *  available, just behind one tap. The full-page /app/validating /
-   *  /app/submitting routes and the GeneratingOverlay are gone; all live
-   *  work happens inline on the card. OCR extraction on /app/capture is
-   *  NEVER gated by this flag. */
-  showMcpLiveView: boolean;
+export function getMode(): ParkingRabbitMode {
+  const explicit = process.env.PARKINGRABBIT_MODE;
+  if (explicit === "production") return "production";
+  if (explicit === "dev") return "dev";
+  return process.env.NODE_ENV === "production" ? "production" : "dev";
 }
 
-const state: BooleanOverrides = {
-  mcpHeaded: process.env.SNAPPEAL_MCP_HEADED === "1",
-  stopAtReview: process.env.SNAPPEAL_ALLOW_REAL_SUBMIT !== "1",
-  submissionLiveOverride: null,
-  workerDisabledOverride: null,
-  fakePaymentOverride: null,
-  skipPaymentCheckOverride: null,
-  // Default ON — customers should see the live agent stream out of the
-  // box (matches the experience the team validated in end-to-end runs).
-  // Admin can flip OFF via /admin/settings or pin the env to "0" to
-  // restore the calm-destination behaviour.
-  showMcpLiveView: process.env.NEXT_PUBLIC_SNAPPEAL_SHOW_MCP_LIVE_VIEW !== "0",
+/** Mode-derived defaults for every toggle. Centralised so the
+ *  resolution table is grokable in one glance. */
+function modeDefaults(mode: ParkingRabbitMode) {
+  const isDev = mode === "dev";
+  return {
+    /** Headless Chromium (production-like). Dev can flip headed on. */
+    mcpHeaded: false,
+    /** Safety brake: in dev, agents stop at the review page and never
+     *  click Finish. Production allows real submissions. */
+    stopAtReview: isDev,
+    /** Live Playwright MCP engine. Same default in both modes; only
+     *  flipped off explicitly to use the mock submission path. */
+    submissionLive: true,
+    /** In-process job queue worker. Always on by default; production
+     *  deployments with an external worker box flip it off. */
+    workerDisabled: false,
+    /** Fake-payment buttons on /app/paywall. Dev only. */
+    fakePayment: isDev,
+    /** Skip Stripe verification on /api/submit + /api/generate. Dev only. */
+    skipPaymentCheck: isDev,
+    /** Lookup + dry-run agents take milestone screenshots. Default OFF
+     *  in both modes (HTML-scrape is ~3× faster). Admins flip ON for
+     *  audit / debugging a portal that's broken. */
+    mcpCaptureScreenshots: false,
+    /** Claude execution mode. `'cli'` spawns the claude CLI subprocess
+     *  (current path; rich CLI features, stable). `'sdk'` uses
+     *  @anthropic-ai/sdk directly (faster cold start, native streaming,
+     *  real usage objects — but MCP support is stub'd today). Dev keeps
+     *  cli to model costs predictably; production will switch to sdk
+     *  once the full migration is done. */
+    claudeMode: (isDev ? "cli" : "sdk") as "cli" | "sdk",
+  } as const;
+}
+
+/* ───── runtime override state ─────
+ *
+ * Each override is independent — `null` means "follow the env-or-mode
+ * default", a concrete value pins it.
+ */
+
+interface Overrides {
+  mcpHeaded: boolean | null;
+  stopAtReview: boolean | null;
+  submissionLive: boolean | null;
+  workerDisabled: boolean | null;
+  fakePayment: boolean | null;
+  skipPaymentCheck: boolean | null;
+  mcpCaptureScreenshots: boolean | null;
+  claudeMode: "cli" | "sdk" | null;
+}
+
+const overrides: Overrides = {
+  mcpHeaded: null,
+  stopAtReview: null,
+  submissionLive: null,
+  workerDisabled: null,
+  fakePayment: null,
+  skipPaymentCheck: null,
+  mcpCaptureScreenshots: null,
+  claudeMode: null,
 };
 
-/* ───── resolved getters — what the rest of the app actually reads ───── */
+/** Read a boolean env var with explicit "1"/"0" semantics. */
+function envBool(name: string): boolean | null {
+  const v = process.env[name];
+  if (v === "1") return true;
+  if (v === "0") return false;
+  return null;
+}
 
-export interface SnappealSettings {
+/* ───── resolved getter — what the rest of the app reads ───── */
+
+export interface ParkingRabbitSettings {
+  mode: ParkingRabbitMode;
   mcpHeaded: boolean;
   stopAtReview: boolean;
-  /** Effective: env unless override pinned. */
   submissionLive: boolean;
   workerDisabled: boolean;
   fakePayment: boolean;
   skipPaymentCheck: boolean;
-  showMcpLiveView: boolean;
+  mcpCaptureScreenshots: boolean;
+  /** 'cli' = Claude CLI subprocess (current). 'sdk' = direct Anthropic
+   *  SDK (planned for production; MCP paths stub'd today). */
+  claudeMode: "cli" | "sdk";
 }
 
-export function getSettings(): SnappealSettings {
+export function getSettings(): ParkingRabbitSettings {
+  const mode = getMode();
+  const def = modeDefaults(mode);
+  // Resolution order per toggle: override → env pin → mode default.
+  const pick = <K extends keyof Overrides>(
+    key: K,
+    envName: string,
+  ): Overrides[K] extends infer V ? NonNullable<V> : never => {
+    const o = overrides[key];
+    if (o !== null) return o as never;
+    const env = envBool(envName);
+    if (env !== null) return env as never;
+    return def[key as keyof typeof def] as never;
+  };
+  // claudeMode is a string, not boolean — handle separately.
+  const claudeModeEnv =
+    process.env.PARKINGRABBIT_CLAUDE_MODE === "cli"
+      ? "cli"
+      : process.env.PARKINGRABBIT_CLAUDE_MODE === "sdk"
+        ? "sdk"
+        : null;
+  const claudeMode: "cli" | "sdk" =
+    overrides.claudeMode ?? claudeModeEnv ?? def.claudeMode;
   return {
-    mcpHeaded: state.mcpHeaded,
-    stopAtReview: state.stopAtReview,
-    submissionLive:
-      state.submissionLiveOverride ?? process.env.SNAPPEAL_SUBMISSION_LIVE !== "0",
-    workerDisabled:
-      state.workerDisabledOverride ?? process.env.SNAPPEAL_DISABLE_WORKER === "1",
-    fakePayment:
-      state.fakePaymentOverride ?? process.env.NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT === "1",
-    skipPaymentCheck:
-      state.skipPaymentCheckOverride ?? process.env.SNAPPEAL_SKIP_PAYMENT_CHECK === "1",
-    showMcpLiveView: state.showMcpLiveView,
+    mode,
+    mcpHeaded: pick("mcpHeaded", "PARKINGRABBIT_MCP_HEADED"),
+    // `PARKINGRABBIT_ALLOW_REAL_SUBMIT=1` is the legacy env: ALLOW means
+    // stopAtReview=false. Translate it here so the rest of the app
+    // talks in the positive sense ("stopAtReview").
+    stopAtReview: (() => {
+      if (overrides.stopAtReview !== null) return overrides.stopAtReview;
+      const allow = envBool("PARKINGRABBIT_ALLOW_REAL_SUBMIT");
+      if (allow !== null) return !allow; // ALLOW=1 → stopAtReview=false
+      return def.stopAtReview;
+    })(),
+    submissionLive: (() => {
+      if (overrides.submissionLive !== null) return overrides.submissionLive;
+      // Legacy semantics: SUBMISSION_LIVE=0 means OFF; any other value
+      // (including unset) means follow the mode default.
+      const v = process.env.PARKINGRABBIT_SUBMISSION_LIVE;
+      if (v === "0") return false;
+      if (v === "1") return true;
+      return def.submissionLive;
+    })(),
+    workerDisabled: pick("workerDisabled", "PARKINGRABBIT_DISABLE_WORKER"),
+    fakePayment: pick("fakePayment", "NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT"),
+    skipPaymentCheck: pick("skipPaymentCheck", "PARKINGRABBIT_SKIP_PAYMENT_CHECK"),
+    mcpCaptureScreenshots: pick(
+      "mcpCaptureScreenshots",
+      "PARKINGRABBIT_MCP_SCREENSHOTS",
+    ),
+    claudeMode,
   };
 }
 
-/* ───── setters — bound to the /api/admin/settings route ───── */
+/* ───── setters — bound to the /api/admin/settings route ─────
+ *
+ * Each setter takes `boolean | null` (or the analogous union for
+ * `claudeMode`). NULL reverts to env / mode default — same surface
+ * as before. Signature parity means SettingsToggles keeps working.
+ */
 
-export function setMcpHeaded(value: boolean): void {
-  state.mcpHeaded = value;
+export function setMcpHeaded(value: boolean | null): void {
+  overrides.mcpHeaded = value;
 }
-export function setStopAtReview(value: boolean): void {
-  state.stopAtReview = value;
+export function setStopAtReview(value: boolean | null): void {
+  overrides.stopAtReview = value;
 }
 export function setSubmissionLive(value: boolean | null): void {
-  state.submissionLiveOverride = value;
+  overrides.submissionLive = value;
 }
 export function setWorkerDisabled(value: boolean | null): void {
-  state.workerDisabledOverride = value;
+  overrides.workerDisabled = value;
 }
 export function setFakePayment(value: boolean | null): void {
-  state.fakePaymentOverride = value;
+  overrides.fakePayment = value;
 }
 export function setSkipPaymentCheck(value: boolean | null): void {
-  state.skipPaymentCheckOverride = value;
+  overrides.skipPaymentCheck = value;
 }
-export function setShowMcpLiveView(value: boolean): void {
-  state.showMcpLiveView = value;
+export function setMcpCaptureScreenshots(value: boolean | null): void {
+  overrides.mcpCaptureScreenshots = value;
+}
+export function setClaudeMode(value: "cli" | "sdk" | null): void {
+  overrides.claudeMode = value;
 }
 
 /** Convenience for the submission engine: returns the `--headless` flag
- *  array unless the admin has toggled headed mode on. Spread this into the
- *  `@playwright/mcp` argv so the toggle takes effect immediately on the
- *  next submission. */
+ *  array unless headed mode is on. Spread into the `@playwright/mcp`
+ *  argv so the toggle takes effect on the next run. */
 export function mcpHeadlessFlag(): string[] {
-  return state.mcpHeaded ? [] : ["--headless"];
+  return getSettings().mcpHeaded ? [] : ["--headless"];
 }
 
 /* ───── env-key inventory — surfaced in the admin settings UI ─────
@@ -138,6 +243,7 @@ export interface EnvKeyDescriptor {
     | "OAuth"
     | "Wiki"
     | "Address autocomplete"
+    | "Storage"
     | "Misc";
   sensitivity: EnvSensitivity;
   required?: boolean;
@@ -146,11 +252,13 @@ export interface EnvKeyDescriptor {
 
 export const ENV_INVENTORY: EnvKeyDescriptor[] = [
   // Auth
-  { name: "AUTH_SECRET", category: "Auth", sensitivity: "secret", required: true, description: "32+ chars. JWT signing key for snappeal.token cookie." },
+  { name: "AUTH_SECRET", category: "Auth", sensitivity: "secret", required: true, description: "32+ chars. JWT signing key for parkingrabbit.token cookie." },
   { name: "NEXT_PUBLIC_SITE_URL", category: "Auth", sensitivity: "public", description: "Public site URL for metadataBase + share cards." },
   { name: "NEXT_PUBLIC_APP_URL", category: "Auth", sensitivity: "public", description: "Public app URL for Stripe redirect callbacks." },
   // Database
   { name: "DATABASE_URL", category: "Database", sensitivity: "secret", required: true, description: "Postgres connection string." },
+  // Storage
+  { name: "BLOB_READ_WRITE_TOKEN", category: "Storage", sensitivity: "secret", description: "Vercel Blob token for warden photo persistence. Falls back to /dev-blobs on disk when unset." },
   // Claude / AI
   { name: "ANTHROPIC_API_KEY", category: "Claude / AI", sensitivity: "secret", description: "Anthropic key for Claude CLI in headless server mode." },
   { name: "CLAUDE_MODEL", category: "Claude / AI", sensitivity: "config", description: "Override the Claude model (default: claude-sonnet-4-6)." },
@@ -161,20 +269,23 @@ export const ENV_INVENTORY: EnvKeyDescriptor[] = [
   { name: "TRANSCRIBE_API_KEY", category: "Claude / AI", sensitivity: "secret" },
   { name: "TRANSCRIBE_BASE_URL", category: "Claude / AI", sensitivity: "config" },
   { name: "TRANSCRIBE_MODEL", category: "Claude / AI", sensitivity: "config" },
-  { name: "SNAPPEAL_GENERATE_CONCURRENCY", category: "Claude / AI", sensitivity: "config", description: "Max concurrent /api/generate calls (default 4)." },
+  { name: "PARKINGRABBIT_GENERATE_CONCURRENCY", category: "Claude / AI", sensitivity: "config", description: "Max concurrent /api/generate calls (default 4)." },
   // Stripe
   { name: "STRIPE_SECRET_KEY", category: "Stripe", sensitivity: "secret", description: "sk_test_* in dev / sk_live_* in prod." },
   { name: "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", category: "Stripe", sensitivity: "public" },
   { name: "STRIPE_WEBHOOK_SECRET", category: "Stripe", sensitivity: "secret" },
   { name: "STRIPE_CARE_PLAN_PRICE_ID", category: "Stripe", sensitivity: "config", description: "Care Plan Stripe Price ID." },
   // Submission engine
-  { name: "SNAPPEAL_SUBMISSION_LIVE", category: "Submission engine", sensitivity: "config", description: "Anything-but-\"0\" = LIVE Playwright MCP; \"0\" = deterministic mock." },
-  { name: "SNAPPEAL_ALLOW_REAL_SUBMIT", category: "Submission engine", sensitivity: "config", description: "Safety brake — only when ON does the agent click Finish." },
-  { name: "SNAPPEAL_MCP_HEADED", category: "Submission engine", sensitivity: "config", description: "Run Chromium headed so you can watch the agent drive." },
-  { name: "SNAPPEAL_DISABLE_WORKER", category: "Submission engine", sensitivity: "config", description: "Skip the in-process worker (use when running it on a separate box)." },
-  { name: "SNAPPEAL_SKIP_PAYMENT_CHECK", category: "Submission engine", sensitivity: "config" },
-  { name: "NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT", category: "Submission engine", sensitivity: "public", description: "Render the dev fake-payment buttons inside the £2.99 submit PaymentSheet." },
-  { name: "NEXT_PUBLIC_SNAPPEAL_SHOW_MCP_LIVE_VIEW", category: "Submission engine", sensitivity: "public", description: "When ON, the customer routes into the full MCP live views for validation / drafting / submission. When OFF (default), those run in the background and emit notifications on done. Overridable at runtime via /admin/settings." },
+  { name: "PARKINGRABBIT_MODE", category: "Submission engine", sensitivity: "config", description: "Explicit mode pin: 'dev' or 'production'. Overrides the NODE_ENV-based default. Use for staging environments." },
+  { name: "PARKINGRABBIT_CLAUDE_MODE", category: "Submission engine", sensitivity: "config", description: "'cli' (Claude CLI subprocess, current) or 'sdk' (direct Anthropic SDK, planned). Defaults follow mode: cli in dev, sdk in production." },
+  { name: "PARKINGRABBIT_SUBMISSION_LIVE", category: "Submission engine", sensitivity: "config", description: "Anything-but-\"0\" = LIVE Playwright MCP; \"0\" = deterministic mock." },
+  { name: "PARKINGRABBIT_ALLOW_REAL_SUBMIT", category: "Submission engine", sensitivity: "config", description: "Safety brake — only when ON does the agent click Finish. Inverted into `stopAtReview` internally." },
+  { name: "PARKINGRABBIT_MCP_HEADED", category: "Submission engine", sensitivity: "config", description: "Run Chromium headed so you can watch the agent drive." },
+  { name: "PARKINGRABBIT_MCP_SCREENSHOTS", category: "Submission engine", sensitivity: "config", description: "Set to 1 to force milestone screenshots in lookup agents. Default OFF — HTML-scrape lookups are ~3× faster." },
+  { name: "PARKINGRABBIT_DISABLE_WORKER", category: "Submission engine", sensitivity: "config", description: "Skip the in-process worker (use when running it on a separate box)." },
+  { name: "PARKINGRABBIT_SKIP_PAYMENT_CHECK", category: "Submission engine", sensitivity: "config" },
+  { name: "NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT", category: "Submission engine", sensitivity: "public", description: "Render the dev fake-payment buttons inside the £2.99 submit PaymentSheet." },
+  { name: "NEXT_PUBLIC_PARKINGRABBIT_SHOW_MCP_LIVE_VIEW", category: "Submission engine", sensitivity: "public", description: "When ON, the customer routes into the full MCP live views for validation / drafting / submission. When OFF (default), those run in the background and emit notifications on done. Overridable at runtime via /admin/settings." },
   // Inbound mail
   { name: "INBOUND_WEBHOOK_SECRET", category: "Inbound mail", sensitivity: "secret", description: "REQUIRED in production. Shared secret on /api/inbound." },
   { name: "EMAIL_PROVIDER", category: "Inbound mail", sensitivity: "config" },
@@ -215,4 +326,37 @@ export function inventoryStatus(): EnvKeyStatus[] {
         : null;
     return { ...e, set, value };
   });
+}
+
+/* ───── startup sanity-checks ─────
+ *
+ * Called once from `instrumentation.ts` at process boot. Logs (does NOT
+ * throw) on configurations that almost certainly indicate a misconfig
+ * — silent breakage on these combinations is the worst kind.
+ */
+export function logStartupSanityChecks(): void {
+  const s = getSettings();
+  if (s.submissionLive && s.workerDisabled) {
+    console.warn(
+      "[settings] submissionLive=true + workerDisabled=true — appeals will queue forever unless an external worker box is running. Check PARKINGRABBIT_DISABLE_WORKER + PARKINGRABBIT_EXTERNAL_WORKER_URL.",
+    );
+  }
+  if (s.mode === "production" && s.stopAtReview) {
+    console.warn(
+      "[settings] mode=production + stopAtReview=true — agents will NEVER click Finish on real council portals. Unset PARKINGRABBIT_ALLOW_REAL_SUBMIT to allow real submissions.",
+    );
+  }
+  if (s.mode === "production" && s.fakePayment) {
+    console.warn(
+      "[settings] mode=production + fakePayment=true — fake payment buttons are rendered in prod. Almost certainly wrong.",
+    );
+  }
+  if (s.mode === "production" && s.skipPaymentCheck) {
+    console.warn(
+      "[settings] mode=production + skipPaymentCheck=true — Stripe verification is bypassed in prod. Almost certainly wrong.",
+    );
+  }
+  console.info(
+    `[settings] mode=${s.mode} claudeMode=${s.claudeMode} submissionLive=${s.submissionLive} stopAtReview=${s.stopAtReview}`,
+  );
 }

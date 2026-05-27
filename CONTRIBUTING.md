@@ -1,4 +1,4 @@
-# Contributing to Snappeal
+# Contributing to ParkingRabbit
 
 The wiki is the source of truth. Code changes follow the wiki, not the other way around. Anything that changes a product decision must be reflected in `wiki/docs/` in the same commit (or PR).
 

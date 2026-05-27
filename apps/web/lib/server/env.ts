@@ -34,7 +34,7 @@ export function requireEnv<K extends keyof typeof env>(key: K): string {
   const value = env[key];
   if (!value) {
     throw new Error(
-      `[snappeal] Missing required env var ${key}. ` +
+      `[parkingrabbit] Missing required env var ${key}. ` +
         `Set it in apps/web/.env.local — see apps/web/.env.example for the full list.`,
     );
   }

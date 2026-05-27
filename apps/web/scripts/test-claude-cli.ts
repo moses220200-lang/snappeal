@@ -15,7 +15,7 @@ async function main() {
   const started = Date.now();
   const result = await runStructured({
     prompt:
-      "Return a JSON object with ok=true and message='snappeal cli pipe is wired'.",
+      "Return a JSON object with ok=true and message='parkingrabbit cli pipe is wired'.",
     schema: Schema,
     timeoutMs: 60_000,
   });

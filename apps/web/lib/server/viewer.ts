@@ -35,7 +35,7 @@ export async function getViewer(): Promise<Viewer> {
  * EventSource can't send custom headers, so we also accept the same value
  * as a `?session=…` query-string parameter — only used for the SSE endpoint.
  */
-const SESSION_HEADER = "x-snappeal-session";
+const SESSION_HEADER = "x-parkingrabbit-session";
 
 export function getRequestSessionId(req: Request): string | null {
   const fromHeader = req.headers.get(SESSION_HEADER);
@@ -59,7 +59,7 @@ interface OwnableAppeal {
  * is the owner of the appeal. Admins always pass.
  *
  *   - signed-in user: their `userId` must match `appeal.userId`
- *   - guest:          the `x-snappeal-session` header must match
+ *   - guest:          the `x-parkingrabbit-session` header must match
  *                     `appeal.sessionId` AND the appeal must still be
  *                     unclaimed (`userId IS NULL`)
  *   - admin:          always allowed

@@ -87,8 +87,8 @@ export function DryRunButton({ councilSlug, appealId, size = "sm", label, onComp
 
   const buttonClass =
     size === "lg"
-      ? "inline-flex items-center gap-2 rounded-2xl bg-white border border-snappeal-border text-snappeal-navy font-semibold px-5 py-3 hover:border-snappeal-primary transition disabled:opacity-60"
-      : "inline-flex items-center gap-1 text-snappeal-primary hover:text-snappeal-primary-700 font-semibold text-[11px] disabled:opacity-60";
+      ? "inline-flex items-center gap-2 rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy font-semibold px-5 py-3 hover:border-parkingrabbit-primary transition disabled:opacity-60"
+      : "inline-flex items-center gap-1 text-parkingrabbit-primary hover:text-parkingrabbit-primary-700 font-semibold text-[11px] disabled:opacity-60";
   const iconClass = size === "lg" ? "size-4" : "size-3";
 
   return (
@@ -108,12 +108,12 @@ export function DryRunButton({ councilSlug, appealId, size = "sm", label, onComp
             disabled={running}
           />
           <div className="relative w-full max-w-2xl rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <header className="px-5 py-4 border-b border-snappeal-border flex items-center justify-between gap-4">
+            <header className="px-5 py-4 border-b border-parkingrabbit-border flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-bold text-snappeal-navy">
+                <p className="text-sm font-bold text-parkingrabbit-navy">
                   Dry-run · <span className="capitalize">{councilSlug.replace(/-/g, " ")}</span>
                 </p>
-                <p className="text-[11px] text-snappeal-muted">
+                <p className="text-[11px] text-parkingrabbit-muted">
                   {appealId
                     ? `Using ticket data from appeal ${appealId}`
                     : "Using generic fixture data (no real appeal selected)"}
@@ -124,7 +124,7 @@ export function DryRunButton({ councilSlug, appealId, size = "sm", label, onComp
                 onClick={close}
                 disabled={running}
                 aria-label="Close"
-                className="size-8 rounded-full bg-snappeal-bg/50 text-snappeal-muted flex items-center justify-center hover:bg-snappeal-bg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="size-8 rounded-full bg-parkingrabbit-bg/50 text-parkingrabbit-muted flex items-center justify-center hover:bg-parkingrabbit-bg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X className="size-4" />
               </button>
@@ -132,13 +132,13 @@ export function DryRunButton({ councilSlug, appealId, size = "sm", label, onComp
 
             <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4 text-sm">
               {running && (
-                <div className="rounded-2xl bg-snappeal-bg/40 border border-snappeal-border p-4 flex items-center gap-3">
-                  <Loader2 className="size-5 animate-spin text-snappeal-primary" />
+                <div className="rounded-2xl bg-parkingrabbit-bg/40 border border-parkingrabbit-border p-4 flex items-center gap-3">
+                  <Loader2 className="size-5 animate-spin text-parkingrabbit-primary" />
                   <div className="flex-1">
-                    <p className="font-semibold text-snappeal-navy">
+                    <p className="font-semibold text-parkingrabbit-navy">
                       Driving the live portal… ({Math.round(elapsedMs / 1000)}s)
                     </p>
-                    <p className="text-[11px] text-snappeal-muted">
+                    <p className="text-[11px] text-parkingrabbit-muted">
                       Stops at the review page — never submits. Can take up to 5 minutes on first run (npx fetches @playwright/mcp).
                     </p>
                   </div>
@@ -169,41 +169,41 @@ export function DryRunButton({ councilSlug, appealId, size = "sm", label, onComp
                   </div>
 
                   {result.screenshotPath && (
-                    <p className="text-[11px] text-snappeal-muted break-all">
+                    <p className="text-[11px] text-parkingrabbit-muted break-all">
                       Screenshot saved to <code className="font-mono">{result.screenshotPath}</code>
                     </p>
                   )}
 
-                  <details className="rounded-2xl border border-snappeal-border bg-snappeal-bg/40 p-3">
-                    <summary className="cursor-pointer text-[12px] font-semibold text-snappeal-primary">
+                  <details className="rounded-2xl border border-parkingrabbit-border bg-parkingrabbit-bg/40 p-3">
+                    <summary className="cursor-pointer text-[12px] font-semibold text-parkingrabbit-primary">
                       Event trace ({result.events.length})
                     </summary>
-                    <pre className="mt-2 text-[11px] text-snappeal-navy overflow-x-auto">
+                    <pre className="mt-2 text-[11px] text-parkingrabbit-navy overflow-x-auto">
                       {result.events.join("\n")}
                     </pre>
                   </details>
 
-                  <details className="rounded-2xl border border-snappeal-border bg-snappeal-bg/40 p-3">
-                    <summary className="cursor-pointer text-[12px] font-semibold text-snappeal-primary">
+                  <details className="rounded-2xl border border-parkingrabbit-border bg-parkingrabbit-bg/40 p-3">
+                    <summary className="cursor-pointer text-[12px] font-semibold text-parkingrabbit-primary">
                       Agent final JSON
                     </summary>
-                    <pre className="mt-2 text-[11px] text-snappeal-navy overflow-x-auto">
+                    <pre className="mt-2 text-[11px] text-parkingrabbit-navy overflow-x-auto">
                       {JSON.stringify(result.parsed, null, 2)}
                     </pre>
                   </details>
 
-                  <details className="rounded-2xl border border-snappeal-border bg-snappeal-bg/40 p-3">
-                    <summary className="cursor-pointer text-[12px] font-semibold text-snappeal-primary">
+                  <details className="rounded-2xl border border-parkingrabbit-border bg-parkingrabbit-bg/40 p-3">
+                    <summary className="cursor-pointer text-[12px] font-semibold text-parkingrabbit-primary">
                       Transcript tail (2 KB)
                     </summary>
-                    <pre className="mt-2 text-[11px] text-snappeal-navy whitespace-pre-wrap overflow-x-auto">
+                    <pre className="mt-2 text-[11px] text-parkingrabbit-navy whitespace-pre-wrap overflow-x-auto">
                       {result.finalText.slice(-2000)}
                     </pre>
                   </details>
 
                   <a
                     href={`/admin/councils/${councilSlug}/automation`}
-                    className="inline-flex items-center gap-1 text-[12px] text-snappeal-primary font-semibold"
+                    className="inline-flex items-center gap-1 text-[12px] text-parkingrabbit-primary font-semibold"
                   >
                     Edit prompt for {councilSlug} <ExternalLink className="size-3.5" />
                   </a>
@@ -212,18 +212,18 @@ export function DryRunButton({ councilSlug, appealId, size = "sm", label, onComp
             </div>
 
             {result && !running && (
-              <footer className="px-5 py-3 border-t border-snappeal-border flex justify-end gap-2">
+              <footer className="px-5 py-3 border-t border-parkingrabbit-border flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => void run()}
-                  className="rounded-xl bg-white border border-snappeal-border text-snappeal-navy text-[12px] font-semibold px-3 py-2 hover:border-snappeal-primary"
+                  className="rounded-xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy text-[12px] font-semibold px-3 py-2 hover:border-parkingrabbit-primary"
                 >
                   Re-run
                 </button>
                 <button
                   type="button"
                   onClick={close}
-                  className="rounded-xl bg-snappeal-navy text-white text-[12px] font-semibold px-3 py-2"
+                  className="rounded-xl bg-parkingrabbit-navy text-white text-[12px] font-semibold px-3 py-2"
                 >
                   Close
                 </button>

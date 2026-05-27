@@ -14,10 +14,10 @@ export function AppStoreBadge({ variant = "default" }: { variant?: BadgeVariant 
   const wrapperClass =
     variant === "on-dark"
       ? "flex items-center gap-2.5 rounded-xl border border-white/70 bg-transparent text-white px-5 py-2.5 hover:bg-white/5 transition"
-      : "flex items-center gap-2.5 rounded-xl bg-snappeal-navy text-white px-5 py-2.5 hover:opacity-90 transition";
+      : "flex items-center gap-2.5 rounded-xl bg-parkingrabbit-navy text-white px-5 py-2.5 hover:opacity-90 transition";
   return (
     <Link
-      href={COMING_SOON ? "#install" : "https://apps.apple.com/gb/app/snappeal"}
+      href={COMING_SOON ? "#install" : "https://apps.apple.com/gb/app/parkingrabbit"}
       aria-label="Download ParkingRabbit on the App Store"
       className="group relative inline-flex"
     >
@@ -38,7 +38,7 @@ export function AppStoreBadge({ variant = "default" }: { variant?: BadgeVariant 
         </div>
       </div>
       {COMING_SOON && (
-        <span className="absolute -top-2 -right-2 rounded-full bg-snappeal-primary text-white text-[10px] font-bold px-2 py-0.5 shadow-md">
+        <span className="absolute -top-2 -right-2 rounded-full bg-parkingrabbit-primary text-white text-[10px] font-bold px-2 py-0.5 shadow-md">
           Coming soon
         </span>
       )}
@@ -50,13 +50,13 @@ export function GooglePlayBadge({ variant = "default" }: { variant?: BadgeVarian
   const wrapperClass =
     variant === "on-dark"
       ? "flex items-center gap-2.5 rounded-xl border border-white/70 bg-transparent text-white px-5 py-2.5 hover:bg-white/5 transition"
-      : "flex items-center gap-2.5 rounded-xl border border-snappeal-border bg-white/60 backdrop-blur text-snappeal-navy px-5 py-2.5 hover:border-snappeal-primary hover:bg-white/80 transition";
+      : "flex items-center gap-2.5 rounded-xl border border-parkingrabbit-border bg-white/60 backdrop-blur text-parkingrabbit-navy px-5 py-2.5 hover:border-parkingrabbit-primary hover:bg-white/80 transition";
   return (
     <Link
       href={
         COMING_SOON
           ? "#install"
-          : "https://play.google.com/store/apps/details?id=com.snappeal"
+          : "https://play.google.com/store/apps/details?id=com.parkingrabbit"
       }
       aria-label="Get ParkingRabbit on Google Play"
       className="group relative inline-flex"
@@ -99,16 +99,16 @@ export function GooglePlayBadge({ variant = "default" }: { variant?: BadgeVarian
           />
         </svg>
         <div className="text-left leading-tight">
-          <div className={`text-[10px] ${variant === "on-dark" ? "text-white/70" : "text-snappeal-muted"}`}>
+          <div className={`text-[10px] ${variant === "on-dark" ? "text-white/70" : "text-parkingrabbit-muted"}`}>
             GET IT ON
           </div>
-          <div className={`text-base font-semibold tracking-tight ${variant === "on-dark" ? "text-white" : "text-snappeal-navy"}`}>
+          <div className={`text-base font-semibold tracking-tight ${variant === "on-dark" ? "text-white" : "text-parkingrabbit-navy"}`}>
             Google Play
           </div>
         </div>
       </div>
       {COMING_SOON && (
-        <span className="absolute -top-2 -right-2 rounded-full bg-snappeal-primary text-white text-[10px] font-bold px-2 py-0.5 shadow-md">
+        <span className="absolute -top-2 -right-2 rounded-full bg-parkingrabbit-primary text-white text-[10px] font-bold px-2 py-0.5 shadow-md">
           Coming soon
         </span>
       )}

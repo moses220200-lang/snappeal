@@ -134,6 +134,9 @@ nav:
     - AI pipeline: architecture/ai-pipeline.md
     - Knowledge base: architecture/knowledge-base.md
     - Submission engine: architecture/submission-engine.md
+    - Deterministic recipes: architecture/deterministic-recipes.md
+    - Grounds registry: architecture/grounds-registry.md
+    - Date handling: architecture/date-handling.md
     - Status checker: architecture/status-checker.md
     - Job queue: architecture/job-queue.md
     - Appeal state machine: architecture/appeal-state-machine.md
@@ -142,6 +145,7 @@ nav:
     - Notifications: architecture/notifications.md
     - Infrastructure: architecture/infra.md
     - Deployment: architecture/deployment.md
+    - Drift baseline audit (planned): architecture/drift-baseline-audit.md
   - Councils:
     - councils/index.md
     - Westminster: councils/westminster.md
@@ -156,6 +160,7 @@ nav:
     - TMA 2004 grounds: legal/tma-2004.md
     - Contravention codes: legal/contravention-codes.md
     - Representations & appeals: legal/representations-and-appeals.md
+    - Grounds quiz reference: legal/grounds-quiz-reference.md
   - Users:
     - users/index.md
     - How to appeal: users/how-to-appeal.md
@@ -165,5 +170,6 @@ nav:
     - admin/index.md
     - Managing councils: admin/managing-councils.md
     - Managing users: admin/managing-users.md
+    - Managing subscriptions: admin/managing-subscriptions.md
     - Monitoring appeals: admin/monitoring-appeals.md
   - Archive: archive.md

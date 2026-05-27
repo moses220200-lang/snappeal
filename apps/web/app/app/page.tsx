@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight, Scale } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Confetti } from "@/components/Confetti";
-import { RealisticPcnInWallet } from "@/components/SnappealSplash";
+import { RealisticPcnInWallet } from "@/components/ParkingRabbitSplash";
 import { getOrCreateSessionId } from "@/lib/client/session";
 import type { AppealRecord } from "@/lib/server/appeals";
 
@@ -85,7 +85,7 @@ function ActionHero({
   return (
     <Link
       href={href}
-      className="group relative block overflow-hidden rounded-[24px] text-white shadow-lg shadow-snappeal-navy/15 transition hover:brightness-110 active:scale-[0.99]"
+      className="group relative block overflow-hidden rounded-[24px] text-white shadow-lg shadow-parkingrabbit-navy/15 transition hover:brightness-110 active:scale-[0.99]"
     >
       <div
         aria-hidden
@@ -104,7 +104,7 @@ function ActionHero({
         <div className="flex flex-col justify-center max-w-[58%] gap-2.5">
           <h2 className="text-[24px] font-bold leading-[1.1] tracking-tight">{title}</h2>
           <p className="text-[13px] text-white/75 leading-snug">{subtitle}</p>
-          <span className="mt-1.5 inline-flex items-center justify-between gap-2 rounded-2xl bg-snappeal-primary text-white font-semibold px-4 py-2.5 text-sm shadow-lg shadow-snappeal-primary/40 w-fit min-w-[130px]">
+          <span className="mt-1.5 inline-flex items-center justify-between gap-2 rounded-2xl bg-parkingrabbit-primary text-white font-semibold px-4 py-2.5 text-sm shadow-lg shadow-parkingrabbit-primary/40 w-fit min-w-[130px]">
             {ctaLabel}
             <ChevronRight className="size-4" strokeWidth={2.5} />
           </span>
@@ -135,7 +135,7 @@ function ScanIllustration() {
         <span className="absolute bottom-0 right-0 size-6 border-b-[3px] border-r-[3px] border-white/85 rounded-br-lg" />
       </div>
       <div className="absolute inset-1 overflow-hidden pointer-events-none">
-        <div className="snappeal-hero-scan absolute inset-0">
+        <div className="parkingrabbit-hero-scan absolute inset-0">
           <div
             className="absolute left-1 right-1 h-1 rounded-full"
             style={{
@@ -160,7 +160,7 @@ function ChallengeIllustration() {
       <div className="absolute right-[12%] top-[8%] bottom-[8%] w-[58%] rounded-lg bg-white/70 rotate-[6deg] shadow-xl" />
       {/* Front paper — the appeal letter itself */}
       <div className="relative w-[68%] aspect-[3/3.6] bg-white rounded-lg p-3 shadow-2xl flex flex-col">
-        <div className="mx-auto size-9 rounded-full bg-snappeal-primary text-white flex items-center justify-center mb-2 shadow-md shadow-snappeal-primary/40">
+        <div className="mx-auto size-9 rounded-full bg-parkingrabbit-primary text-white flex items-center justify-center mb-2 shadow-md shadow-parkingrabbit-primary/40">
           <Scale className="size-4.5" strokeWidth={2.25} />
         </div>
         <div className="space-y-1 flex-1">
@@ -207,7 +207,7 @@ function PayIllustration() {
       </div>
       {/* £ circle overlapping the top-right corner of the card */}
       <div
-        className="absolute size-10 rounded-full bg-snappeal-primary flex items-center justify-center text-white font-bold text-lg shadow-xl shadow-snappeal-primary/40"
+        className="absolute size-10 rounded-full bg-parkingrabbit-primary flex items-center justify-center text-white font-bold text-lg shadow-xl shadow-parkingrabbit-primary/40"
         style={{ right: "4%", top: "18%" }}
       >
         £

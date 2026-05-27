@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
     "127.0.0.1",
     "localhost",
     "*.trycloudflare.com",
-    "snappeal.theailab.dev",
+    "parkingrabbit.theailab.dev",
   ],
 
   // PR 2 (knowledge base): the generate-stream + generate routes read

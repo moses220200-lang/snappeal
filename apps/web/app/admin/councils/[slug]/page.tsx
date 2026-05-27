@@ -25,6 +25,7 @@ export default async function EditCouncilPage({
         name: c.name,
         type: c.type,
         appealPortalUrl: c.appealPortalUrl,
+        paymentPortalUrl: c.paymentPortalUrl,
         appealEmail: c.appealEmail,
         postalAddress: c.postalAddress,
         submissionMethods: (c.submissionMethods as string[]) ?? [],

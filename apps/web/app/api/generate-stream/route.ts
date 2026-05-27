@@ -17,11 +17,13 @@
  * GET + EventSource because GET URLs can't carry the image payload.
  */
 import { generateDraft } from "@/lib/server/ai";
+import { recordAiCall, classifyAiError } from "@/lib/server/aiCalls";
 import {
   createAppeal,
   getAppealById,
   attachDraftToAppeal,
   markAppealFailed,
+  setProcessingStep,
 } from "@/lib/server/appeals";
 import { getViewer } from "@/lib/server/viewer";
 import { GenerateRequest } from "@/lib/server/contracts";
@@ -31,7 +33,11 @@ import { loadKnowledgePack } from "@/lib/server/knowledge";
 import { z } from "zod";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+// v0.3.7 — bumped from 180s. The drafting CLI call uses ~200s on the
+// slow tail (large prompt + KB pack + photos), and the SSE stream then
+// chunks the letter at ~30ms per 80 chars. 240s gives the route a
+// generous ~40s tail-buffer over the CLI timeout.
+export const maxDuration = 240;
 
 const Body = GenerateRequest.extend({ appealId: z.string().optional() });
 
@@ -57,7 +63,11 @@ export async function POST(request: Request) {
       `[generate-stream] invalid body for appeal=${rawAppealId ?? "<unknown>"}:`,
       err instanceof Error ? err.message : err,
     );
-    if (rawAppealId) await markAppealFailed(rawAppealId).catch(() => {});
+    if (rawAppealId)
+      await markAppealFailed(
+        rawAppealId,
+        `Invalid body: ${err instanceof Error ? err.message : String(err)}`,
+      ).catch(() => {});
     return new Response(
       sseFrame("error", { message: `Invalid body: ${String(err)}` }),
       { status: 400, headers: { "content-type": "text/event-stream" } },
@@ -90,6 +100,41 @@ export async function POST(request: Request) {
             controller.close();
             return;
           }
+          // v0.3.7 — in-flight guard. The draft-kickoff useEffect in
+          // TicketCard.tsx is mount-scoped, so a back-nav / refresh /
+          // route swap during the ~30-200s drafting window can fire
+          // /api/generate-stream a second time against the same
+          // appeal id. Without this guard, two concurrent Claude
+          // subprocesses race and `attachDraftToAppeal` is
+          // last-writer-wins. The processing.draft.status field
+          // already exists in the schema; we set it to "running" on
+          // entry and short-circuit on duplicates whose marker isn't
+          // stale. `appeal.updatedAt` (bumped by setProcessingStep)
+          // is the proxy timestamp for staleness — `completedAt` is
+          // only set on done/failed.
+          const RUNNING_TTL_MS = 240_000; // matches route maxDuration
+          const draftStatus = existing.processing?.draft?.status;
+          const updatedAt = existing.updatedAt
+            ? new Date(existing.updatedAt as unknown as string | Date)
+            : null;
+          const rowAgeMs =
+            updatedAt && !Number.isNaN(updatedAt.getTime())
+              ? Date.now() - updatedAt.getTime()
+              : Number.POSITIVE_INFINITY;
+          if (
+            draftStatus === "running" &&
+            rowAgeMs < RUNNING_TTL_MS &&
+            !existing.letterBody
+          ) {
+            send("error", {
+              message:
+                "Drafting already in flight for this appeal; not starting a duplicate.",
+            });
+            controller.close();
+            return;
+          }
+          // Claim the lane (also bumps updatedAt as our in-flight timestamp).
+          await setProcessingStep(appealId, "draft", "running").catch(() => {});
         }
         send("appeal", { appealId });
 
@@ -138,6 +183,7 @@ export async function POST(request: Request) {
         const confirmedTicket = body.confirmedTicket ?? appealRow?.ticket ?? undefined;
         const release = await generateSemaphore.acquire();
         let draft;
+        const draftStart = Date.now();
         try {
           draft = await generateDraft({
             pcnPhotoDataUrl: body.pcnPhoto,
@@ -148,6 +194,26 @@ export async function POST(request: Request) {
             portalMetadata: appealRow?.portalLookup?.metadata,
             knowledgePack,
           });
+          void recordAiCall({
+            appealId,
+            stage: "draft",
+            model: draft.modelUsed,
+            costUsd: draft.costUsd,
+            durationMs: Date.now() - draftStart,
+            ok: true,
+          });
+        } catch (err) {
+          void recordAiCall({
+            appealId,
+            stage: "draft",
+            model: "(failed-before-response)",
+            costUsd: null,
+            durationMs: Date.now() - draftStart,
+            ok: false,
+            errorKind: classifyAiError(err),
+            errorMessage: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
         } finally {
           release();
         }
@@ -160,6 +226,13 @@ export async function POST(request: Request) {
           usedIds: knowledgePack.usedIds,
           tokens: knowledgePack.approxTokens,
         });
+        // v0.3.7 — clear the in-flight marker. Without this the
+        // running-status marker survives the successful drafting run
+        // and a future legitimate generate-stream (e.g. after a user
+        // taps "redraft with evidence") would be incorrectly rejected
+        // as a duplicate. attachDraftToAppeal doesn't touch
+        // `processing` itself; this is the explicit handoff.
+        await setProcessingStep(appealId, "draft", "done").catch(() => {});
 
         // Stream the letter in 80-char chunks with a tiny delay so the UI
         // gets a visible typing animation.
@@ -194,7 +267,7 @@ export async function POST(request: Request) {
         // Flag the row so a later visit to /app/letter/<id> can offer Retry
         // instead of polling forever on a null letterBody.
         if (appealId) {
-          await markAppealFailed(appealId).catch(() => {});
+          await markAppealFailed(appealId, message).catch(() => {});
         }
         send("error", { message });
       } finally {

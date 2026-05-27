@@ -1,15 +1,17 @@
 # Deployment
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 Production deploy plan. Live deploy hasn't shipped yet — this is the runbook the next operator follows.
 
 ## Pre-flight checklist
 
-- [ ] Domain `parkingrabbit.com` registered (see [todo.md](../todo.md)).
+- [ ] Domain `parkingrabbit.com` registered (see [`../todo.md`](../todo.md)).
 - [ ] DNS managed in Cloudflare / Vercel — depending on which provider wins.
-- [ ] Neon Postgres provisioned via Vercel Marketplace, EU region.
+- [ ] Postgres provisioned via Vercel Marketplace (Neon recommended), EU region.
 - [ ] Stripe UK account verified, Care Plan product + price created.
-- [ ] Postmark / Resend account live, `appeals.parkingrabbit.com` MX + DKIM verified.
-- [ ] Apple Developer Program enrolment complete (for Apple Wallet pass + Apple OAuth).
+- [ ] Inbound-mail provider live (Postmark / Resend / Brevo / SES); `appeals.parkingrabbit.com` MX + DKIM verified.
+- [ ] Apple Developer Program enrolment complete (for Apple OAuth + native wrapper).
 - [ ] Google Cloud project + OAuth client created.
 - [ ] VAPID key pair generated (`npx web-push generate-vapid-keys`).
 
@@ -24,21 +26,25 @@ Set every env var from `.env.example` in the Vercel dashboard. Critical ones:
 
 | Var | Value | Notes |
 |---|---|---|
-| `DATABASE_URL` | `postgres://...?sslmode=require` from Neon | Prod database |
+| `DATABASE_URL` | `postgres://...?sslmode=require` | Prod database |
 | `AUTH_SECRET` | 32+ random chars | Sign JWTs |
-| `ANTHROPIC_API_KEY` | `sk-ant-...` | Required when worker runs on Vercel Sandbox |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | Required when worker runs anywhere `claude` CLI can't reach the developer's OAuth login |
+| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Or override per stage in the future |
 | `STRIPE_SECRET_KEY` | `sk_live_...` | Live mode |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` | From the Stripe webhook endpoint |
 | `STRIPE_CARE_PLAN_PRICE_ID` | `price_...` | The £9.99/mo Stripe Price object |
-| `RESEND_API_KEY` | `re_...` | Outbound email |
+| `BLOB_READ_WRITE_TOKEN` | `vercel_blob_rw_...` | Vercel Blob for PCN/evidence/warden photos |
+| `RESEND_API_KEY` (or provider equivalent) | `re_...` | Outbound email |
 | `INBOUND_WEBHOOK_SECRET` | random 32 chars | Header gate on `/api/inbound` |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | from `web-push` | Browser subscribe |
 | `VAPID_PRIVATE_KEY` | from `web-push` | Worker side, send |
 | `NEXT_PUBLIC_APP_URL` | `https://parkingrabbit.com` | Used in Stripe success_url etc. |
-| `SNAPPEAL_DISABLE_WORKER` | `1` | The worker runs on a separate box |
-| `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT` | unset / `0` | Real Stripe takes over |
-| `SNAPPEAL_SKIP_PAYMENT_CHECK` | unset / `0` | Production must verify |
-| `SNAPPEAL_SUBMISSION_LIVE` | `1` | Real Playwright MCP submission |
+| `PARKINGRABBIT_MODE` | `production` | Explicit (overrides NODE_ENV) |
+| `PARKINGRABBIT_DISABLE_WORKER` | `1` | The worker runs on a separate box |
+| `NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT` | unset / `0` | Real Stripe takes over |
+| `PARKINGRABBIT_SKIP_PAYMENT_CHECK` | unset / `0` | Production must verify |
+| `PARKINGRABBIT_SUBMISSION_LIVE` | `1` (or unset) | Real Playwright/Claude submission |
+| `PARKINGRABBIT_CLAUDE_MODE` | `sdk` (or unset, defaults to `cli` in dev) | Stage-aware Claude config |
 
 ```bash
 vercel --prod
@@ -50,10 +56,18 @@ From a local terminal with the production `DATABASE_URL` exported:
 
 ```bash
 cd apps/web
-DATABASE_URL="<neon-url>" npm run db:migrate
-DATABASE_URL="<neon-url>" npm run db:seed
-DATABASE_URL="<neon-url>" npm run admin:promote -- founder@parkingrabbit.com
+DATABASE_URL="<prod-url>" npm run db:migrate
+DATABASE_URL="<prod-url>" npm run db:seed
+DATABASE_URL="<prod-url>" npm run admin:promote -- founder@parkingrabbit.com
 ```
+
+If you're carrying legacy data with raw dd/mm/yyyy strings in `portal_lookup.metadata`, run the one-shot backfill once:
+
+```bash
+DATABASE_URL="<prod-url>" npx tsx --env-file=.env.local scripts/normalize-portal-dates.ts
+```
+
+The script is idempotent; subsequent rows are normalised at write time and never need it again. See [`date-handling.md`](date-handling.md).
 
 ## Step 3 — Worker tier (Fly.io recommended)
 
@@ -67,22 +81,24 @@ fly launch --no-deploy   # creates fly.toml
 Edit `fly.toml`:
 
 ```toml
-app = "snappeal-worker"
+app = "parkingrabbit-worker"
 primary_region = "lhr"
 
 [build]
   dockerfile = "Dockerfile.worker"
 
 [env]
-  SNAPPEAL_DISABLE_WORKER = "0"
+  PARKINGRABBIT_DISABLE_WORKER = "0"
+  PARKINGRABBIT_MODE = "production"
   # Set DATABASE_URL, ANTHROPIC_API_KEY, RESEND_API_KEY,
-  # SNAPPEAL_SUBMISSION_LIVE=1, VAPID_PRIVATE_KEY via `fly secrets`.
+  # PARKINGRABBIT_SUBMISSION_LIVE=1, VAPID_PRIVATE_KEY,
+  # BLOB_READ_WRITE_TOKEN via `fly secrets`.
 
 [processes]
-  worker = "node scripts/worker.js"  # TBD entry script — see below
+  worker = "node scripts/worker.js"
 ```
 
-The worker entry needs writing. Two-line stub (`apps/web/scripts/worker.ts`):
+The worker entry needs writing (the dev path imports startWorker via Next.js instrumentation). Two-line stub at `apps/web/scripts/worker.ts`:
 
 ```ts
 import { startWorker } from "../lib/server/jobs/worker";
@@ -108,12 +124,12 @@ CMD ["node", "scripts/worker.js"]
 Then:
 
 ```bash
-fly secrets set DATABASE_URL=... ANTHROPIC_API_KEY=... RESEND_API_KEY=... VAPID_PRIVATE_KEY=...
+fly secrets set DATABASE_URL=... ANTHROPIC_API_KEY=... RESEND_API_KEY=... VAPID_PRIVATE_KEY=... BLOB_READ_WRITE_TOKEN=...
 fly deploy
 fly scale count worker=1
 ```
 
-One worker handles dozens of jobs/hour. Scale up as volume grows.
+One worker handles dozens of jobs/hour. Scale up as volume grows. For councils with a deterministic recipe (Lambeth today), wall-clock per lookup drops from ~90 s to ~15 s — a single worker can sustain much higher throughput. See [`deterministic-recipes.md`](deterministic-recipes.md).
 
 ## Step 4 — Inbound mail (Postmark example)
 
@@ -142,23 +158,34 @@ curl -X POST https://parkingrabbit.com/api/auth/sign-up -H 'content-type: applic
   -d '{"email":"smoke@parkingrabbit.com","password":"long-enough-password","sessionId":"smoke"}'
 
 # Backend E2E (point the script at the prod URL — guard against firing in CI)
-SNAPPEAL_BASE=https://parkingrabbit.com npm run test:e2e:backend
+PARKINGRABBIT_BASE=https://parkingrabbit.com npm run test:e2e:backend
 ```
 
 ## Rollback
 
 - **Web tier**: `vercel rollback` to the previous successful deployment.
-- **Worker tier**: `fly releases` + `fly deploy --image registry.fly.io/snappeal-worker:<previous>`.
+- **Worker tier**: `fly releases` + `fly deploy --image registry.fly.io/parkingrabbit-worker:<previous>`.
 - **DB schema**: every migration is committed; `git revert <migration-commit>` + a fresh forward migration. No `down` scripts.
 
-## v0.3.1 deployment gotchas
+## Deployment gotchas
 
-- **MCP prewarm.** The worker tier calls `prewarmMcp()` (`lib/server/submission/mcp-warm.ts`) on boot — make sure the Dockerfile installs `@playwright/mcp` + Chromium so the prewarm doesn't fail silently.
+- **MCP prewarm.** The worker tier calls `prewarmMcp()` on boot — make sure the Dockerfile installs `@playwright/mcp` + Chromium so the prewarm doesn't fail silently.
 - **Cloudflare SSE.** The `/api/jobs/[id]/progress` route relies on `cache-control: no-store, no-transform`, `content-encoding: identity`, `x-accel-buffering: no` plus 4 KB per-event padding. If you front the web tier with anything else (Fastly, Akamai, custom Nginx), verify the same headers reach the client and increase padding if the buffer threshold differs.
 - **Knowledge base bundle.** `next.config.ts` sets `outputFileTracingIncludes` for `/api/generate-stream` and `/api/generate` so the `apps/web/knowledge/*` markdown corpus ships inside the Vercel function bundles. **Verify with `vercel build` locally** before any prod deploy — without this, runtime reads ENOENT on the precedents.
+- **Combined OCR + coach.** The `/api/extract` route makes a single Claude vision call (v0.3.10) — the schema is lenient on the coach block via `.catch(...).default(...)`. No special config; just call out the Claude CLI requirements in deploy notes.
+- **Worker on serverless.** `instrumentation.ts` warns when the in-process worker is booting on Vercel/Lambda/Netlify. ALWAYS set `PARKINGRABBIT_DISABLE_WORKER=1` on those tiers.
+- **Auth cookie rename (v0.3.10).** First post-deploy load will sign out all users (cookie name changed `snappeal.token` → `parkingrabbit.token`). Communicate to users; ensure password-reset email path is live.
 
 ## What's deliberately NOT yet automated
 
-- **No CI/CD on push.** Deploys are manual `vercel --prod` and `fly deploy`. We add GitHub Actions once the deploy story stabilises.
+- **No CI/CD on push.** Deploys are manual `vercel --prod` and `fly deploy`. Add GitHub Actions once the deploy story stabilises.
 - **No blue/green.** Vercel handles preview→prod naturally; Fly does rolling deploys with health checks.
 - **No staging Postgres.** Neon branching makes this cheap to add later — clone the prod branch for QA, drop it after.
+
+## Cross-refs
+
+- The env-var inventory + mode-aware settings: [`infra.md`](infra.md).
+- The worker the Fly tier runs: [`job-queue.md`](job-queue.md).
+- The submission engine that the worker drives: [`submission-engine.md`](submission-engine.md).
+- The pre-warm + dedicated-recipe story: [`deterministic-recipes.md`](deterministic-recipes.md).
+- Date normalisation + backfill script: [`date-handling.md`](date-handling.md).

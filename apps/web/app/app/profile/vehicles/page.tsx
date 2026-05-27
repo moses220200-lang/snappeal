@@ -55,7 +55,7 @@ export default function VehiclesPage() {
   return (
     <ProfileSubPage title="Vehicles" subtitle="Every reg you've appealed a ticket for.">
       {appeals == null && !error && (
-        <div className="rounded-2xl border border-snappeal-border bg-white p-6 flex items-center justify-center gap-2 text-sm text-snappeal-muted">
+        <div className="rounded-2xl border border-parkingrabbit-border bg-white p-6 flex items-center justify-center gap-2 text-sm text-parkingrabbit-muted">
           <Loader2 className="size-4 animate-spin" /> Loading…
         </div>
       )}
@@ -63,10 +63,10 @@ export default function VehiclesPage() {
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
       )}
       {appeals && vehicles.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-snappeal-border bg-white p-10 text-center">
-          <Car className="size-8 mx-auto text-snappeal-muted" />
-          <p className="mt-3 text-sm text-snappeal-muted">No vehicles yet.</p>
-          <p className="mt-1 text-xs text-snappeal-muted">
+        <div className="rounded-2xl border border-dashed border-parkingrabbit-border bg-white p-10 text-center">
+          <Car className="size-8 mx-auto text-parkingrabbit-muted" />
+          <p className="mt-3 text-sm text-parkingrabbit-muted">No vehicles yet.</p>
+          <p className="mt-1 text-xs text-parkingrabbit-muted">
             Once you appeal a ticket, the vehicle reg from the PCN photo lands here.
           </p>
         </div>
@@ -74,13 +74,13 @@ export default function VehiclesPage() {
       {appeals && vehicles.length > 0 && (
         <ul className="flex flex-col gap-2.5">
           {vehicles.map((v) => (
-            <li key={v.reg} className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-center gap-3">
-              <span className="size-11 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center">
+            <li key={v.reg} className="rounded-2xl bg-white border border-parkingrabbit-border p-4 flex items-center gap-3">
+              <span className="size-11 rounded-xl bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center">
                 <Car className="size-5" />
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-base font-bold text-snappeal-navy tracking-wide font-mono">{v.reg}</p>
-                <p className="text-xs text-snappeal-muted">
+                <p className="text-base font-bold text-parkingrabbit-navy tracking-wide font-mono">{v.reg}</p>
+                <p className="text-xs text-parkingrabbit-muted">
                   {v.count} appeal{v.count === 1 ? "" : "s"} · last on{" "}
                   {new Date(v.lastAppealAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 </p>

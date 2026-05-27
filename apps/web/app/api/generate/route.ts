@@ -18,6 +18,7 @@ import { getViewer } from "@/lib/server/viewer";
 import { generateSemaphore } from "@/lib/server/concurrency";
 import { getCardById } from "@/lib/grounds-catalog";
 import { loadKnowledgePack } from "@/lib/server/knowledge";
+import { getSettings } from "@/lib/server/settings";
 
 export const runtime = "nodejs";
 /** Vision + drafting can take up to ~90s; bump the function timeout. */
@@ -31,7 +32,7 @@ export const maxDuration = 180;
  * fresh row when the request doesn't supply an appealId) and returns the
  * appealId + the typed draft.
  *
- * Authorisation: when SNAPPEAL_SKIP_PAYMENT_CHECK is unset, the request
+ * Authorisation: when PARKINGRABBIT_SKIP_PAYMENT_CHECK is unset, the request
  * must reference a Stripe PaymentIntent that has reached the `succeeded`
  * status. The prototype default skips that check so the demo flow works
  * without a webhook round-trip.
@@ -54,7 +55,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (process.env.SNAPPEAL_SKIP_PAYMENT_CHECK !== "1") {
+  // Route through `getSettings()` so the env→mode-default→admin-
+  // override layering stays in one place. Dev mode auto-skips the
+  // PaymentIntent check (mode-aware default); prod requires it.
+  if (!getSettings().skipPaymentCheck) {
     if (!body.paymentIntentId) {
       return NextResponse.json(
         jsonError("PAYMENT_REQUIRED", "paymentIntentId required when payment-check is enabled"),

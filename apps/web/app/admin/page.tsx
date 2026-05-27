@@ -8,8 +8,8 @@ export default async function AdminOverviewPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-bold text-snappeal-navy">Overview</h1>
-        <p className="text-sm text-snappeal-muted mt-1">
+        <h1 className="text-3xl font-bold text-parkingrabbit-navy">Overview</h1>
+        <p className="text-sm text-parkingrabbit-muted mt-1">
           Live snapshot of the ParkingRabbit backend. All counts are unfiltered.
         </p>
       </div>
@@ -25,9 +25,9 @@ export default async function AdminOverviewPage() {
         <StatCard label="Jobs failed" value={stats.jobsFailed} tone={stats.jobsFailed > 0 ? "danger" : undefined} />
       </div>
 
-      <section className="rounded-2xl bg-white border border-snappeal-border p-5">
-        <p className="text-sm font-bold text-snappeal-navy mb-2">Today</p>
-        <p className="text-xs text-snappeal-muted leading-relaxed">
+      <section className="rounded-2xl bg-white border border-parkingrabbit-border p-5">
+        <p className="text-sm font-bold text-parkingrabbit-navy mb-2">Today</p>
+        <p className="text-xs text-parkingrabbit-muted leading-relaxed">
           {stats.appealsToday} appeals created · {stats.submissionsToday} submissions logged ·
           {" "}{stats.inboundToday} inbound council messages classified
         </p>
@@ -128,10 +128,10 @@ function StatCard({
         ? "text-amber-700"
         : tone === "danger"
           ? "text-red-700"
-          : "text-snappeal-navy";
+          : "text-parkingrabbit-navy";
   return (
-    <div className="rounded-2xl bg-white border border-snappeal-border p-4">
-      <p className="text-[11px] uppercase tracking-wide text-snappeal-muted">{label}</p>
+    <div className="rounded-2xl bg-white border border-parkingrabbit-border p-4">
+      <p className="text-[11px] uppercase tracking-wide text-parkingrabbit-muted">{label}</p>
       <p className={`mt-1 text-3xl font-bold ${accent}`}>{value.toLocaleString()}</p>
     </div>
   );

@@ -5,15 +5,89 @@ import type { KnowledgePack } from "./knowledge.types";
 import type { PortalLookupSnapshot } from "./db/schema";
 
 /**
+ * v0.3.6 — fast council pre-pass. Run BEFORE the full extract so the
+ * IssuerLogoReel on the ticket card can lock onto the right council the
+ * moment the model can see the issuer logo / name, instead of waiting
+ * 10–15s for the full extract (which reads every field). The slot-machine
+ * keeps spinning until this returns; after this returns and PATCHes the
+ * appeal row, the reel lands. The full extract then runs to capture
+ * reg + PCN ref + amount + date.
+ *
+ * Prompt is intentionally minimal — issuer name + slug only — so Claude's
+ * output is short and the inference latency is low (~1–3s in practice
+ * vs ~10s for the full extract).
+ */
+const IDENTIFY_COUNCIL_PROMPT = `You are looking at a UK Penalty Charge Notice (PCN)
+photograph. Return ONLY the issuing council.
+
+- issuer: full name as printed on the notice (e.g. "Westminster City Council",
+  "London Borough of Camden", "Transport for London").
+- councilSlug: lowercase kebab-case identifier — one of: westminster,
+  kensington-chelsea, camden, lambeth, islington, tfl, city-of-london,
+  hackney, southwark, tower-hamlets, wandsworth, hammersmith-fulham,
+  greenwich, lewisham, newham, barnet, ealing, brent, haringey, enfield,
+  redbridge, bromley, croydon, kingston, merton, sutton, richmond,
+  hounslow, harrow, hillingdon, waltham-forest, havering, bexley, barking.
+- confidence: 0..1 reflecting how clearly you can identify the issuer
+  (logo presence, council name printed clearly, etc.).
+
+Return the empty string for fields you cannot determine — never invent.
+`;
+
+const IdentifyCouncilResult = z.object({
+  issuer: z.string(),
+  councilSlug: z.string(),
+  confidence: z.number().min(0).max(1),
+});
+
+export async function identifyCouncil(input: {
+  pcnPhotoDataUrl: string;
+}): Promise<{
+  issuer: string;
+  councilSlug: string;
+  confidence: number;
+  modelUsed: string;
+  costUsd: number | null;
+}> {
+  const { value, modelUsed, costUsd } = await runStructured({
+    prompt:
+      "Identify the issuing council from the attached PCN photo. " +
+      "Return the schema-conformant JSON. No commentary.",
+    schema: IdentifyCouncilResult,
+    systemPrompt: IDENTIFY_COUNCIL_PROMPT,
+    imageDataUrls: [input.pcnPhotoDataUrl],
+    timeoutMs: 30_000,
+  });
+  return {
+    issuer: value.issuer,
+    councilSlug: value.councilSlug,
+    confidence: value.confidence,
+    modelUsed,
+    costUsd,
+  };
+}
+
+/**
  * Cheap extract-only call. Used during capture (BEFORE the paywall) to
  * show the user what we read from the photo so they can confirm/edit
  * before paying for the full draft. Same model, smaller prompt, no letter.
+ *
+ * v0.3.10 — the photo-coach pass (formerly a separate `coachPhoto()`
+ * Claude vision call) is folded into this single call. The model
+ * analyses the photo end-to-end exactly once, returns BOTH the ticket
+ * fields and a UX-facing photo-quality verdict. Per-upload cost ~halved
+ * (~$0.075 vs ~$0.129); confidence pills + retake-card copy unchanged
+ * from the customer's point of view.
  */
 const EXTRACT_PROMPT = `You are ParkingRabbit's PCN scanner. Extract the ticket
-fields from the attached London Penalty Charge Notice photograph.
+fields from the attached London Penalty Charge Notice photograph AND, in the
+same response, judge the photo's legibility so we can advise the user whether
+to retake.
 
-For each field, output what the photo actually shows. If a field is not
-readable, return an empty string (or 0 for amountPence). Never invent
+EXTRACTION RULES
+================
+For each ticket field, output what the photo actually shows. If a field is
+not readable, return an empty string (or 0 for amountPence). Never invent
 values; never return placeholders like "[NOT READABLE]" inside a field.
 
 - issuer: full council name as printed (e.g. "Westminster City Council",
@@ -37,11 +111,61 @@ values; never return placeholders like "[NOT READABLE]" inside a field.
   have misread a digit — re-read both figures and return the consistent
   pair. Example: a reduced charge of £80 means the full charge is £160
   (16000), never £180. Output integer pence (e.g. 16000 for £160).
+
+CONFIDENCE
+==========
+For each extracted field, return a confidence score in [0,1] reflecting how
+legible that field was in the photo. This is your honest read, not a
+calibration target — be willing to use 0.3 when you genuinely guessed.
+
+PHOTO COACH
+===========
+Also score the photo as a whole and write one short piece of "retake or
+proceed" advice. Surfaces under the failure card when quality is "ok"/"poor".
+
+- quality: one of
+  - "good": clearly legible, the key fields (PCN reference, vehicle reg,
+    contravention code, amount) are all readable from the photo alone.
+  - "ok": legible but some fields are smudged, glared, or cropped. The user
+    can proceed but should be ready to manually correct one or two fields.
+  - "poor": the photo isn't a PCN, is too blurry / dark / cropped to read,
+    or shows something else (e.g. a screenshot of an app). Advise retake.
+- legible: boolean — true unless quality === "poor" AND no fields could be
+  extracted reliably.
+- issues: up to 5 short noun-phrase issues (e.g. "glare on top half",
+  "photo cut off at the bottom", "image is too dark"). Empty array on "good".
+- advice: ONE sentence the user sees — actionable, plain English, polite.
+  Examples:
+    "Looks great — you can proceed."
+    "Try moving a bit closer so the PCN reference is in focus."
+    "It looks like this isn't a PCN photo — retake using the rear camera."
 `;
 
-const ExtractWithConfidence = z.object({
+// PhotoCoach is non-load-bearing — a malformed coach block (Claude
+// drifting outside the enum, exceeding the advice length, returning
+// 6+ issues) must never fail the whole extract. We catch the parse
+// error and substitute a neutral "good, no advice" verdict so the
+// ticket + confidence still flow through. The customer-visible coach
+// card just doesn't render in this case — same effect as quality="good".
+const PhotoCoachLenient = PhotoCoach.catch({
+  legible: true,
+  quality: "good" as const,
+  issues: [],
+  advice: "",
+});
+
+const ExtractWithConfidenceAndCoach = z.object({
   ticket: Ticket,
   confidence: TicketConfidence,
+  // .default() handles the case where Claude omits the coach block
+  // entirely; .catch (above) handles the case where it returns
+  // something the inner schema would reject.
+  coach: PhotoCoachLenient.default({
+    legible: true,
+    quality: "good" as const,
+    issues: [],
+    advice: "",
+  }),
 });
 
 export async function extractTicket(input: {
@@ -49,61 +173,33 @@ export async function extractTicket(input: {
 }): Promise<{
   ticket: z.infer<typeof Ticket>;
   confidence: z.infer<typeof TicketConfidence>;
+  coach: z.infer<typeof PhotoCoach>;
   modelUsed: string;
   costUsd: number | null;
 }> {
   const { value, modelUsed, costUsd } = await runStructured({
     prompt:
-      "Extract the ticket fields AND return a confidence score in [0,1] for each field. " +
-      "Confidence is your honest read of how legible that field was in the photo. " +
-      "Return the schema-conformant JSON. No commentary.",
-    schema: ExtractWithConfidence,
+      "Extract the ticket fields with per-field confidence AND score the photo's " +
+      "legibility in one combined pass. Return the schema-conformant JSON. No commentary.",
+    schema: ExtractWithConfidenceAndCoach,
     systemPrompt: EXTRACT_PROMPT,
     imageDataUrls: [input.pcnPhotoDataUrl],
     timeoutMs: 60_000,
   });
-  return { ticket: value.ticket, confidence: value.confidence, modelUsed, costUsd };
+  return {
+    ticket: value.ticket,
+    confidence: value.confidence,
+    coach: value.coach,
+    modelUsed,
+    costUsd,
+  };
 }
 
-/**
- * AI photo coach — quick "is this photo good enough?" pass run alongside
- * extraction. Surfaces "try again" advice when the image is blurry / dark /
- * wrong subject. Same cost profile as a single cheap Claude call.
- */
-const COACH_PROMPT = `You are ParkingRabbit's photo coach. The user has just taken a photo
-of a London Penalty Charge Notice (PCN). Your job is to score the photo's legibility
-and give one short piece of "retake or proceed" advice.
-
-Score quality:
-- "good": clearly legible, the key fields (PCN reference, vehicle reg, contravention
-  code, amount) are all readable from the photo alone.
-- "ok": legible but some fields are smudged, glared, or cropped. The user can proceed
-  but should be ready to manually correct one or two fields.
-- "poor": the photo isn't a PCN, is too blurry / dark / cropped to read, or shows
-  something else (e.g. a screenshot of an app). Advise retake.
-
-issues: up to 5 short noun-phrase issues (e.g. "glare on top half", "photo cut off
-at the bottom", "image is too dark").
-
-advice: ONE sentence the user sees — actionable, plain English, polite.
-Examples:
-  "Looks great — you can proceed."
-  "Try moving a bit closer so the PCN reference is in focus."
-  "It looks like this isn't a PCN photo — retake using the rear camera."
-`;
-
-export async function coachPhoto(input: {
-  pcnPhotoDataUrl: string;
-}): Promise<z.infer<typeof PhotoCoach>> {
-  const { value } = await runStructured({
-    prompt: "Score the attached photo and write the user-facing advice.",
-    schema: PhotoCoach,
-    systemPrompt: COACH_PROMPT,
-    imageDataUrls: [input.pcnPhotoDataUrl],
-    timeoutMs: 30_000,
-  });
-  return value;
-}
+// v0.3.10 — `coachPhoto` + `COACH_PROMPT` deleted. The photo-coach pass
+// is now embedded inside `extractTicket` above; one Claude vision call
+// returns both the ticket fields and the legibility verdict instead of
+// two parallel calls on the same image. Per-upload cost drops from
+// ~$0.13 → ~$0.075.
 
 /**
  * "Strengthen my notes" — rewrites the user's free-text notes into a
@@ -493,7 +589,12 @@ export async function generateDraft(input: {
     schema: GeneratedDraft,
     systemPrompt: SYSTEM_PROMPT,
     imageDataUrls: images,
-    timeoutMs: 120_000,
+    // v0.3.7 — bumped from 120s. Drafting consistently times out at
+    // 2 minutes under realistic prompt + KB pack + photo loads,
+    // surfacing as "claude exited with code null" (SIGTERM from the
+    // wrapper). 200s sits ~40s under the route's maxDuration so the
+    // SSE stream has buffer to finish chunking the letter.
+    timeoutMs: 200_000,
   });
 
   // Server-side strength cap — defend against AI score inflation when the

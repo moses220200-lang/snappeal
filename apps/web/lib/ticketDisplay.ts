@@ -104,3 +104,124 @@ export function assertAmountConsistency(d: DisplayTicket): void {
     );
   }
 }
+
+/* ────────────── Council-vs-user discrepancy detection (v0.3.6) ──────────────
+ *
+ * Once the lookup completes (portalLookup.status === "verified"), each
+ * field the council returned is compared against what the user (OCR or
+ * manual entry) had on the appeal row. Mismatches are surfaced to the
+ * user inside the Build-appeal surface so they know exactly which
+ * fields the council overrode — values never change silently. Used by:
+ *   - <CouncilCheckChip> / GatheringEvidenceCard ("Council updated:")
+ *   - the draft prompt (which already prioritises portal metadata)
+ */
+export type TicketField =
+  | "pcnRef"
+  | "vehicleReg"
+  | "contraventionCode"
+  | "issuedAt"
+  | "amountPence"
+  | "location";
+
+export interface TicketDiscrepancy {
+  field: TicketField;
+  /** Human-readable field label for the UI. */
+  label: string;
+  /** What the user (OCR or typed) had. Stringified for display. */
+  userValue: string;
+  /** What the council's record says. Stringified for display. */
+  councilValue: string;
+}
+
+const FIELD_LABEL: Record<TicketField, string> = {
+  pcnRef: "PCN reference",
+  vehicleReg: "Registration",
+  contraventionCode: "Contravention code",
+  issuedAt: "Issue date",
+  amountPence: "Amount",
+  location: "Location",
+};
+
+/** Normalise a value for comparison. Empty strings, null, undefined,
+ *  and 0 (for amountPence specifically) all collapse to null so the
+ *  user's blank/missing values don't count as discrepancies. */
+function norm(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") {
+    if (!Number.isFinite(v) || v === 0) return null;
+    return String(v);
+  }
+  if (typeof v === "string") {
+    const t = v.trim();
+    return t.length === 0 ? null : t;
+  }
+  return null;
+}
+
+function formatForDisplay(field: TicketField, raw: string): string {
+  if (field === "amountPence") {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return raw;
+    return `£${(n / 100).toFixed(2).replace(/\.00$/, "")}`;
+  }
+  if (field === "issuedAt") {
+    // ISO timestamp → "12 Feb 2026" if parseable.
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    }
+    return raw;
+  }
+  return raw;
+}
+
+export function getTicketDiscrepancies(
+  appeal: AppealRecord,
+): TicketDiscrepancy[] {
+  if (appeal.portalLookup?.status !== "verified") return [];
+  const meta = appeal.portalLookup.metadata;
+  if (!meta) return [];
+  const ticket = appeal.ticket;
+  const out: TicketDiscrepancy[] = [];
+  const fields: TicketField[] = [
+    "pcnRef",
+    "vehicleReg",
+    "contraventionCode",
+    "issuedAt",
+    "amountPence",
+    "location",
+  ];
+  for (const f of fields) {
+    const userRaw = norm((ticket as Record<string, unknown> | null)?.[f]);
+    const councilRaw = norm((meta as Record<string, unknown>)[f]);
+    // Only count as a discrepancy when BOTH sides have a value AND
+    // they differ. If the user's value is empty we treat the council
+    // value as a pure backfill — no need to flag.
+    if (!councilRaw) continue;
+    if (!userRaw) continue;
+    if (userRaw === councilRaw) continue;
+    // Special-case issue dates: ISO timestamps from OCR vs from the
+    // council can disagree on time/zone but agree on date. Compare
+    // the date-only portion when both are parseable.
+    if (f === "issuedAt") {
+      const u = new Date(userRaw);
+      const c = new Date(councilRaw);
+      if (!Number.isNaN(u.getTime()) && !Number.isNaN(c.getTime())) {
+        if (u.toISOString().slice(0, 10) === c.toISOString().slice(0, 10)) {
+          continue;
+        }
+      }
+    }
+    out.push({
+      field: f,
+      label: FIELD_LABEL[f],
+      userValue: formatForDisplay(f, userRaw),
+      councilValue: formatForDisplay(f, councilRaw),
+    });
+  }
+  return out;
+}

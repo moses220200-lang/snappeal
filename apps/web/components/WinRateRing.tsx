@@ -56,17 +56,17 @@ export function WinRateRing({
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {hasData ? (
           <>
-            <p className="text-2xl font-bold text-snappeal-navy leading-none">
+            <p className="text-2xl font-bold text-parkingrabbit-navy leading-none">
               {Math.round(winRate * 100)}%
             </p>
-            <p className="text-[9px] font-bold uppercase tracking-wide text-snappeal-muted mt-0.5">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-parkingrabbit-muted mt-0.5">
               Win rate
             </p>
           </>
         ) : (
           <>
-            <Trophy className="size-6 text-snappeal-muted" />
-            <p className="text-[9px] font-bold uppercase tracking-wide text-snappeal-muted mt-1">
+            <Trophy className="size-6 text-parkingrabbit-muted" />
+            <p className="text-[9px] font-bold uppercase tracking-wide text-parkingrabbit-muted mt-1">
               Soon
             </p>
           </>

@@ -1,5 +1,7 @@
 # How to appeal a London parking ticket
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The short version: **most PCNs that get appealed get cancelled at the first or second stage**, before any tribunal involvement. The first thing to do is *not* pay — at least not immediately. Once you pay, the appeal route is closed.
 
 ## Before you do anything

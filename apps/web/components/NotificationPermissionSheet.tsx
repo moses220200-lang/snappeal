@@ -18,7 +18,7 @@ import {
   requestNotificationPermission,
 } from "@/lib/client/notifications";
 
-const DISMISSED_KEY = "snappeal.notifications.prompt.dismissed";
+const DISMISSED_KEY = "parkingrabbit.notifications.prompt.dismissed";
 // `sessionStorage` (not localStorage) so the "Not now" choice survives
 // in-session navigations but resets on a fresh tab. Notifications are
 // load-bearing for the background flow — we want to re-ask each session
@@ -93,18 +93,18 @@ export function NotificationPermissionSheet({ trigger, onResolved }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white border-t border-snappeal-border sm:border shadow-2xl p-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]"
-        style={{ animation: "snappeal-sheet-up 280ms cubic-bezier(0.22, 1, 0.36, 1)" }}
+        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white border-t border-parkingrabbit-border sm:border shadow-2xl p-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]"
+        style={{ animation: "parkingrabbit-sheet-up 280ms cubic-bezier(0.22, 1, 0.36, 1)" }}
       >
         <div className="flex items-start gap-3">
-          <span className="size-11 rounded-2xl bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center shrink-0">
+          <span className="size-11 rounded-2xl bg-parkingrabbit-primary-50 text-parkingrabbit-primary flex items-center justify-center shrink-0">
             <Bell className="size-5" strokeWidth={1.75} />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-lg font-bold text-snappeal-navy leading-tight">
+            <p className="text-lg font-bold text-parkingrabbit-navy leading-tight">
               Get notified when it&apos;s done
             </p>
-            <p className="mt-1.5 text-[13px] text-snappeal-muted leading-relaxed">
+            <p className="mt-1.5 text-[13px] text-parkingrabbit-muted leading-relaxed">
               ParkingRabbit works in the background — validation, drafting,
               and council submission can take a minute or two. Allow
               notifications and we&apos;ll ping you the moment each step
@@ -115,23 +115,23 @@ export function NotificationPermissionSheet({ trigger, onResolved }: Props) {
             type="button"
             onClick={() => close(false)}
             aria-label="Close"
-            className="size-8 rounded-full hover:bg-snappeal-bg flex items-center justify-center shrink-0"
+            className="size-8 rounded-full hover:bg-parkingrabbit-bg flex items-center justify-center shrink-0"
           >
-            <X className="size-4 text-snappeal-muted" />
+            <X className="size-4 text-parkingrabbit-muted" />
           </button>
         </div>
 
-        <ul className="mt-5 space-y-2 text-[12.5px] text-snappeal-navy/85">
+        <ul className="mt-5 space-y-2 text-[12.5px] text-parkingrabbit-navy/85">
           <li className="flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-snappeal-success" />
+            <span className="size-1.5 rounded-full bg-parkingrabbit-success" />
             Hear when the council&apos;s verdict lands
           </li>
           <li className="flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-snappeal-success" />
+            <span className="size-1.5 rounded-full bg-parkingrabbit-success" />
             Know the moment your appeal letter is drafted
           </li>
           <li className="flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-snappeal-success" />
+            <span className="size-1.5 rounded-full bg-parkingrabbit-success" />
             Catch the council&apos;s reply without checking the app
           </li>
         </ul>
@@ -141,14 +141,14 @@ export function NotificationPermissionSheet({ trigger, onResolved }: Props) {
             type="button"
             onClick={onAllow}
             disabled={pending}
-            className="rounded-2xl bg-snappeal-primary text-white font-semibold py-3.5 inline-flex items-center justify-center gap-2 hover:bg-snappeal-primary-600 transition shadow-lg shadow-snappeal-primary/30 disabled:opacity-60"
+            className="rounded-2xl bg-parkingrabbit-primary text-white font-semibold py-3.5 inline-flex items-center justify-center gap-2 hover:bg-parkingrabbit-primary-600 transition shadow-lg shadow-parkingrabbit-primary/30 disabled:opacity-60"
           >
             {pending ? "Asking your browser…" : "Allow notifications"}
           </button>
           <button
             type="button"
             onClick={() => close(true)}
-            className="text-xs text-snappeal-muted hover:text-snappeal-navy py-1"
+            className="text-xs text-parkingrabbit-muted hover:text-parkingrabbit-navy py-1"
           >
             Not now
           </button>

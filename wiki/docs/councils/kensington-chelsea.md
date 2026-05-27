@@ -1,7 +1,12 @@
 # Royal Borough of Kensington and Chelsea
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 !!! info "Verification status"
     **✅ Verified 2026-05-19** against the council's own website.
+
+!!! warning "Manual today — Chatbot Max needs a specialised prompt"
+    RBKC's challenge route is **Chatbot Max** (a conversational LLM frontend), not a traditional form. No `agent_prompt` / `lookup_agent_prompt` and no grounds-registry entry — runs as `manual` until a Chatbot Max-aware prompt is authored and dry-run. The Lambeth/Westminster Imperial-stack pattern does NOT fork cleanly here.
 
 ## Issuer details
 
@@ -33,7 +38,7 @@
 
 ## Submission method
 
-- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/kensington-chelsea`. Chatbot Max conversation handling is one of the per-council `agent_prompt` customisations; edit + dry-run at `/admin/councils/kensington-chelsea/automation`.
+- **Automation status** lives on `councils.automation_status` — view at `/admin/councils/kensington-chelsea`. **As of v0.3.7 K&C is `manual`** — no `lookup_agent_prompt` or `agent_prompt` exists yet, and the MCP agent is not trained for Chatbot Max's conversational shape (Westminster's fork-base is a traditional form-fill prompt, not a chat-loop). ⚠️ **Do not flip K&C to `automated_beta` without writing a Chatbot Max-aware prompt and dry-running it** — the form-fill agent will hang or pick the wrong button on the chat flow.
 - The engine routes through email fallback (`appealEmail` on the council row) if portal automation throws / returns `success: false`.
 
 ## Sources

@@ -1,6 +1,8 @@
 # Managing users
 
-User directory lives at `/admin/users`. The page is read-mostly today; promoting an admin happens via a CLI script.
+Last refreshed **2026-05-27 (v0.3.10)**.
+
+User directory lives at `/admin/users`. The page is read-mostly today; promoting an admin happens via a CLI script. Per-user notification prefs are editable at `/admin/users/[id]/notifications` (v0.3.9).
 
 ## Pages
 

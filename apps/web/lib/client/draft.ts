@@ -46,7 +46,7 @@ let creating: Promise<string> | null = null;
 function authHeaders(): HeadersInit {
   return {
     "content-type": "application/json",
-    "x-snappeal-session": getOrCreateSessionId(),
+    "x-parkingrabbit-session": getOrCreateSessionId(),
   };
 }
 
@@ -94,7 +94,7 @@ export async function getAppeal(
     if (hit) return hit;
   }
   const res = await fetch(`/api/appeals/${encodeURIComponent(id)}`, {
-    headers: { "x-snappeal-session": getOrCreateSessionId() },
+    headers: { "x-parkingrabbit-session": getOrCreateSessionId() },
     cache: "no-store",
   });
   if (res.status === 404 || res.status === 403) return null;

@@ -1,205 +1,113 @@
 # Progressive ticket creation
 
-**Status:** Shipped in v0.2.15. Entry point consolidated onto
-`/app/tickets` in v0.2.18. v0.3.0 removed the
-`/app/tickets/[id]` detail route — it's now a redirect to
-`/app/tickets?expand=<id>`, so every ticket experience (upload through
-auto-submit) renders on the **single list-page surface**. v0.3.1
-expanded `gathering_evidence` into a numbered three-step
-`<StepBlock>` ladder (grounds → details → review). Latest refresh:
-2026-05-23 (v0.3.1).
+Last refreshed **2026-05-27 (v0.3.10)**.
 
-ParkingRabbit uses **progressive ticket creation** for every PCN intake.
-After the customer uploads or scans a parking notice, the ticket record
-is created instantly and the user sees their card on `/app/tickets`
-**before** OCR, council-portal status checks, or AI appeal analysis
-have finished. Every subsequent step reports its own status inline
-inside the smart card on the list page. There is no separate "Add a
-ticket" page — file pickers live on `/app/tickets` itself.
+**Status:** Shipped through v0.3.10. The model: never block the customer behind a static loader after upload. Each backend step (OCR pre-pass → OCR full → lookup → draft → submit) progresses inline on a single smart card; each step can succeed, fail, or be retried independently.
 
-The only static loading screen the app shows is the initial splash on
-first launch. No full-page blockers after that.
+## Why progressive
 
-## Why we do this
+The pre-v0.2.15 flow rendered a full-screen "Reading your PCN" overlay between upload and the in-page confirmation form. It made the app feel fragile when OCR or downstream steps took >5 s. The progressive model replaces that with:
 
-The old flow waited for OCR to return before navigating, behind a
-full-screen "Reading your PCN" overlay. This had three problems:
+- An appeal row created instantly (POST `/api/appeals`).
+- A photo PATCHed onto the row (PATCH `/api/appeals/[id]` with `pcnImageUrl`).
+- The card mounted on `/app/tickets` immediately, in the `processing` state.
+- Backend steps reported via the `processing` jsonb column + a polling loop on the card.
 
-1. **Felt fragile.** On a slow Claude vision pass (~6 s) or a
-   transient network hiccup, the customer stared at a dead-end
-   animation with nothing else to do. If anything failed mid-call
-   the page sometimes never recovered without a manual refresh.
-2. **Blocked navigation.** The customer couldn't go look at their
-   other tickets, check the inbox, or even back out without first
-   waiting for OCR to finish — and OCR has no real "cancel" semantic
-   so the only escape was a hard reload.
-3. **Hid work that was already real.** By the time the overlay
-   appeared, the customer had handed over a ticket photo. The ticket
-   exists in their head. The app should show that ticket immediately
-   and report what's happening to it, not hide it behind a spinner.
+The customer can refresh, leave, come back, share the URL — the state stays consistent because everything is persisted to the appeal row.
 
-Progressive creation flips the model: the ticket record exists
-immediately, every backend step is just one of many things working on
-that ticket, and the UI reports each independently.
+## The pipeline
 
-## What the customer sees
+```
+Upload (uploadPcn.ts) → POST /api/appeals → PATCH pcnImageUrl
+                          ↓
+                       /api/extract (fire-and-forget)
+                          ├── identifyCouncil (~2s) → PATCH ticket partial
+                          ↓                          ↳ reel locks early
+                          └── extractTicket (~10–15s, combined extract+coach)
+                                → PATCH ticket full
+                                → mergeDuplicateDraftIfAny (txn, FK sweep)
+                                → response body { ticket, coach }
+```
 
-1. Tap **Scan PCN** on the home hero (or the **Scan** bottom-nav tab) →
-   navigates to `/app/tickets?scan=1` which auto-clicks the hidden
-   library file input. (Tapping the in-page Camera/Library buttons on
-   `/app/tickets` does the same thing without any navigation.)
-2. Photo selected → `lib/client/uploadPcn.ts` POSTs `/api/appeals`
-   (creates a fresh appeal owned by the current session — guests are
-   first-class), PATCHes the new row with `pcnImageUrl`, fires
-   `/api/extract` fire-and-forget. Stays on `/app/tickets`.
-3. The list refreshes; the new card appears at the top, auto-expanded
-   by the page's `isInFlight()` detection. Opens in the **Processing**
-   state with all three pipeline rows visible as a live checklist
-   (v0.3.0 — earlier versions hid rows 2/3 until OCR was done):
-   - The photo is pinned to the top of the card.
-   - Row 1: **Reading PCN details…** — running spinner. Reflects
-     `appeal.processing.ocr.status`.
-   - Row 2: **Checking issuer portal** — muted "Up next" until OCR
-     finishes, then reflects `appeal.portalLookup.status`.
-   - Row 3: **Generating recommendation** — muted "Up next" until the
-     portal check completes, then reflects
-     `appeal.processing.analysis.status`.
-   - Once OCR completes, the card body transitions to **Confirm your
-     ticket** (the pending-review surface with three editable rows —
-     PCN reference + vehicle registration text inputs + council
-     `<select>` — each with a confidence pill, plus the "I agree to
-     T&Cs" button).
-4. After confirm: **Checking issuer portal…** runs (background MCP
-   job; the card's status pill morphs to "Validating"). Council-
-   confirmed metadata streams in below as the agent reads it.
-5. After lookup: the card surfaces the **needs_decision**
-   recommendation with three actions: **Appeal with Rabbit** (paid),
-   **Pay yourself** (free council deep-link), **Pay instantly with
-   Rabbit (+£1.99) — Coming soon**.
-6. Tap "Appeal with Rabbit" → card flips to **Tell us more**
-   (`gathering_evidence` state). **v0.3.1 surfaces this as a numbered
-   three-step `<StepBlock>` ladder inside the card body**:
-   - **Step 1 · Pick your grounds.** Opens the fullscreen
-     `<GroundsQuizSheet>` (75 cards / 12 collapsible categories /
-     lucide outline icons / sticky search with clear / horizontally
-     scrollable category chips / single-column scrollable card grid /
-     "Suggested for code N" pills floating matching cards when
-     `appeal.ticket.contraventionCode` is known). Tap as many cards
-     as apply (drafter caps at 6 canonical grounds via `mapsTo`
-     flattening).
-   - **Step 2 · Add details.** Unlocks after step 1. The
-     `<DictationPanel>` mounts below the chip strip showing the
-     selected card labels. Auto-grow textarea (2000 char hard cap), a
-     `<VoiceNoteButton mode="append">` with a live `mm:ss` timer +
-     pause/resume that **appends** transcribed audio (multiple takes
-     accumulate), and up to 4 guidance chips derived from the
-     selected card IDs (eg `sign-obscured` → *"Describe what was
-     blocking the sign"*, *"Say when you first noticed"*).
-   - **Step 3 · Review & start drafting.** Unlocks once step 2 has
-     either typed notes ≥ 1 char or at least one ground picked. Tap
-     **Start drafting**. The card forwards `{grounds, notes}` to
-     `confirmEvidenceAndDraft()` in `<TicketCard>` which PATCHes
-     both fields + `step=EVIDENCE_DONE_STEP` in ONE write — no race
-     between debounced notes save and the transition — then fires
-     `/api/generate-stream`.
-   - Each completed step shows a green check. The visual ladder makes
-     progress legible at a glance; the previous single-shot UI
-     conflated all three concerns.
-7. **Sign-in gate (v0.2.18):** if the viewer is a guest, the card
-   stashes both the chosen grounds AND the dictated notes via PATCH
-   and redirects to `/sign-up?next=/app/tickets?expand=<id>&resumeDraft=1`.
-   After sign-up they land back on the same card with everything
-   saved — they re-tap "Start drafting".
-8. Card flips to **Drafting** with a passive "we'll notify you when
-   the draft is ready" footer. Once the letter lands the card moves
-   to **Ready to submit**:
-   - **Strength badge (v0.3.0).** The drafter returns a 0–100
-     `strength.score`. Score ≥ 80 → green "Strong appeal" pill.
-     50–79 → amber "Solid appeal" pill. Less than 50 → red
-     `<aside>` rendered ABOVE the Pay £2.99 card with rationale +
-     bullet list of evidence improvements + the Pay button label
-     flips to "Submit anyway for £2.99" (not a hard gate — the user
-     can still proceed).
-   - Tap **Submit £2.99** → `<PaymentSheet>` → on success the card
-     carries the customer through **Submitting** → **Submitted**.
-     Every state on the same card.
+The card polls `/api/appeals/[id]` every 2 s while `processing.ocr.status !== "done"` and stops the moment ticket fields land.
 
-Each step persists its own status + error on the appeal row, so:
-- If the customer closes the tab, the work continues server-side and
-  reappears with the right state on reload.
-- If a step fails, only that step's row flips to error with a
-  retry — the rest of the card stays usable.
-- If the customer opens the ticket from a different device, the
-  card picks up wherever the backend got to.
+## OCR two-pass (v0.3.10 combined extract+coach)
 
-## What the code does
+Inside `/api/extract`, two sequential Claude calls:
 
-### Server side
+1. **`identifyCouncil(pcnPhotoDataUrl)`** — `lib/server/ai.ts`. Minimal prompt that returns only `{issuer, councilSlug, confidence}`. ~1–3 s in practice because the schema is tiny and the prompt is short.
+2. **`extractTicket(pcnPhotoDataUrl)`** — `lib/server/ai.ts`. Full prompt that returns `{ ticket, confidence, coach, modelUsed, costUsd }` — the entire ticket (PCN ref, vehicle reg, contravention, location, issuedAt, amountPence) plus the inline photo-coach `{quality, advice}` block in the SAME Claude vision call. v0.3.10 merged the previously-separate `coachPhoto()` call here, halving per-upload Claude cost (~$0.13 → ~$0.075). The coach key is wrapped with `.catch({...}).default({quality: "good", advice: ""})` for leniency.
 
-- `appeals.processing` is a `jsonb` column carrying the per-step
-  status (`{ ocr: { status, error?, completedAt? }, analysis: {…} }`).
-  Each backend step writes only its own key, so steps can run in
-  parallel without clobbering each other. (See migration
-  `drizzle/0012_processing_status.sql`.)
-- `appeals.pcn_image_url` stores the uploaded photo (Blob URL once
-  Vercel Blob is wired; data URL in dev) so the smart card can show
-  the image even after a refresh or on another device.
-- `setProcessingStep(appealId, step, status, error?)` in
-  `lib/server/appeals.ts` is the atomic merge helper. It reads the
-  existing `processing` object, sets the named step, and writes back.
-- `/api/extract` accepts an optional `appealId`; when present, it
-  PATCHes the ticket fields on the appeal row when OCR succeeds
-  and marks `processing.ocr.status = "done"`. On failure it stamps
-  `processing.ocr = { status: "failed", error }` instead.
-- `portal_lookup.status` continues to live on its own column (set
-  by the `pcn_lookup` job). It's logically the same shape as a
-  processing step, just kept separate because the job queue owns
-  the lifecycle.
+Between the two passes the appeal row's `ticket` jsonb holds ONLY `{councilSlug, issuer}` (the partial). The smart card's poll picks this up; `deriveCardState` keeps the kind at `processing` because `pcnRef` + `vehicleReg` aren't there yet, but the `IssuerLogoReel`'s `scanning` prop reads `appeal.councilSlug` directly and flips off the moment the partial lands — the reel locks onto the right council ~2 s after upload while the full extract continues.
 
-### Client side
+When pass 2 returns, the second PATCH replaces the ticket wholesale with the complete object. `mergeDuplicateDraftIfAny(appealId, userId)` then runs in a transaction: if the customer already has an older draft for the same `(pcnRef, vehicleReg)` on this account, the new appeal is collapsed into the older one with an explicit FK sweep across `jobs`, `payments`, and `notification_dispatches`. The smart card then transitions out of `processing` into `pending_review`.
 
-- `lib/deriveCardState.ts` exposes a `processing` card state. Branch
-  conditions:
-  - `appeal.status === "draft"` AND
-  - no portal lookup, no preferred method, no letter, AND
-  - either OCR is running/failed/pending OR the ticket has no
-    pcnRef/vehicleReg yet.
-- `<TicketCardBody>` renders the `ProcessingCard` component for
-  that state — three inline status rows (Reading PCN / Checking
-  portal / Generating recommendation), the photo at the top, and
-  a Try-again retry link if OCR specifically failed.
-- The card polls `/api/appeals/[id]` every 2 s while in the
-  processing state, until either ticket fields arrive or
-  `processing.ocr.status` flips to `"failed"`. Then it transitions
-  to the next state via `deriveCardState`.
+If pass 2 fails (Claude timeout, network blip), the outer catch in `/api/extract` calls `setProcessingStep("ocr", "failed", message)`. The smart card transitions to `extraction_failed` and surfaces a Retry / Edit-manually action. The Edit-manually path lands on `/app/manual-entry?appealId=<id>` — a single-page form (v0.3.10) prefilled with OCR's partial reads so the user doesn't retype what came back fine.
 
-### Why polling and not SSE for OCR
+The coach `advice` text is forwarded back in the `/api/extract` response body and stored in the client's session-storage `OcrHandoff` so the smart card's `<PendingReviewCard>` can render an amber "Photo looks rough — try X" pill when quality < "good".
 
-The pcn_lookup and submit_appeal jobs run through the in-process
-job queue and stream per-event progress via SSE
-(`/api/jobs/[id]/progress`). OCR is a single ~6 s Claude vision
-call with no per-step progress — there's nothing to stream — and
-the simplest way for the smart card to pick up the result is to
-poll the appeal row at ~2 s cadence. Once OCR settles the polling
-stops; the rest of the lifecycle uses SSE.
+## The smart card's polling lifecycle
 
-## Acceptance tests (Playwright)
+`apps/web/components/TicketCard.tsx` runs a single `useEffect` polling loop with kind-tuned cadence:
 
-- Tapping Scan PCN on `/app` lands on `/app/tickets?scan=1` and the
-  file picker opens automatically (no intermediate "Add a ticket"
-  page).
-- The ticket appears in `/app/tickets` immediately with a "Confirm"
-  or "Processing" badge, auto-expanded at the top of the list.
-- The smart card body shows the uploaded image at the top, three
-  editable confirmation rows (PCN ref text input / vehicle reg text
-  input / council `<select>`), and the "I agree to T&Cs" button.
-- Closing the tab during OCR / lookup / drafting / submitting and
-  reopening the page still picks up the right state — every step
-  persists on the appeal row.
-- A guest who taps "Start drafting" in the gathering-evidence card
-  is redirected to `/sign-up?next=...` with their grounds saved;
-  signed-in users go straight to drafting.
-- `/app/capture` returns a 307 redirect to `/app/tickets?scan=1`.
-  `/app/validating/[jobId]` and `/app/submitting/[id]` return the
-  branded 404 (those routes were deleted in v0.2.13).
-- `tsc --noEmit && eslint . && next build` all exit 0.
+| Card kind | Cadence | Max polls | Stop condition |
+|---|---|---|---|
+| `processing` | 2 s | 60 (2 min) | `ticket.pcnRef && ticket.vehicleReg` (OCR landed) OR `processing.ocr.status === "failed"` |
+| `validating` (legacy) | 2.5 s | 120 (5 min) | `portalLookup.status !== "pending"` |
+| `gathering_evidence` + `portalLookup.status === "pending"` | 2.5 s | 120 | `portalLookup.status !== "pending"` (chip transitions to verified or error) |
+| `drafting` + `step === EVIDENCE_DONE_STEP` + `portalLookup.status === "pending"` | 2.5 s | 120 | letterBody lands OR `step === "generation_failed"` |
+| `drafting` (Claude streaming) | 3 s | 60 | `letterBody` OR `step === "generation_failed"` |
+
+Deps: `[cardState.kind, appeal.step, appeal.letterBody]` (v0.3.7). The `appeal.step` dep was added to ensure the polling effect re-mounts when `retryDraft()` PATCHes the step back from `generation_failed` to `EVIDENCE_DONE_STEP` — without it the previous tick chain dies on the `generation_failed` stop condition and the card stalls forever.
+
+## Draft kickoff (v0.3.5+)
+
+Drafting is deferred via a separate `useEffect` that watches for both gates:
+
+1. `appeal.step === EVIDENCE_DONE_STEP` (user finished Build appeal).
+2. `appeal.portalLookup?.status !== "pending"` (lookup has settled — verified or error).
+3. `appeal.portalLookup?.verdict not in (paid, closed, not_found)` (or `status === "overridden"`).
+4. `!appeal.letterBody` (letter not already drafted).
+
+When all four pass, the effect fires `/api/generate-stream` exactly once per appeal (ref-guarded). Server-side has a defence-in-depth in-flight guard: `processing.draft.status === "running"` + the row's `updatedAt` < 240 s → short-circuit a duplicate request. On success, `attachDraftToAppeal()` writes the letter; the route then calls `setProcessingStep("draft", "done")` to clear the running marker.
+
+## Draft retry path (v0.3.6+)
+
+If `/api/generate-stream` throws (Claude timeout, network), the catch:
+
+1. Calls `markAppealFailed(appealId, errorMessage)`.
+2. That helper sets `step = "generation_failed"` AND writes `processing.draft = {status: "failed", error: <message>, completedAt}`.
+3. The smart card's `drafting` body branches on `step === "generation_failed"` and renders `<DraftingFailedRow>` with the error message + a **Try again** button.
+
+`retryDraft()` (handler in `TicketCard.tsx`):
+
+1. PATCHes `step = EVIDENCE_DONE_STEP` AND `processing.draft = {status: "pending"}`.
+2. Clears the draft-kickoff ref so the effect re-fires.
+
+The polling effect re-mounts (because `appeal.step` is in its deps), arms a fresh 3 s tick chain, and catches the new `letterBody` when it lands.
+
+## Failure CardKinds the pipeline produces
+
+| Kind | Trigger | Recovery action |
+|---|---|---|
+| `extraction_failed` | OCR full pass threw or timed out | Retry / Edit manually |
+| `image_issue` | OCR ran but ≤ 1 of 4 critical fields came back (not a PCN photo) | Retake |
+| `image_unclear` | OCR ran but confidence too low | Retake / Continue anyway |
+| `info_needed` | Required fields missing after both OCR passes | Edit inline + Agree |
+| `council_lookup_failed` | `pcn_lookup` job hit `portal.status === "error"` | Retry / Continue anyway / Edit fields |
+| `appeal_not_possible` | Lookup verdict is paid / closed / not_found | Pay yourself / Mark resolved / Override |
+| `drafting + step=generation_failed` | `/api/generate-stream` threw | Try again |
+
+Every failure state preserves the rest of the journey — the user can edit, retry, or override without restarting from `/app/scan`.
+
+## Code anchors
+
+- `apps/web/lib/client/uploadPcn.ts` — the upload helper. Creates the row, PATCHes the photo, fires `/api/extract`.
+- `apps/web/app/api/extract/route.ts` — the OCR endpoint. Two-pass sequence + processing-step writes + `mergeDuplicateDraftIfAny` handoff.
+- `apps/web/lib/server/ai.ts` — `identifyCouncil()` (pre-pass) and `extractTicket()` (full ticket + inline coach + cost/model). `coachPhoto()` is gone.
+- `apps/web/lib/server/appeals.ts` — `setProcessingStep()` (merges per-step status into the `processing` jsonb) and `mergeDuplicateDraftIfAny()` (transactional dedup with FK sweep).
+- `apps/web/lib/server/aiCalls.ts` — `recordAiCall()` writes per-stage cost into `ai_calls` so admin can split the combined call's cost across `ocr` and `coach` rows.
+- `apps/web/components/TicketCard.tsx` — polling loop + draft-kickoff effect + retry handler. v0.3.10 modularised into `components/ticket/*`.
+- `apps/web/components/TicketCardBody.tsx` — per-state body rendering including the conditional Amount/Date inputs.
+- `apps/web/lib/deriveCardState.ts` — the state derive ladder (17 CardKinds, `TICKET_CONFIRMED_STEP` + `EVIDENCE_DONE_STEP` + `GENERATION_FAILED_STEP` sentinels).
+- `apps/web/app/app/manual-entry/page.tsx` — single-page manual entry with `?appealId=<id>` prefill from the failure card.

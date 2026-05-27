@@ -1,6 +1,8 @@
 # Managing councils
 
-The council CRUD lives at `/admin/councils`. Three concrete pages, plus a per-council automation editor that's the most frequently-touched surface.
+Last refreshed **2026-05-27 (v0.3.10)**.
+
+The council CRUD lives at `/admin/councils`. Three concrete pages, plus a per-council automation editor that's the most frequently-touched surface. A deterministic Playwright recipe lives alongside Claude MCP automation when one exists (Lambeth today) — see [architecture/deterministic-recipes.md](../architecture/deterministic-recipes.md). The portal-radio-label mapping for each council's grounds form lives in the grounds-registry — see [architecture/grounds-registry.md](../architecture/grounds-registry.md).
 
 ## Pages
 
@@ -20,6 +22,7 @@ The council CRUD lives at `/admin/councils`. Three concrete pages, plus a per-co
 5. Add a **PCN ref pattern** regex if the council uses a stable prefix (e.g. `^WE\d{8}$` for Westminster). Optional but improves OCR confidence scoring.
 6. Set **automation status** to `manual` initially. Flip to `automated_beta` only after the dry-run passes (next section).
 7. Save. The council is immediately available on `/api/councils` (the public endpoint the customer app reads).
+8. **Add a grounds-registry entry.** Capture the portal's grounds-selection screenshots (the council's radio-button labels) and add a `CouncilGroundsMapping` at `apps/web/lib/server/submission/grounds/<slug>.ts`. Register it in `grounds/registry.ts`. See [architecture/grounds-registry.md](../architecture/grounds-registry.md) for the onboarding checklist.
 
 ## Editing the MCP automation recipe
 

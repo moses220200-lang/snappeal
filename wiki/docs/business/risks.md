@@ -1,5 +1,7 @@
 # Risks
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The honest list. We grade each as **Likelihood** × **Impact** and note the mitigation.
 
 ## Regulatory

@@ -72,12 +72,12 @@ function LifecycleRow({
 
   // Connector line below this dot — green when this row is done.
   const connectorClass = isDone
-    ? "bg-snappeal-success"
+    ? "bg-parkingrabbit-success"
     : isFailed
       ? "bg-amber-300"
       : isActive
-        ? "bg-snappeal-primary/40"
-        : "bg-snappeal-border";
+        ? "bg-parkingrabbit-primary/40"
+        : "bg-parkingrabbit-border";
 
   // Only apply a tinted wrapper when the step is explicitly tinted
   // (warning / danger). For regular active steps we drop the
@@ -109,17 +109,17 @@ function LifecycleRow({
           <p
             className={`text-[13.5px] font-bold leading-tight ${
               status === "upcoming"
-                ? "text-snappeal-navy/55"
+                ? "text-parkingrabbit-navy/55"
                 : status === "failed"
                   ? "text-amber-900"
-                  : "text-snappeal-navy"
+                  : "text-parkingrabbit-navy"
             }`}
           >
             {step.title}
           </p>
           {step.busy && isActive && (
             <Loader2
-              className="size-3.5 text-snappeal-primary animate-spin"
+              className="size-3.5 text-parkingrabbit-primary animate-spin"
               strokeWidth={2.5}
             />
           )}
@@ -128,10 +128,10 @@ function LifecycleRow({
           <p
             className={`mt-0.5 text-[11.5px] leading-snug ${
               status === "upcoming"
-                ? "text-snappeal-muted/80"
+                ? "text-parkingrabbit-muted/80"
                 : status === "failed"
                   ? "text-amber-900/85"
-                  : "text-snappeal-muted"
+                  : "text-parkingrabbit-muted"
             }`}
           >
             {step.supporting}
@@ -160,7 +160,7 @@ function LifecycleDot({ status }: { status: LifecycleStepStatus }) {
   if (status === "done") {
     return (
       <span
-        className="size-5 rounded-full bg-snappeal-success flex items-center justify-center shadow-sm shadow-snappeal-success/30"
+        className="size-5 rounded-full bg-parkingrabbit-success flex items-center justify-center shadow-sm shadow-parkingrabbit-success/30"
         aria-label="Step complete"
       >
         <Check className="size-3 text-white" strokeWidth={3} />
@@ -183,15 +183,15 @@ function LifecycleDot({ status }: { status: LifecycleStepStatus }) {
         className="relative size-5 flex items-center justify-center"
         aria-label="Step in progress"
       >
-        <span className="absolute inset-0 rounded-full bg-snappeal-primary/25 animate-ping" />
-        <span className="absolute inset-0.5 rounded-full bg-snappeal-primary/30" />
-        <span className="relative size-2 rounded-full bg-snappeal-primary shadow-sm shadow-snappeal-primary/60" />
+        <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary/25 animate-ping" />
+        <span className="absolute inset-0.5 rounded-full bg-parkingrabbit-primary/30" />
+        <span className="relative size-2 rounded-full bg-parkingrabbit-primary shadow-sm shadow-parkingrabbit-primary/60" />
       </span>
     );
   }
   return (
     <span
-      className="size-5 rounded-full border-2 border-snappeal-border bg-white"
+      className="size-5 rounded-full border-2 border-parkingrabbit-border bg-white"
       aria-label="Step upcoming"
     />
   );

@@ -1,5 +1,7 @@
 # What good evidence looks like
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The short version:
 
 - **Take more photos than you think you need.** Six is the cap; six is also about right.

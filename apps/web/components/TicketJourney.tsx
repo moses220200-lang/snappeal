@@ -33,7 +33,7 @@ export interface TicketJourneyProps {
  */
 export function TicketJourney({ steps }: TicketJourneyProps) {
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border p-4">
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border p-4">
       <ol className="flex flex-col">
         {steps.map((step, i) => (
           <JourneyRow
@@ -63,7 +63,7 @@ function JourneyRow({
   // Connector line below this dot — green iff this step is done. The line
   // ALWAYS reflects the lower side of this dot: a done step has a green
   // tail flowing into the next dot; everything else stays muted grey.
-  const connectorClass = isDone ? "bg-snappeal-success" : "bg-snappeal-border";
+  const connectorClass = isDone ? "bg-parkingrabbit-success" : "bg-parkingrabbit-border";
 
   return (
     <li className="flex gap-3.5">
@@ -86,14 +86,14 @@ function JourneyRow({
           <StepBadge index={index + 1} status={step.status} />
           <p
             className={`text-[14px] font-bold leading-tight ${
-              step.status === "upcoming" ? "text-snappeal-navy/80" : "text-snappeal-navy"
+              step.status === "upcoming" ? "text-parkingrabbit-navy/80" : "text-parkingrabbit-navy"
             }`}
           >
             {step.title}
           </p>
           {step.busy && isActive && (
             <Loader2
-              className="size-3.5 text-snappeal-primary animate-spin"
+              className="size-3.5 text-parkingrabbit-primary animate-spin"
               strokeWidth={2.5}
             />
           )}
@@ -102,8 +102,8 @@ function JourneyRow({
           <p
             className={`mt-1.5 ml-[34px] text-[12px] leading-snug ${
               step.status === "upcoming"
-                ? "text-snappeal-muted"
-                : "text-snappeal-muted"
+                ? "text-parkingrabbit-muted"
+                : "text-parkingrabbit-muted"
             }`}
           >
             {step.supporting}
@@ -123,7 +123,7 @@ function RailDot({ status }: { status: JourneyStepStatus }) {
   if (status === "done") {
     return (
       <span
-        className="size-6 rounded-full bg-snappeal-success flex items-center justify-center shadow-sm shadow-snappeal-success/30"
+        className="size-6 rounded-full bg-parkingrabbit-success flex items-center justify-center shadow-sm shadow-parkingrabbit-success/30"
         aria-label="Step complete"
       >
         <Check className="size-3.5 text-white" strokeWidth={3} />
@@ -136,15 +136,15 @@ function RailDot({ status }: { status: JourneyStepStatus }) {
         className="relative size-6 flex items-center justify-center"
         aria-label="Step in progress"
       >
-        <span className="absolute inset-0 rounded-full bg-snappeal-primary/25 animate-ping" />
-        <span className="absolute inset-1 rounded-full bg-snappeal-primary/30" />
-        <span className="relative size-2.5 rounded-full bg-snappeal-primary shadow-sm shadow-snappeal-primary/50" />
+        <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary/25 animate-ping" />
+        <span className="absolute inset-1 rounded-full bg-parkingrabbit-primary/30" />
+        <span className="relative size-2.5 rounded-full bg-parkingrabbit-primary shadow-sm shadow-parkingrabbit-primary/50" />
       </span>
     );
   }
   return (
     <span
-      className="size-6 rounded-full border-2 border-snappeal-border bg-white"
+      className="size-6 rounded-full border-2 border-parkingrabbit-border bg-white"
       aria-label="Step upcoming"
     />
   );
@@ -159,10 +159,10 @@ function StepBadge({
 }) {
   const palette =
     status === "done"
-      ? "bg-snappeal-success-soft text-snappeal-success"
+      ? "bg-parkingrabbit-success-soft text-parkingrabbit-success"
       : status === "active"
-        ? "bg-snappeal-primary-50 text-snappeal-primary"
-        : "bg-snappeal-bg text-snappeal-muted";
+        ? "bg-parkingrabbit-primary-50 text-parkingrabbit-primary"
+        : "bg-parkingrabbit-bg text-parkingrabbit-muted";
   return (
     <span
       className={`size-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${palette}`}

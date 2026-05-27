@@ -115,8 +115,8 @@ export function MCPLiveStrip({
   return (
     <div className="flex flex-col gap-3">
       {/* Screenshot gallery */}
-      <section className="rounded-2xl bg-white border border-snappeal-border overflow-hidden">
-        <div className="px-3 py-2 flex items-center gap-2 border-b border-snappeal-border bg-snappeal-bg/40">
+      <section className="rounded-2xl bg-white border border-parkingrabbit-border overflow-hidden">
+        <div className="px-3 py-2 flex items-center gap-2 border-b border-parkingrabbit-border bg-parkingrabbit-bg/40">
           {council ? (
             <CouncilBadge
               name={council.name}
@@ -126,20 +126,20 @@ export function MCPLiveStrip({
               showName={false}
             />
           ) : (
-            <Globe className="size-3.5 text-snappeal-muted" />
+            <Globe className="size-3.5 text-parkingrabbit-muted" />
           )}
-          <div className="flex-1 truncate text-[10.5px] text-snappeal-muted font-mono">
+          <div className="flex-1 truncate text-[10.5px] text-parkingrabbit-muted font-mono">
             {current?.caption ?? latestCaption ?? "Connecting…"}
           </div>
           {status === "running" && (
-            <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold text-snappeal-muted">
-              <span className="snappeal-mcp-tick-dot size-1.5 rounded-full bg-snappeal-primary inline-block" />
+            <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold text-parkingrabbit-muted">
+              <span className="parkingrabbit-mcp-tick-dot size-1.5 rounded-full bg-parkingrabbit-primary inline-block" />
               Live
             </span>
           )}
         </div>
 
-        <div className="relative aspect-[16/10] bg-snappeal-navy overflow-hidden">
+        <div className="relative aspect-[16/10] bg-parkingrabbit-navy overflow-hidden">
           {!current && !latestScreenshotUrl ? (
             <>
               <div
@@ -152,7 +152,7 @@ export function MCPLiveStrip({
               />
               <div
                 aria-hidden
-                className="absolute inset-y-0 left-0 w-[40%] snappeal-mcp-warmup-line"
+                className="absolute inset-y-0 left-0 w-[40%] parkingrabbit-mcp-warmup-line"
                 style={{
                   background:
                     "linear-gradient(90deg, transparent 0%, rgba(0,122,255,0.5) 50%, transparent 100%)",
@@ -177,7 +177,7 @@ export function MCPLiveStrip({
               src={current?.url ?? latestScreenshotUrl ?? ""}
               alt={current?.caption ?? latestCaption ?? "Agent screenshot"}
               className="absolute inset-0 w-full h-full object-cover"
-              style={{ animation: "snappeal-mcp-fade-in 400ms ease-out" }}
+              style={{ animation: "parkingrabbit-mcp-fade-in 400ms ease-out" }}
             />
           )}
 
@@ -217,14 +217,14 @@ export function MCPLiveStrip({
 
       {/* Agent thought ticker — calmer than the full MCPLiveView. */}
       {latestThought && (
-        <div className="rounded-xl bg-snappeal-navy text-white px-3 py-2 flex items-start gap-2.5">
-          <span className="text-[8.5px] font-bold uppercase tracking-[0.12em] text-snappeal-primary-200 mt-[2px] shrink-0">
+        <div className="rounded-xl bg-parkingrabbit-navy text-white px-3 py-2 flex items-start gap-2.5">
+          <span className="text-[8.5px] font-bold uppercase tracking-[0.12em] text-parkingrabbit-primary-200 mt-[2px] shrink-0">
             AI
           </span>
           <p
             key={latestThought}
             className="text-[11.5px] leading-snug flex-1 min-w-0"
-            style={{ animation: "snappeal-mcp-ticker-in 360ms ease-out" }}
+            style={{ animation: "parkingrabbit-mcp-ticker-in 360ms ease-out" }}
           >
             {latestThought}
           </p>
@@ -232,19 +232,19 @@ export function MCPLiveStrip({
       )}
 
       {/* Activity log */}
-      <section className="rounded-2xl bg-white border border-snappeal-border overflow-hidden">
-        <div className="px-3 py-2 border-b border-snappeal-border flex items-center justify-between">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-snappeal-muted">
+      <section className="rounded-2xl bg-white border border-parkingrabbit-border overflow-hidden">
+        <div className="px-3 py-2 border-b border-parkingrabbit-border flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-parkingrabbit-muted">
             Activity
           </p>
-          <p className="text-[9.5px] text-snappeal-muted">{events.length} events</p>
+          <p className="text-[9.5px] text-parkingrabbit-muted">{events.length} events</p>
         </div>
         <div
           ref={logRef}
-          className="max-h-28 overflow-y-auto text-[11.5px] divide-y divide-snappeal-border"
+          className="max-h-28 overflow-y-auto text-[11.5px] divide-y divide-parkingrabbit-border"
         >
           {events.length === 0 ? (
-            <p className="px-3 py-2 text-snappeal-muted">
+            <p className="px-3 py-2 text-parkingrabbit-muted">
               Waiting for the agent to start…
             </p>
           ) : (
@@ -261,27 +261,27 @@ function ActivityRow({ ev }: { ev: ProgressEvent }) {
   let text: string;
   switch (ev.kind) {
     case "screenshot":
-      icon = <Eye className="size-3 text-snappeal-primary" strokeWidth={1.75} />;
+      icon = <Eye className="size-3 text-parkingrabbit-primary" strokeWidth={1.75} />;
       text = `Captured ${ev.caption ?? "screenshot"}`;
       break;
     case "thought":
-      icon = <Circle className="size-2 text-snappeal-border" strokeWidth={2} />;
+      icon = <Circle className="size-2 text-parkingrabbit-border" strokeWidth={2} />;
       text = ev.message;
       break;
     case "metadata":
-      icon = <ChevronRight className="size-3 text-snappeal-success" strokeWidth={2} />;
+      icon = <ChevronRight className="size-3 text-parkingrabbit-success" strokeWidth={2} />;
       text = `Read ${ev.field}: ${ev.value}`;
       break;
     case "status":
     case "step":
     default:
-      icon = <ChevronRight className="size-3 text-snappeal-navy" strokeWidth={1.75} />;
+      icon = <ChevronRight className="size-3 text-parkingrabbit-navy" strokeWidth={1.75} />;
       text = "message" in ev ? ev.message : "";
       break;
   }
   return (
     <div className="px-3 py-1.5 flex items-start gap-2">
-      <span className="text-snappeal-muted shrink-0 w-10 font-mono text-[9.5px] mt-[1px]">
+      <span className="text-parkingrabbit-muted shrink-0 w-10 font-mono text-[9.5px] mt-[1px]">
         {new Date(ev.ts).toLocaleTimeString("en-GB", {
           hour: "2-digit",
           minute: "2-digit",
@@ -291,7 +291,7 @@ function ActivityRow({ ev }: { ev: ProgressEvent }) {
       <span className="shrink-0 size-4 flex items-center justify-center mt-[1px]">
         {icon}
       </span>
-      <span className="text-snappeal-navy/90 truncate flex-1 min-w-0">{text}</span>
+      <span className="text-parkingrabbit-navy/90 truncate flex-1 min-w-0">{text}</span>
     </div>
   );
 }

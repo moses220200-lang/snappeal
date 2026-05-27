@@ -1,5 +1,7 @@
 # FAQ
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 > :material-pencil-outline: **Stub.** Will be expanded as users ask real questions.
 
 ## Will ParkingRabbit represent me at a tribunal hearing?

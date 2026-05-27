@@ -24,14 +24,31 @@ import { join } from "node:path";
 import { z } from "zod";
 import { runAgentic } from "../claude-cli";
 import { appendProgress, watchScreenshots } from "../jobs/progress";
-import { mcpHeadlessFlag } from "../settings";
+import { getSettings, mcpHeadlessFlag } from "../settings";
 import { getAutomation } from "./automation";
 import { emitToolStep, extractJsonObject } from "./_progress";
-import { uploadPortalPhotos } from "../blob";
+import { uploadPortalPhotos, uploadPortalPhotosFromUrls } from "../blob";
+import {
+  hasDeterministicRecipe,
+  runDeterministicLookup,
+} from "./recipes";
 import type { AppealRecord } from "../appeals";
 import { schema } from "../db/client";
 import type { PortalLookupSnapshot, PortalLookupVerdict } from "../db/schema";
 import { WESTMINSTER_LOOKUP_PROMPT } from "./prompts/westminster_lookup";
+import { LAMBETH_LOOKUP_PROMPT } from "./prompts/lambeth_lookup";
+
+/**
+ * Per-council fallback lookup prompts — used ONLY when a council has no
+ * `lookup_agent_prompt` row in `council_automation` yet. The DB seed in
+ * `getAutomation()` populates this for any council in DEFAULTS on first
+ * read, so under normal operation this map is reached only on a fresh
+ * deploy or a wiped row.
+ */
+const PER_COUNCIL_LOOKUP_FALLBACK: Record<string, string> = {
+  westminster: WESTMINSTER_LOOKUP_PROMPT,
+  lambeth: LAMBETH_LOOKUP_PROMPT,
+};
 
 type CouncilRow = typeof schema.councils.$inferSelect;
 
@@ -116,9 +133,24 @@ Steps:
    "[metadata]field=value" on its own line as soon as you read each
    field. Example: "[metadata]pcnRef=WC12345678". The wrapper parses
    these to update the customer's screen in real time.
-6. If a "View images" / "View photos" route exists, follow it and call
-   \`mcp__playwright__browser_take_screenshot\` once per visible warden
-   photo with filename "warden-1.png", "warden-2.png", etc.
+6. If a "View images" / "View photos" route exists, follow it. Then run
+   ONE \`mcp__playwright__browser_evaluate\` to harvest the absolute URLs
+   of every warden photo in the DOM — do NOT screenshot them. Function
+   body:
+
+     () => Array.from(
+       document.querySelectorAll('img.warden-photo, .ticket-image img, .gallery-item img, .photo-gallery img, .photos-list img, main img')
+     )
+       .map((el) => ({ src: el.getAttribute('src') || '', w: el.naturalWidth || 0, h: el.naturalHeight || 0 }))
+       .filter((r) => r.src && r.w >= 200 && r.h >= 200)
+       .map((r) => ({ url: new URL(r.src, location.href).href }));
+
+   For each URL, emit one line on its own:
+     [photoUrl]<absolute-url>
+
+   The wrapper fetches each URL server-side and re-hosts the bytes on
+   our CDN. Take ONE audit-record screenshot "03-photos-summary.png"
+   of the photos page overview (not one per photo).
 7. Return ONE JSON object matching the schema below as your final reply
    — no commentary, no prose:
 
@@ -158,7 +190,94 @@ export async function runPortalLookup(opts: {
 }): Promise<PortalLookupResult> {
   const { appeal, council, jobId, onVerdictConfirmed } = opts;
   const started = Date.now();
-  const workDir = await mkdtemp(join(tmpdir(), "snappeal-lookup-"));
+
+  // Phase 9 — deterministic-first lookup. Try the per-council
+  // Playwright recipe before spending Claude tokens. The recipe
+  // either:
+  //   - Succeeds → return immediately with a fully-built snapshot.
+  //     ~10-20s, $0. ai_calls row is written by the worker with
+  //     mode='deterministic'.
+  //   - Drifts (DOM signature mismatch) → fall through to the
+  //     Claude MCP path below. The drift reason is logged so the
+  //     admin sees WHICH signature broke.
+  //   - Errors (timeout / network) → fall through. Same as drift.
+  //   - No recipe registered → fall through silently.
+  if (
+    appeal.ticket?.pcnRef &&
+    appeal.ticket?.vehicleReg &&
+    hasDeterministicRecipe(council.slug)
+  ) {
+    if (jobId) {
+      await appendProgress(jobId, {
+        kind: "status",
+        message: `Checking ${council.name} (fast path)`,
+      });
+    }
+    const recipeResult = await runDeterministicLookup(council.slug, {
+      pcnRef: appeal.ticket.pcnRef,
+      vehicleReg: appeal.ticket.vehicleReg,
+    });
+    if (recipeResult?.ok) {
+      // Re-host warden photos to Blob the same way the Claude path
+      // does so the customer-facing URLs survive a portal-side
+      // cookie expiry.
+      const photoUrls = recipeResult.photoUrls.length
+        ? await uploadPortalPhotosFromUrls({
+            appealId: appeal.id,
+            urls: recipeResult.photoUrls,
+          })
+        : [];
+
+      const lifecycle: PortalLookupSnapshot["status"] =
+        recipeResult.verdict === "paid" ||
+        recipeResult.verdict === "closed" ||
+        recipeResult.verdict === "not_found"
+          ? "invalid"
+          : "verified";
+      const snapshot: PortalLookupSnapshot = {
+        jobId: jobId ?? null,
+        status: lifecycle,
+        verdict: recipeResult.verdict,
+        verdictReason: recipeResult.verdictReason,
+        photoUrls,
+        metadata: Object.keys(recipeResult.metadata).length
+          ? recipeResult.metadata
+          : undefined,
+        fetchedAt: new Date().toISOString(),
+      };
+      // Fire the early-confirmation callback so the customer
+      // advances immediately — same UX as the Claude path's
+      // onVerdictConfirmed.
+      if (onVerdictConfirmed) {
+        await Promise.resolve(onVerdictConfirmed(snapshot)).catch(() => {});
+      }
+      return {
+        success: true,
+        snapshot,
+        screenshotPath: null, // deterministic path never screenshots
+        durationMs: recipeResult.durationMs,
+        costUsd: 0,
+        error: null,
+      };
+    }
+    // Drift or error → log the reason so the admin sees which
+    // signature broke, then fall through to the Claude MCP path.
+    if (recipeResult) {
+      const detail = recipeResult.drift
+        ? `recipe drift at step ${recipeResult.step}: ${recipeResult.reason}`
+        : `recipe error (${recipeResult.errorKind}): ${recipeResult.reason}`;
+      console.warn(`[lookup] ${council.slug} ${detail} — falling back to Claude MCP`);
+      if (jobId) {
+        await appendProgress(jobId, {
+          kind: "status",
+          message: `Switching to deep validation (council portal may have changed)`,
+        });
+      }
+    }
+  }
+
+  // ─── Claude MCP fallback (legacy path) ───
+  const workDir = await mkdtemp(join(tmpdir(), "parkingrabbit-lookup-"));
   // Per-run Chrome user-data-dir lives INSIDE the workDir so each
   // Playwright MCP invocation gets its own isolated browser profile.
   // Without this, two back-to-back lookups against the same council
@@ -183,7 +302,36 @@ export async function runPortalLookup(opts: {
   const automation = await getAutomation(council.slug);
   const systemPrompt =
     automation?.lookupAgentPrompt ??
-    (council.slug === "westminster" ? WESTMINSTER_LOOKUP_PROMPT : FALLBACK_LOOKUP_PROMPT);
+    PER_COUNCIL_LOOKUP_FALLBACK[council.slug] ??
+    FALLBACK_LOOKUP_PROMPT;
+
+  // Runtime screenshot directive — appended to the user prompt instead
+  // of baking the milestone screenshot list into every council's
+  // canonical prompt. Lets the admin toggle `mcpCaptureScreenshots` in
+  // /admin/settings flip behaviour live without prompt edits.
+  //
+  // ON  (audit mode): agent takes milestone screenshots for the admin
+  //                    to inspect drift / debug a broken portal.
+  // OFF (default, fast path): HTML-scrape only via browser_evaluate —
+  //                    no browser_take_screenshot calls. ~3× faster
+  //                    lookups; sufficient for prod where we only need
+  //                    the verdict + photo URLs.
+  //
+  // Warden photo URLs are NEVER screenshots — they're URL-harvested
+  // and re-hosted via Blob, independent of this directive.
+  const captureScreenshots = getSettings().mcpCaptureScreenshots;
+  const screenshotDirective = captureScreenshots
+    ? `SCREENSHOT CAPTURE: ENABLED (audit mode).
+For admin audit + drift detection, take milestone screenshots at:
+  01-portal-loaded.png  (after first navigation)
+  02-ticket-found.png   (after the lookup form resolves)
+  03-photos-summary.png (after opening View images, if the link exists)
+DO NOT screenshot individual warden photos — URL-harvest those via
+browser_evaluate as specified in the system prompt.`
+    : `SCREENSHOT CAPTURE: DISABLED (fast path).
+DO NOT call mcp__playwright__browser_take_screenshot anywhere in this
+run. Use HTML scrape via mcp__playwright__browser_evaluate as the
+system prompt specifies. This cuts the lookup duration by ~3×.`;
 
   const userPrompt = `Look up this PCN on the council's appeals portal.
 
@@ -196,16 +344,15 @@ PCN lookup payload (use these EXACT values when filling the lookup form
 - Vehicle reg:   ${appeal.ticket?.vehicleReg ?? "UNKNOWN"}
 
 This is a READ-ONLY walk. Do NOT click any submit / pay / representation
-button. Capture warden photos via mcp__playwright__browser_take_screenshot
-with filenames "warden-1.png", "warden-2.png", etc. Use these milestone
-basenames for the navigation screenshots:
+button.
 
-  01-portal-loaded.png        (after first navigation)
-  02-ticket-found.png         (after the lookup form resolves)
-  03-photos-summary.png       (after opening View images)
-  warden-1.png, warden-2.png  (one per visible warden image)
+${screenshotDirective}
 
-Return the lookup JSON as specified in the system prompt — no commentary.`;
+Warden photo URLs (always required): emit `+ "`[photoUrl]<absolute-url>`" + ` lines per the system
+prompt's browser_evaluate harvest. The wrapper fetches each URL
+server-side and re-hosts on Blob.
+
+Return the verdict + metadata as the system prompt specifies — no commentary.`;
 
   const events: string[] = [];
   // Page-as-source-of-truth: the agent emits structured `[tag]value`
@@ -219,26 +366,70 @@ Return the lookup JSON as specified in the system prompt — no commentary.`;
   const METADATA_RE = /^\s*\[metadata\]\s*([a-zA-Z][a-zA-Z0-9_]*)\s*=\s*(.+?)\s*$/;
   const VERDICT_RE = /^\s*\[verdict\]\s*(open|paid|closed|expired|not_found|unknown)\s*$/i;
   const VERDICT_REASON_RE = /^\s*\[verdictReason\]\s*(.+?)\s*$/;
+  // v0.3.7 — DOM-first warden photos. The agent emits one
+  // `[photoUrl]<absolute-url>` line per `<img>` it found on the View
+  // Images page (extracted via a single `browser_evaluate` instead of
+  // a screenshot per photo). The wrapper fetches each URL server-side
+  // after the run, re-hosts on Blob, and persists the resulting URLs
+  // to `portalLookup.photoUrls` (the customer-facing list).
+  const PHOTO_URL_RE = /^\s*\[photoUrl\]\s*(https?:\/\/\S+?)\s*$/;
   const scrapedMetadata: Record<string, string> = {};
   let scrapedVerdict: PortalLookupVerdict | undefined;
   let scrapedReason: string | undefined;
+  const scrapedPhotoUrls = new Set<string>();
+
+  /** Run the bracket-tag regexes against ONE complete line. Never call
+   *  this with a partial fragment — it will happily match truncated URLs
+   *  (e.g. `[photoUrl]https://pcnevidence` mid-stream) and the wrapper
+   *  will then try to fetch a hostname like `pcnevidence` and fail with
+   *  `getaddrinfo ENOTFOUND`. */
+  const scrapeLine = (line: string) => {
+    const m = METADATA_RE.exec(line);
+    if (m) {
+      scrapedMetadata[m[1]] = m[2];
+      return;
+    }
+    const v = VERDICT_RE.exec(line);
+    if (v) {
+      scrapedVerdict = v[1].toLowerCase() as PortalLookupVerdict;
+      return;
+    }
+    const r = VERDICT_REASON_RE.exec(line);
+    if (r) {
+      scrapedReason = r[1];
+      return;
+    }
+    const p = PHOTO_URL_RE.exec(line);
+    if (p) {
+      // De-dup by exact URL string — `Set` handles the case where the
+      // agent emits the same warden URL twice (e.g. a re-read after a
+      // navigation).
+      scrapedPhotoUrls.add(p[1]);
+    }
+  };
+
+  /** Used for FULL text blocks (assistant message content already complete).
+   *  Safe to split on newlines and scrape every line. */
   const scrapeFromText = (text: string) => {
     if (!text) return;
-    for (const line of text.split(/\r?\n/)) {
-      const m = METADATA_RE.exec(line);
-      if (m) {
-        scrapedMetadata[m[1]] = m[2];
-        continue;
-      }
-      const v = VERDICT_RE.exec(line);
-      if (v) {
-        scrapedVerdict = v[1].toLowerCase() as PortalLookupVerdict;
-        continue;
-      }
-      const r = VERDICT_REASON_RE.exec(line);
-      if (r) {
-        scrapedReason = r[1];
-      }
+    for (const line of text.split(/\r?\n/)) scrapeLine(line);
+  };
+
+  /** Streaming text_delta buffer. Claude content_block_delta events
+   *  fragment a single line across many chunks — splitting `[photoUrl]…`
+   *  mid-URL is the typical failure mode. We accumulate deltas and only
+   *  hand a line to scrapeLine() once we've seen its terminating
+   *  newline. Anything left buffered at the end of the run is flushed
+   *  by the final full-text scrape. */
+  let deltaBuffer = "";
+  const scrapeFromDelta = (chunk: string) => {
+    if (!chunk) return;
+    deltaBuffer += chunk;
+    let nl: number;
+    while ((nl = deltaBuffer.indexOf("\n")) !== -1) {
+      const line = deltaBuffer.slice(0, nl).replace(/\r$/, "");
+      deltaBuffer = deltaBuffer.slice(nl + 1);
+      scrapeLine(line);
     }
   };
 
@@ -323,7 +514,11 @@ Return the lookup JSON as specified in the system prompt — no commentary.`;
       if (evt?.type === "content_block_delta") {
         const delta = evt.delta as Record<string, unknown> | undefined;
         if (delta?.type === "text_delta" && typeof delta.text === "string") {
-          scrapeFromText(delta.text);
+          // Buffer until newline — a single Claude delta routinely
+          // chops a URL in half, and the bracket-tag regexes will
+          // happily match `[photoUrl]https://pcnevidence` if we feed
+          // them a fragment. scrapeFromDelta() only emits whole lines.
+          scrapeFromDelta(delta.text);
         }
       }
       // Advance the customer the instant the verdict lands (background
@@ -356,17 +551,37 @@ Return the lookup JSON as specified in the system prompt — no commentary.`;
     scrapedVerdict ?? jsonData?.verdict;
   const finalReason = scrapedReason ?? jsonData?.verdictReason ?? undefined;
 
-  // Walk the workDir for warden screenshots. Used to gate on the
-  // JSON's `photoFiles` array — too fragile when the JSON didn't
-  // arrive. Now we always sweep the disk for `warden-*.png` files.
-  const allFiles = await readdir(workDir).catch(() => [] as string[]);
-  const wardenFiles = allFiles.filter((f) => /^warden-\d+\.png$/i.test(f));
-  const wardenPaths = wardenFiles
-    .map((f) => join(workDir, f))
-    .filter((p) => existsSync(p));
-  const photoUrls = wardenPaths.length
-    ? await uploadPortalPhotos({ appealId: appeal.id, paths: wardenPaths })
-    : [];
+  // v0.3.7 — DOM-first photo acquisition. Preferred path: the agent
+  // ran a single `browser_evaluate` on the View Images page and emitted
+  // each warden photo's absolute URL via `[photoUrl]<url>` bracket-tags
+  // during the run. We fetch those URLs server-side (no Chromium
+  // screenshot of each photo) and re-host on Blob.
+  //
+  // Backwards-compat: if the agent emitted no URLs (e.g. a council
+  // whose prompt hasn't migrated yet), fall through to the legacy
+  // disk-sweep that picks up `warden-*.png` files the agent
+  // screenshotted into workDir. Once Westminster + the fallback prompt
+  // are both verified live on the URL path, the disk-sweep branch can
+  // be deleted in a follow-up.
+  let photoUrls: string[] = [];
+  if (scrapedPhotoUrls.size > 0) {
+    photoUrls = await uploadPortalPhotosFromUrls({
+      appealId: appeal.id,
+      urls: [...scrapedPhotoUrls],
+    });
+  } else {
+    const allFiles = await readdir(workDir).catch(() => [] as string[]);
+    const wardenFiles = allFiles.filter((f) => /^warden-\d+\.png$/i.test(f));
+    const wardenPaths = wardenFiles
+      .map((f) => join(workDir, f))
+      .filter((p) => existsSync(p));
+    if (wardenPaths.length) {
+      photoUrls = await uploadPortalPhotos({
+        appealId: appeal.id,
+        paths: wardenPaths,
+      });
+    }
+  }
 
   const hasUsefulData =
     Object.keys(mergedMetadata).length > 0 ||

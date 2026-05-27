@@ -113,7 +113,7 @@ export function GroundsQuizInline({
       {/* ── Search ──────────────────────────────────────────────── */}
       <div className="relative">
         <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-snappeal-muted"
+          className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-parkingrabbit-muted"
           strokeWidth={2}
         />
         <input
@@ -121,14 +121,14 @@ export function GroundsQuizInline({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search — eg blue badge, signage, loading"
-          className="w-full rounded-full border-2 border-snappeal-border bg-white pl-9 pr-9 py-2.5 text-sm text-snappeal-navy placeholder:text-snappeal-muted focus:border-snappeal-primary focus:outline-none"
+          className="w-full rounded-full border-2 border-parkingrabbit-border bg-white pl-9 pr-9 py-2.5 text-sm text-parkingrabbit-navy placeholder:text-parkingrabbit-muted focus:border-parkingrabbit-primary focus:outline-none"
         />
         {query.length > 0 && (
           <button
             type="button"
             onClick={() => onQueryChange("")}
             aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 size-6 rounded-full bg-snappeal-bg text-snappeal-muted flex items-center justify-center hover:bg-snappeal-border transition"
+            className="absolute right-2 top-1/2 -translate-y-1/2 size-6 rounded-full bg-parkingrabbit-bg text-parkingrabbit-muted flex items-center justify-center hover:bg-parkingrabbit-border transition"
           >
             <X className="size-3" strokeWidth={2.5} />
           </button>
@@ -163,10 +163,10 @@ export function GroundsQuizInline({
         {filtered.suggestedCards.length > 0 && (
           <section className="mb-4">
             <header className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-snappeal-primary">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-parkingrabbit-primary">
                 Suggested for code {contraventionCode}
               </span>
-              <span className="h-px flex-1 bg-snappeal-border" />
+              <span className="h-px flex-1 bg-parkingrabbit-border" />
             </header>
             <CardGrid
               cards={filtered.suggestedCards}
@@ -183,39 +183,39 @@ export function GroundsQuizInline({
           return (
             <section
               key={bucket.category.id}
-              className="mb-2 rounded-2xl border border-snappeal-border bg-white overflow-hidden"
+              className="mb-2 rounded-2xl border border-parkingrabbit-border bg-white overflow-hidden"
             >
               <button
                 type="button"
                 onClick={() => toggleCategory(bucket.category.id)}
                 aria-expanded={open}
-                className="w-full px-3 py-2.5 flex items-center gap-2 text-left hover:bg-snappeal-bg/40 transition"
+                className="w-full px-3 py-2.5 flex items-center gap-2 text-left hover:bg-parkingrabbit-bg/40 transition"
               >
                 <bucket.category.icon
-                  className="size-4 text-snappeal-primary shrink-0"
+                  className="size-4 text-parkingrabbit-primary shrink-0"
                   strokeWidth={2.25}
                 />
-                <h3 className="text-[13px] font-bold text-snappeal-navy truncate">
+                <h3 className="text-[13px] font-bold text-parkingrabbit-navy truncate">
                   {bucket.category.title}
                 </h3>
                 {pickedInCat > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-snappeal-primary text-white text-[9.5px] font-bold px-1.5 py-0.5">
+                  <span className="inline-flex items-center rounded-full bg-parkingrabbit-primary text-white text-[9.5px] font-bold px-1.5 py-0.5">
                     {pickedInCat}
                   </span>
                 )}
-                <span className="text-[11px] text-snappeal-muted ml-auto shrink-0">
+                <span className="text-[11px] text-parkingrabbit-muted ml-auto shrink-0">
                   {bucket.cards.length}
                 </span>
                 <ChevronDown
-                  className={`size-3.5 text-snappeal-muted shrink-0 transition-transform ${
+                  className={`size-3.5 text-parkingrabbit-muted shrink-0 transition-transform ${
                     open ? "rotate-180" : ""
                   }`}
                   strokeWidth={2.25}
                 />
               </button>
               {open && (
-                <div className="px-3 pb-3 pt-1 border-t border-snappeal-border">
-                  <p className="text-[11.5px] text-snappeal-muted mb-2 leading-snug">
+                <div className="px-3 pb-3 pt-1 border-t border-parkingrabbit-border">
+                  <p className="text-[11.5px] text-parkingrabbit-muted mb-2 leading-snug">
                     {bucket.category.blurb}
                   </p>
                   <CardGrid
@@ -232,11 +232,11 @@ export function GroundsQuizInline({
 
         {filtered.suggestedCards.length === 0 &&
           filtered.categories.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-snappeal-border bg-snappeal-bg/40 p-5 text-center">
-              <p className="text-[13px] font-bold text-snappeal-navy">
+            <div className="rounded-2xl border border-dashed border-parkingrabbit-border bg-parkingrabbit-bg/40 p-5 text-center">
+              <p className="text-[13px] font-bold text-parkingrabbit-navy">
                 No reasons match &ldquo;{query}&rdquo;
               </p>
-              <p className="text-[11.5px] text-snappeal-muted mt-1 leading-snug">
+              <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug">
                 Try a shorter word — eg &ldquo;permit&rdquo;, &ldquo;sign&rdquo;,
                 &ldquo;loading&rdquo;.
               </p>
@@ -246,7 +246,7 @@ export function GroundsQuizInline({
                   onQueryChange("");
                   onCategoryChange("all");
                 }}
-                className="mt-3 text-[12px] font-semibold text-snappeal-primary hover:underline"
+                className="mt-3 text-[12px] font-semibold text-parkingrabbit-primary hover:underline"
               >
                 Clear filters
               </button>
@@ -255,7 +255,7 @@ export function GroundsQuizInline({
       </div>
 
       {selectedCount >= maxSelected && (
-        <p className="text-[11px] text-snappeal-muted text-center">
+        <p className="text-[11px] text-parkingrabbit-muted text-center">
           {maxSelected} reasons picked — that&apos;s the max. Deselect one to
           add another.
         </p>
@@ -287,8 +287,8 @@ function CategoryChip({
       onClick={onClick}
       className={`shrink-0 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold whitespace-nowrap px-3 py-1.5 transition ${
         active
-          ? "bg-snappeal-primary text-white"
-          : "bg-snappeal-bg text-snappeal-navy hover:bg-snappeal-border"
+          ? "bg-parkingrabbit-primary text-white"
+          : "bg-parkingrabbit-bg text-parkingrabbit-navy hover:bg-parkingrabbit-border"
       }`}
     >
       {icon}
@@ -296,7 +296,7 @@ function CategoryChip({
       {count != null && (
         <span
           className={`text-[10px] font-bold rounded-full px-1.5 py-px min-w-[18px] text-center ${
-            active ? "bg-white/25 text-white" : "bg-white text-snappeal-muted"
+            active ? "bg-white/25 text-white" : "bg-white text-parkingrabbit-muted"
           }`}
         >
           {count}
@@ -332,16 +332,16 @@ function CardGrid({
               aria-pressed={isSelected}
               className={`group w-full h-full rounded-2xl border-2 p-3 flex flex-col gap-1.5 text-left transition disabled:opacity-40 ${
                 isSelected
-                  ? "border-snappeal-primary bg-snappeal-primary-50"
-                  : "border-snappeal-border bg-white hover:border-snappeal-primary/40"
+                  ? "border-parkingrabbit-primary bg-parkingrabbit-primary-50"
+                  : "border-parkingrabbit-border bg-white hover:border-parkingrabbit-primary/40"
               }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <span
                   className={`size-9 rounded-xl flex items-center justify-center shrink-0 ${
                     isSelected
-                      ? "bg-snappeal-primary text-white"
-                      : "bg-snappeal-bg text-snappeal-primary"
+                      ? "bg-parkingrabbit-primary text-white"
+                      : "bg-parkingrabbit-bg text-parkingrabbit-primary"
                   }`}
                 >
                   <Icon className="size-4" strokeWidth={2} />
@@ -349,8 +349,8 @@ function CardGrid({
                 <span
                   className={`size-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-[1px] ${
                     isSelected
-                      ? "border-snappeal-primary bg-snappeal-primary text-white"
-                      : "border-snappeal-border bg-white"
+                      ? "border-parkingrabbit-primary bg-parkingrabbit-primary text-white"
+                      : "border-parkingrabbit-border bg-white"
                   }`}
                 >
                   {isSelected && <Check className="size-3" strokeWidth={3} />}
@@ -358,12 +358,12 @@ function CardGrid({
               </div>
               <p
                 className={`text-[13px] font-bold leading-tight ${
-                  isSelected ? "text-snappeal-primary-700" : "text-snappeal-navy"
+                  isSelected ? "text-parkingrabbit-primary-700" : "text-parkingrabbit-navy"
                 }`}
               >
                 {card.label}
               </p>
-              <p className="text-[11px] text-snappeal-muted leading-snug">
+              <p className="text-[11px] text-parkingrabbit-muted leading-snug">
                 {card.body}
               </p>
             </button>

@@ -38,17 +38,17 @@ export default async function AdminSubmissionsPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-3xl font-bold text-snappeal-navy">Submissions</h1>
-        <p className="text-sm text-snappeal-muted mt-1">
-          {rows.length} most recent submission attempts. Use <span className="font-semibold text-snappeal-navy">Dry-run</span> on
+        <h1 className="text-3xl font-bold text-parkingrabbit-navy">Submissions</h1>
+        <p className="text-sm text-parkingrabbit-muted mt-1">
+          {rows.length} most recent submission attempts. Use <span className="font-semibold text-parkingrabbit-navy">Dry-run</span> on
           a failed row to replay the council&apos;s portal automation against the real ticket data without resubmitting.
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-white border border-snappeal-border">
+      <div className="overflow-hidden rounded-2xl bg-white border border-parkingrabbit-border">
         <table className="w-full text-sm">
-          <thead className="bg-snappeal-bg/50">
-            <tr className="text-left text-[11px] uppercase tracking-wide text-snappeal-muted">
+          <thead className="bg-parkingrabbit-bg/50">
+            <tr className="text-left text-[11px] uppercase tracking-wide text-parkingrabbit-muted">
               <th className="px-4 py-3">ID</th>
               <th className="px-4 py-3">Appeal</th>
               <th className="px-4 py-3">Council</th>
@@ -59,18 +59,18 @@ export default async function AdminSubmissionsPage() {
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-snappeal-border">
+          <tbody className="divide-y divide-parkingrabbit-border">
             {rows.map((s) => {
               const council = s.councilSlug ? councilMap.get(s.councilSlug) : null;
               return (
-              <tr key={s.id} className="hover:bg-snappeal-bg/40 transition">
-                <td className="px-4 py-3 font-mono text-[11px] text-snappeal-muted">{s.id}</td>
+              <tr key={s.id} className="hover:bg-parkingrabbit-bg/40 transition">
+                <td className="px-4 py-3 font-mono text-[11px] text-parkingrabbit-muted">{s.id}</td>
                 <td className="px-4 py-3 font-mono text-[11px]">
-                  <Link href={`/admin/appeals/${s.appealId}`} className="text-snappeal-primary hover:underline">
+                  <Link href={`/admin/appeals/${s.appealId}`} className="text-parkingrabbit-primary hover:underline">
                     {s.appealId}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-snappeal-navy">
+                <td className="px-4 py-3 text-parkingrabbit-navy">
                   {council ? (
                     <CouncilBadge
                       size="sm"
@@ -79,7 +79,7 @@ export default async function AdminSubmissionsPage() {
                       logoBg={council.logoBg}
                     />
                   ) : (
-                    <span className="text-snappeal-muted text-[11px]">—</span>
+                    <span className="text-parkingrabbit-muted text-[11px]">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
@@ -87,16 +87,16 @@ export default async function AdminSubmissionsPage() {
                     {s.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-[11px] text-snappeal-muted capitalize">{s.method}</td>
-                <td className="px-4 py-3 font-mono text-[11px] text-snappeal-navy">{s.councilReference ?? "—"}</td>
-                <td className="px-4 py-3 text-[11px] text-snappeal-muted">
+                <td className="px-4 py-3 text-[11px] text-parkingrabbit-muted capitalize">{s.method}</td>
+                <td className="px-4 py-3 font-mono text-[11px] text-parkingrabbit-navy">{s.councilReference ?? "—"}</td>
+                <td className="px-4 py-3 text-[11px] text-parkingrabbit-muted">
                   {new Date(s.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </td>
                 <td className="px-4 py-3 text-right">
                   {s.method === "portal" && s.councilSlug ? (
                     <DryRunButton councilSlug={s.councilSlug} appealId={s.appealId} />
                   ) : (
-                    <span className="text-[11px] text-snappeal-muted">—</span>
+                    <span className="text-[11px] text-parkingrabbit-muted">—</span>
                   )}
                 </td>
               </tr>

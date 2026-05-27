@@ -1,5 +1,7 @@
 # Data gaps — open research questions
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 Honest list of what the business plan doesn't yet have hard data for. Closed items are kept here for traceability.
 
 ## ✅ Closed

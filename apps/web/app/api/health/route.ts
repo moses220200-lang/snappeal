@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
 import { delimiter as PATH_DELIM, join } from "node:path";
 import { env, hasDatabase } from "@/lib/server/env";
-import { getSettings } from "@/lib/server/settings";
+import { getDb, schema } from "@/lib/server/db/client";
+import { getViewer } from "@/lib/server/viewer";
+import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 /** Always fresh — never cache the health report. */
@@ -36,9 +38,12 @@ export async function GET() {
   const claudeBin = findClaudeBin();
   const anthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const dbWired = hasDatabase();
-  // Matches lib/server/submission/index.ts: LIVE unless explicitly set to "0".
-  // Unset = live in dev/prod; only `=0` opts into the deterministic mock.
-  const submissionLive = process.env.SNAPPEAL_SUBMISSION_LIVE !== "0";
+  // Resolved through `getSettings()` so env→mode-default→admin-override
+  // layering matches what the submission engine actually does.
+  const { getSettings: getSettingsAsync } = await import(
+    "@/lib/server/settings"
+  );
+  const submissionLive = getSettingsAsync().submissionLive;
 
   const aiReady = Boolean(claudeBin); // CLI present is enough — OAuth or key auths internally
   const allReady = stripeWired && stripeWebhookWired && aiReady && dbWired;
@@ -63,12 +68,42 @@ export async function GET() {
       inboundMail: dbWired && aiReady,
     },
     flags: {
-      // Public-readable subset of admin settings. v0.2.13: drives whether
-      // the smart ticket card on /app/tickets/[id] opens the "Watch live"
-      // disclosure by default and subscribes to screenshot frames. OFF
-      // keeps the card calm — screenshots stay behind one tap.
-      showMcpLiveView: getSettings().showMcpLiveView,
+      // Customer preferences — loaded from the signed-in user's
+      // `notification_prefs` JSONB. Each is a personal display choice
+      // (NOT an admin operational toggle); admins flipping things in
+      // /admin/settings does not affect customer behaviour here.
+      ...(await loadCustomerFlags()),
+      // Mode-aware admin setting surfaced to the client because the
+      // PaymentSheet needs to know whether to render the dev fake-pay
+      // buttons. Routed through getSettings() so the env→mode-default
+      // →admin-override layering matches every other admin knob;
+      // replaces the legacy `process.env.NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT`
+      // read in the client component.
+      fakePayment: getSettingsAsync().fakePayment,
     },
     timestamp: new Date().toISOString(),
   });
+}
+
+/** Read the signed-in viewer's display preferences. Guest viewers get
+ *  the defaults. The shape mirrors `lib/client/flags.ts` HealthFlags. */
+async function loadCustomerFlags(): Promise<{ showMcpLiveView: boolean }> {
+  const defaults = { showMcpLiveView: false };
+  const viewer = await getViewer();
+  if (!viewer.userId) return defaults;
+  const db = getDb();
+  if (!db) return defaults;
+  try {
+    const rows = await db
+      .select({ prefs: schema.users.notificationPrefs })
+      .from(schema.users)
+      .where(eq(schema.users.id, viewer.userId));
+    const prefs = rows[0]?.prefs as Record<string, unknown> | null;
+    if (!prefs) return defaults;
+    return {
+      showMcpLiveView: prefs.showMcpLiveView === true,
+    };
+  } catch {
+    return defaults;
+  }
 }

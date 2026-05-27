@@ -65,13 +65,13 @@ export function PushPermission({ inline = false }: { inline?: boolean }) {
       onClick={request}
       className={`flex items-center gap-3 ${
         inline
-          ? "rounded-full bg-snappeal-primary-100 text-snappeal-primary-700 px-4 py-2 text-xs font-bold"
-          : "w-full rounded-2xl bg-white border border-snappeal-border p-4 hover:border-snappeal-primary transition"
+          ? "rounded-full bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700 px-4 py-2 text-xs font-bold"
+          : "w-full rounded-2xl bg-white border border-parkingrabbit-border p-4 hover:border-parkingrabbit-primary transition"
       }`}
     >
       <span
         className={`flex items-center justify-center flex-shrink-0 ${
-          inline ? "" : "size-9 rounded-xl bg-snappeal-primary-100 text-snappeal-primary"
+          inline ? "" : "size-9 rounded-xl bg-parkingrabbit-primary-100 text-parkingrabbit-primary"
         }`}
       >
         {permission === "denied" ? (
@@ -84,10 +84,10 @@ export function PushPermission({ inline = false }: { inline?: boolean }) {
         <span>Turn on push alerts</span>
       ) : (
         <div className="flex-1 text-left">
-          <p className="text-sm font-semibold text-snappeal-navy">
+          <p className="text-sm font-semibold text-parkingrabbit-navy">
             {permission === "denied" ? "Notifications are off" : "Turn on push alerts"}
           </p>
-          <p className="text-xs text-snappeal-muted mt-0.5">
+          <p className="text-xs text-parkingrabbit-muted mt-0.5">
             We&apos;ll ping you when the council replies. No marketing — ever.
           </p>
         </div>

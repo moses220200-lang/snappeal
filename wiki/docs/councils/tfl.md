@@ -1,7 +1,12 @@
 # Transport for London (TfL)
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 !!! info "Verification status"
     **✅ Verified 2026-05-19** against TfL's own website.
+
+!!! warning "Manual today — needs prompts + grounds-registry entry"
+    Red-route + bus-lane automation are the primary targets. No `agent_prompt` / `lookup_agent_prompt` and no grounds-registry entry yet — see [architecture/grounds-registry.md](../architecture/grounds-registry.md) for the onboarding checklist. Congestion / ULEZ stay manual until the v0.3 separate-statutory-regime work lands.
 
 ## Issuer details
 

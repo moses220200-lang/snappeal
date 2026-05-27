@@ -1,5 +1,5 @@
 {
-  "$schema": "Snappeal mock-data contract — v0.1 prototype",
+  "$schema": "ParkingRabbit mock-data contract — v0.1 prototype",
   "$comment": "This file is the single source of truth for fixture data the frontend renders against. The eventual API will match this shape; backend wire-up happens after UI/UX is signed off.",
 
   "user": {
@@ -145,10 +145,11 @@
       "slug": "lambeth",
       "name": "London Borough of Lambeth",
       "type": "borough",
-      "appealPortalUrl": "https://www.lambeth.gov.uk/parking/parking-fines-and-penalty-charge-notices-pcns/appeal-penalty-charge-notice-pcn-or-removal-your-vehicle",
-      "appealEmail": null,
-      "postalAddress": null,
-      "automationStatus": "manual"
+      "appealPortalUrl": "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
+      "paymentPortalUrl": "https://lambethparking.paypcn.com/default.aspx",
+      "appealEmail": "parkingservices@lambeth.gov.uk",
+      "postalAddress": "London Borough of Lambeth, PO Box 333, Darlington, DL1 9LG",
+      "automationStatus": "automated_beta"
     },
     {
       "slug": "islington",

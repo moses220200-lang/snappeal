@@ -13,6 +13,7 @@ const Body = z.object({
   name: z.string().min(2).max(160),
   type: z.enum(["borough", "corporation", "tfl", "royal_parks"]),
   appealPortalUrl: z.string().url(),
+  paymentPortalUrl: z.string().url().nullable().optional(),
   appealEmail: z.string().email().nullable().optional(),
   postalAddress: z.string().max(400).nullable().optional(),
   submissionMethods: z.array(z.enum(["portal", "email", "post"])).min(1),
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
       .insert(schema.councils)
       .values({
         ...body,
+        paymentPortalUrl: body.paymentPortalUrl ?? null,
         appealEmail: body.appealEmail ?? null,
         postalAddress: body.postalAddress ?? null,
         pcnRefPattern: body.pcnRefPattern ?? null,

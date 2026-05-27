@@ -93,15 +93,15 @@ export function DictationPanel({
   };
 
   return (
-    <section className="rounded-3xl bg-white border-2 border-snappeal-primary/30 p-5 flex flex-col gap-3 shadow-lg shadow-snappeal-primary/5">
+    <section className="rounded-3xl bg-white border-2 border-parkingrabbit-primary/30 p-5 flex flex-col gap-3 shadow-lg shadow-parkingrabbit-primary/5">
       <header>
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-snappeal-primary">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-parkingrabbit-primary">
           Tell us what happened
         </p>
-        <p className="text-[15px] font-bold text-snappeal-navy mt-1 leading-tight">
+        <p className="text-[15px] font-bold text-parkingrabbit-navy mt-1 leading-tight">
           A few sentences in your own words.
         </p>
-        <p className="text-[12px] text-snappeal-muted mt-1 leading-snug">
+        <p className="text-[12px] text-parkingrabbit-muted mt-1 leading-snug">
           Rabbit reads this to write your appeal — the more specific you can be,
           the stronger the letter. You can type or dictate.
         </p>
@@ -119,12 +119,12 @@ export function DictationPanel({
             "Eg: I parked at about 9.40am to drop off a delivery at number 23. There was scaffolding covering the restriction sign — I have a photo."
           }
           rows={4}
-          className="w-full rounded-2xl border-2 border-snappeal-border bg-white px-3.5 py-3 text-[14px] text-snappeal-navy placeholder:text-snappeal-muted focus:border-snappeal-primary focus:outline-none resize-none leading-relaxed"
+          className="w-full rounded-2xl border-2 border-parkingrabbit-border bg-white px-3.5 py-3 text-[14px] text-parkingrabbit-navy placeholder:text-parkingrabbit-muted focus:border-parkingrabbit-primary focus:outline-none resize-none leading-relaxed"
           style={{ minHeight: 120, maxHeight: 360 }}
         />
         <span
           className={`absolute bottom-2 right-3 text-[10px] font-semibold tabular-nums ${
-            nearLimit ? "text-snappeal-action" : "text-snappeal-muted"
+            nearLimit ? "text-parkingrabbit-action" : "text-parkingrabbit-muted"
           }`}
         >
           {charCount} / {MAX_NOTES_CHARS}
@@ -134,7 +134,7 @@ export function DictationPanel({
       <div className="flex items-center gap-2 flex-wrap">
         <VoiceNoteButton onTranscript={onVoiceTranscript} mode="append" />
         {value.length === 0 && (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-snappeal-muted">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-parkingrabbit-muted">
             <Mic className="size-3" />
             Tap to dictate — works on most phones.
           </span>
@@ -143,8 +143,8 @@ export function DictationPanel({
 
       {chips.length > 0 && (
         <div>
-          <p className="text-[10.5px] font-bold uppercase tracking-wide text-snappeal-muted mb-1.5 flex items-center gap-1.5">
-            <Sparkles className="size-3 text-snappeal-primary" strokeWidth={2.5} />
+          <p className="text-[10.5px] font-bold uppercase tracking-wide text-parkingrabbit-muted mb-1.5 flex items-center gap-1.5">
+            <Sparkles className="size-3 text-parkingrabbit-primary" strokeWidth={2.5} />
             Things worth mentioning
           </p>
           <div className="flex gap-1.5 flex-wrap">
@@ -154,7 +154,7 @@ export function DictationPanel({
                 type="button"
                 onClick={() => appendChip(chip)}
                 disabled={disabled || charCount >= MAX_NOTES_CHARS - 20}
-                className="rounded-full border border-snappeal-border bg-snappeal-bg text-snappeal-navy text-[11px] font-semibold px-2.5 py-1 hover:border-snappeal-primary hover:bg-white transition disabled:opacity-50"
+                className="rounded-full border border-parkingrabbit-border bg-parkingrabbit-bg text-parkingrabbit-navy text-[11px] font-semibold px-2.5 py-1 hover:border-parkingrabbit-primary hover:bg-white transition disabled:opacity-50"
               >
                 {chip}
               </button>

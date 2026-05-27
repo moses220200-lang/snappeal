@@ -62,6 +62,11 @@ export type CardKind =
   | "submitting"
   | "submitted"
   | "terminal"
+  // v0.3.5 — the user picked Appeal but the council's verdict came
+  // back as paid / closed / not_found. We must NOT draft a letter we
+  // can't file (matches the /api/submit gate). Recoverable: the user
+  // can override and force a draft anyway, mark resolved, or pay.
+  | "appeal_not_possible"
   // ─── failure kinds (v0.3.x — surfaced when the pipeline can't progress
   //     without user input). All five are recoverable: the user can retake
   //     the photo, edit fields manually, retry the council check, or move
@@ -77,6 +82,21 @@ export type CardKind =
  *  branch between "Appeal tapped, still gathering inputs" and "all
  *  inputs in, drafting can run". */
 export const EVIDENCE_DONE_STEP = "evidence_gathered";
+
+/** v0.3.6 — sentinel stamped into `appeal.step` when the user has
+ *  tapped "Agree to continue" on the pending_review surface, confirming
+ *  the OCR'd ticket fields are correct. Splits the post-OCR experience
+ *  into two distinct steps:
+ *
+ *    - step !== TICKET_CONFIRMED_STEP → `pending_review`: editable
+ *      fields + photo coach + Agree button. The customer must verify
+ *      (or edit) the OCR before any decision tiles render.
+ *    - step === TICKET_CONFIRMED_STEP → `needs_decision` (pre-lookup):
+ *      Pay/Appeal tiles + "Edit details" link back to pending_review.
+ *
+ *  No cost is incurred by the Agree gesture — the council lookup is
+ *  still only fired when the user picks Appeal (v0.3.5 lazy lookup). */
+export const TICKET_CONFIRMED_STEP = "ticket_confirmed";
 
 export interface CardState {
   kind: CardKind;
@@ -265,8 +285,20 @@ export function deriveCardState(
 
   // ----- 3.x — OCR failure / timeout. The pipeline can't progress
   //         without a real read. Surface a clear "Reading failed" state
-  //         with retry / manual entry / re-upload options. -----
-  if (isPreLookup && (ocrFailed || ocrTimedOut)) {
+  //         with retry / manual entry / re-upload options.
+  //
+  //         v0.3.11 — manual-entry trap guard. The failure card is only
+  //         a dead-end while the required PCN data is missing. If the
+  //         user has since supplied pcnRef + vehicleReg via
+  //         /app/manual-entry (or inline edit), we have everything we
+  //         need to proceed — fall through to pending_review so the
+  //         normal "Confirm details" + lookup flow can take over.
+  //         Belt-and-braces against any future caller that writes
+  //         ticket data without clearing processing.ocr.status.
+  //         (patchAppealDraft also clears the failed flag on its own.) -----
+  const hasManualTicketData =
+    !!appeal.ticket?.pcnRef && !!appeal.ticket?.vehicleReg;
+  if (isPreLookup && (ocrFailed || ocrTimedOut) && !hasManualTicketData) {
     return finalize({
       kind: "extraction_failed",
       pillLabel: "Action needed",
@@ -318,22 +350,25 @@ export function deriveCardState(
   }
 
   // ----- 3b. Pending review — OCR has run, ticket fields are on the
-  //         appeal, but the user hasn't tapped "I agree to T&Cs" yet so no
-  //         lookup is in flight. The smart card renders the confirmation
-  //         surface (image preview + confidence pills + "2 greens" check). -----
+  //         appeal, the user hasn't tapped "Agree" yet (step is not the
+  //         confirmed sentinel). v0.3.6 — Agree is the explicit
+  //         confirmation gesture before Pay/Appeal tiles appear; the
+  //         user can also edit the PCN ref / vehicle reg / council
+  //         picker inline here if OCR misread anything. -----
   if (
     appeal.status === "draft" &&
     !portal &&
     !appeal.preferredMethod &&
     !appeal.letterBody &&
     appeal.ticket?.pcnRef &&
-    appeal.ticket?.vehicleReg
+    appeal.ticket?.vehicleReg &&
+    appeal.step !== TICKET_CONFIRMED_STEP
   ) {
     return finalize({
       kind: "pending_review",
       pillLabel: "Confirm",
       pillTone: "info",
-      caption: "Check the details and tap to validate with the council.",
+      caption: "Check these details and tap Agree when they look right.",
       progress: null,
       inFlight: false,
       stage,
@@ -342,11 +377,31 @@ export function deriveCardState(
     });
   }
 
-  // ----- 4. Validating — portal lookup in flight. -----
+  // ----- 4. Validating — portal lookup in flight WITHOUT the user
+  //         already being inside the Appeal flow. v0.3.5 — the lookup
+  //         validate-first architecture (post v0.3.7): the lookup runs
+  //         the moment OCR commits (auto-fired from /api/extract). The
+  //         card's primary state until verdict lands is "validating" —
+  //         no Pay/Appeal tiles, no editable price/date, just the live
+  //         MCP screenshot strip + "Validating with [Council]…" caption.
+  //
+  //         When the council is non-automated (no MCP recipe), the
+  //         status route returns an OCR-derived snapshot instead and
+  //         this branch is skipped — the user goes straight to
+  //         needs_decision with the OCR figures + an Unverified chip.
+  //
+  //         Signals that say "validating":
+  //           1. portal.status === "pending"  — we've stamped the
+  //              pending snapshot but the worker hasn't run yet.
+  //           2. liveProgress is a queued/running pcn_lookup job.
+  //           3. statusSnapshot.stage === "status_check_pending" —
+  //              automated council with no portal_lookup row yet
+  //              (e.g. the auto-fire is still in-flight on the server).
   const portalRunning =
     portal?.status === "pending" ||
     (liveProgress?.kind === "pcn_lookup" &&
-      (liveProgress.status === "queued" || liveProgress.status === "running"));
+      (liveProgress.status === "queued" || liveProgress.status === "running")) ||
+    statusSnapshot?.stage === "status_check_pending";
   if (portalRunning) {
     return finalize({
       kind: "validating",
@@ -386,6 +441,48 @@ export function deriveCardState(
     });
   }
 
+  // ----- 4b. Appeal not possible — v0.3.5. The user picked Appeal,
+  //         the lazy lookup ran in parallel with the Build-appeal
+  //         conversation, and the verdict came back as one the submit
+  //         gate would refuse (paid / closed / not_found). Surface
+  //         this BEFORE gathering_evidence/drafting so we never burn
+  //         AI tokens on a letter that can't be filed. The user can
+  //         still override via the existing override flow (sets
+  //         portalLookup.status = "overridden") and continue drafting. -----
+  if (
+    appeal.preferredMethod === "portal" &&
+    portal &&
+    portal.status !== "overridden" &&
+    (portal.verdict === "paid" ||
+      portal.verdict === "closed" ||
+      portal.verdict === "not_found") &&
+    !appeal.letterBody
+  ) {
+    const verdictLabel =
+      portal.verdict === "paid"
+        ? "Already paid"
+        : portal.verdict === "closed"
+          ? "Closed"
+          : "Not found";
+    const verdictCaption =
+      portal.verdict === "paid"
+        ? "The council says this PCN is already paid — no appeal needed."
+        : portal.verdict === "closed"
+          ? "The council has already closed this PCN."
+          : "The council can't find this PCN in their system.";
+    return finalize({
+      kind: "appeal_not_possible",
+      pillLabel: verdictLabel,
+      pillTone: portal.verdict === "paid" ? "success" : "warn",
+      caption: verdictCaption,
+      progress: null,
+      inFlight: false,
+      stage,
+      canAppeal: false,
+      isEscalated,
+    });
+  }
+
   // ----- 5a. Gathering evidence — user tapped "Appeal with Rabbit",
   //         preferredMethod is stamped, but we still need their grounds
   //         + evidence before the AI draft can run. The card body shows
@@ -409,11 +506,14 @@ export function deriveCardState(
     });
   }
 
-  // ----- 5b. Drafting — letter being generated. -----
+  // ----- 5b. Drafting — letter being generated. v0.3.6: we also fall
+  //         INTO this branch when step === "generation_failed" so the
+  //         card surfaces the failure + a Retry button inside the
+  //         drafting body, instead of silently falling through to the
+  //         decision tiles (which would lose the error context). -----
   if (
     appeal.preferredMethod === "portal" &&
-    !appeal.letterBody &&
-    appeal.step !== "generation_failed"
+    !appeal.letterBody
   ) {
     return finalize({
       kind: "drafting",
@@ -482,16 +582,31 @@ export function deriveCardState(
   }
 
   // Recommendation card surface (open window).
+  //
+  // Validate-first rule: we only show the Pay + Appeal tiles when we
+  // have an *actionable* status snapshot — i.e. either:
+  //   - A real portal_lookup result wrote canAppeal/canPay, OR
+  //   - The OCR fallback (non-automated council) returned a snapshot
+  //     with a concrete stage (appeal_open / appeal_expired).
+  //
+  // We DELIBERATELY don't fall back to "show tiles because OCR data
+  // looks complete". For automated councils the server returns a
+  // status_check_pending snapshot that's caught by the validating
+  // branch above; we never reach this code path with a missing
+  // statusSnapshot on an automated council. The only legitimate
+  // pre-snapshot decision surface is when there's no councilSlug
+  // resolved at all (rare; pre-OCR), and that should stay in scanning.
+  const showDecision = !!statusSnapshot && stage !== "status_check_pending";
   return finalize({
-    kind: statusSnapshot ? "needs_decision" : "scanning",
-    flavor: statusSnapshot ? "recommendation" : undefined,
-    pillLabel: statusSnapshot ? "Open" : "Scanning",
-    pillTone: statusSnapshot ? "positive" : "muted",
-    caption: statusSnapshot
+    kind: showDecision ? "needs_decision" : "scanning",
+    flavor: showDecision ? "recommendation" : undefined,
+    pillLabel: showDecision ? "Open" : "Scanning",
+    pillTone: showDecision ? "positive" : "muted",
+    caption: showDecision
       ? "Choose how to handle this ticket."
       : "Reading your ticket…",
     progress: null,
-    inFlight: !statusSnapshot,
+    inFlight: !showDecision,
     stage,
     canAppeal,
     isEscalated,

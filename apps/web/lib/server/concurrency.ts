@@ -37,5 +37,5 @@ export class Semaphore {
   }
 }
 
-const GENERATE_LIMIT = Number(process.env.SNAPPEAL_GENERATE_CONCURRENCY ?? 4);
+const GENERATE_LIMIT = Number(process.env.PARKINGRABBIT_GENERATE_CONCURRENCY ?? 4);
 export const generateSemaphore = new Semaphore(GENERATE_LIMIT);

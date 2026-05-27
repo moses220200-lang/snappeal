@@ -16,6 +16,8 @@ import {
   timestamp,
   integer,
   jsonb,
+  numeric,
+  boolean,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -57,6 +59,13 @@ export const councils = pgTable("councils", {
   name: text("name").notNull(),
   type: text("type").notNull(), // borough | corporation | tfl | royal_parks
   appealPortalUrl: text("appeal_portal_url").notNull(),
+  /** Customer-facing PCN payment page. Distinct from `appealPortalUrl`
+   *  because some councils run their appeals portal and payment portal
+   *  on different hosts (Lambeth: pcnevidence.lambeth.gov.uk vs
+   *  lambethparking.paypcn.com). The Pay-yourself tile on the ticket card
+   *  prefers this URL over `appealPortalUrl` when set. Nullable — when
+   *  null the tile falls back to `appealPortalUrl`. */
+  paymentPortalUrl: text("payment_portal_url"),
   appealEmail: text("appeal_email"),
   postalAddress: text("postal_address"),
   submissionMethods: jsonb("submission_methods").$type<string[]>().notNull(),
@@ -208,8 +217,6 @@ export const appeals = pgTable(
     /** Audit trail: `{ usedIds: string[], tokens: number }` snapshot of the
      *  knowledge pack the drafter saw on the most recent generation. */
     knowledgePackUsed: jsonb("knowledge_pack_used").$type<KnowledgePackAudit | null>(),
-    modelUsed: text("model_used"),
-    costPenceMillis: integer("cost_pence_millis"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -304,6 +311,14 @@ export interface ProcessingStatus {
     error?: string;
     completedAt?: string;
   };
+  /** v0.3.6 — drafting step. `failed` carries the error message so the
+   *  UI can surface what went wrong + offer Retry without forcing a
+   *  dev-console dive. */
+  draft?: {
+    status: ProcessingStepStatus;
+    error?: string | null;
+    completedAt?: string;
+  };
 }
 
 /** Verdict returned by the council portal after a PCN lookup. */
@@ -373,6 +388,127 @@ export const inboundMessages = pgTable(
   },
   (t) => [index("inbound_appeal_idx").on(t.appealId)],
 );
+
+/* ───── ai_calls — per-stage Claude cost telemetry ─────
+ *
+ * One row per Claude invocation. Captures input/output tokens (when
+ * available), model, mode (cli vs sdk), duration, cost, ok/error so
+ * admins can break each appeal's spend down by stage on the Appeal
+ * Tickets list.
+ *
+ * Stage strings are deliberately free-text (not a pgEnum) so adding a
+ * new stage doesn't require a migration. Known values today:
+ *   - 'council_id'   — fast logo identification pass (extract route)
+ *   - 'ocr'          — full PCN field extraction (extract route)
+ *   - 'coach'        — photo-coach hints (extract route, optional)
+ *   - 'lookup'       — pcn_lookup MCP agent (worker)
+ *   - 'draft'        — letter generation (generate-stream route)
+ *   - 'strength'     — appeal strength re-score (generate-stream route)
+ *   - 'submit'       — submit_appeal MCP agent (worker)
+ *   - 'strengthen_notes' — rewriting raw notes into a structured prose
+ */
+export const aiCalls = pgTable(
+  "ai_calls",
+  {
+    id: text("id").primaryKey(),
+    appealId: text("appeal_id").references(() => appeals.id, {
+      onDelete: "cascade",
+    }),
+    jobId: text("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    stage: text("stage").notNull(),
+    model: text("model").notNull(),
+    /** 'cli' (Claude CLI subprocess) or 'sdk' (Anthropic SDK direct). */
+    mode: text("mode").notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    cacheReadTokens: integer("cache_read_tokens"),
+    cacheWriteTokens: integer("cache_write_tokens"),
+    /** USD cost reported by the model. Stored as numeric for precision;
+     *  the admin UI converts to pence at render time. */
+    costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
+    durationMs: integer("duration_ms"),
+    ok: boolean("ok").notNull().default(true),
+    /** Loose taxonomy — 'timeout' | 'rate_limit' | 'parse' | 'mcp' | 'other'. */
+    errorKind: text("error_kind"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("ai_calls_appeal_idx").on(t.appealId, t.createdAt),
+    index("ai_calls_stage_idx").on(t.stage, t.createdAt),
+    index("ai_calls_job_idx").on(t.jobId),
+  ],
+);
+
+export type AiCallStage =
+  | "council_id"
+  | "ocr"
+  | "coach"
+  | "lookup"
+  | "draft"
+  | "strength"
+  | "submit"
+  | "strengthen_notes";
+
+export type AiCallMode = "cli" | "sdk";
+
+export type AiCallErrorKind =
+  | "timeout"
+  | "rate_limit"
+  | "parse"
+  | "mcp"
+  | "other";
+
+/* ───── notification_dispatches — push notification audit log ─────
+ *
+ * One row per sendPush() call, including no-ops (toggle_off,
+ * no_subscription, etc.) so the admin sees the full decision tree:
+ * an admin asking "why didn't this user get pinged?" can grep this
+ * log and see exactly why dispatch was skipped.
+ *
+ * `event` is free-text so adding a new event kind is one constant in
+ * `notifications/copy.ts` + a new dispatcher call site; no migration. */
+export const notificationDispatches = pgTable(
+  "notification_dispatches",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    appealId: text("appeal_id").references(() => appeals.id, {
+      onDelete: "set null",
+    }),
+    /** 'validation_done' | 'validation_failed' | 'submission_done' |
+     *  'submission_failed' | 'council_replied' | 'test' */
+    event: text("event").notNull(),
+    /** Full PushPayload JSON: { title, body, url, tag }. */
+    payload: jsonb("payload").notNull(),
+    /** 'sent' | 'toggle_off' | 'no_subscription' | 'send_gone' |
+     *  'send_failed' | 'no_owner' | 'no_vapid' | 'no_appeal' */
+    result: text("result").notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("notif_dispatch_user_idx").on(t.userId, t.createdAt),
+    index("notif_dispatch_appeal_idx").on(t.appealId, t.createdAt),
+    index("notif_dispatch_event_idx").on(t.event, t.createdAt),
+    index("notif_dispatch_result_idx").on(t.result, t.createdAt),
+  ],
+);
+
+export type NotificationDispatchResult =
+  | "sent"
+  | "toggle_off"
+  | "no_subscription"
+  | "send_gone"
+  | "send_failed"
+  | "no_owner"
+  | "no_vapid"
+  | "no_appeal"
+  | "db_missing";
 
 /* ───── appeal_photos ───── */
 

@@ -142,7 +142,7 @@ export async function runPortalAutomation(opts: {
   const { appeal, council, jobId } = opts;
   const started = Date.now();
 
-  const workDir = await mkdtemp(join(tmpdir(), "snappeal-portal-"));
+  const workDir = await mkdtemp(join(tmpdir(), "parkingrabbit-portal-"));
   // Per-run Chrome user-data-dir lives INSIDE the workDir so each
   // submission run gets an isolated browser profile. Avoids the
   // "MCP session locked" failure mode where back-to-back runs share

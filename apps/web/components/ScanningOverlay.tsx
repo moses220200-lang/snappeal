@@ -3,7 +3,7 @@
 /**
  * ScanningOverlay — animated overlay placed over the uploaded PCN
  * image preview while OCR is running. Horizontal scan line + corner
- * brackets + label. Uses the existing `snappeal-hero-scan` keyframe
+ * brackets + label. Uses the existing `parkingrabbit-hero-scan` keyframe
  * (vertical sweep loop) defined in globals.css.
  */
 export function ScanningOverlay({ label = "Scanning PCN..." }: { label?: string }) {
@@ -13,11 +13,11 @@ export function ScanningOverlay({ label = "Scanning PCN..." }: { label?: string 
       aria-hidden
     >
       {/* Soft blue veil */}
-      <div className="absolute inset-0 bg-snappeal-primary/10" />
+      <div className="absolute inset-0 bg-parkingrabbit-primary/10" />
 
       {/* Sweep scan line — vertical loop */}
-      <div className="absolute inset-x-0 top-0 h-full snappeal-hero-scan">
-        <div className="absolute inset-x-2 top-0 h-[2px] bg-gradient-to-r from-transparent via-snappeal-primary to-transparent shadow-[0_0_18px_3px_rgba(0,122,255,0.55)]" />
+      <div className="absolute inset-x-0 top-0 h-full parkingrabbit-hero-scan">
+        <div className="absolute inset-x-2 top-0 h-[2px] bg-gradient-to-r from-transparent via-parkingrabbit-primary to-transparent shadow-[0_0_18px_3px_rgba(0,122,255,0.55)]" />
       </div>
 
       {/* Corner brackets */}
@@ -27,8 +27,8 @@ export function ScanningOverlay({ label = "Scanning PCN..." }: { label?: string 
       <ScanBracket className="bottom-2 left-2" rotation={270} />
 
       {/* Label pill */}
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full bg-snappeal-navy/85 text-white text-[10.5px] font-semibold px-2.5 py-1 backdrop-blur-sm">
-        <span className="size-1.5 rounded-full bg-snappeal-primary snappeal-mcp-tick-dot" />
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full bg-parkingrabbit-navy/85 text-white text-[10.5px] font-semibold px-2.5 py-1 backdrop-blur-sm">
+        <span className="size-1.5 rounded-full bg-parkingrabbit-primary parkingrabbit-mcp-tick-dot" />
         {label}
       </div>
     </div>

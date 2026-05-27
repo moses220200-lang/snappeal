@@ -5,7 +5,7 @@
  *   PUT  /api/admin/settings/mcp  body: { mcpHeaded: boolean } → { mcpHeaded }
  *
  * The toggle is in-memory only — it survives until the dev server is
- * restarted, then reverts to the SNAPPEAL_MCP_HEADED env var default.
+ * restarted, then reverts to the PARKINGRABBIT_MCP_HEADED env var default.
  * Pin a permanent default by setting the env var.
  */
 import { NextResponse } from "next/server";

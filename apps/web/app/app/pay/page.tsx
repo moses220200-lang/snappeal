@@ -103,11 +103,11 @@ export default function PayTicketPage() {
 
         {step === "form" ? (
           <>
-            <section className="rounded-2xl bg-white border border-snappeal-border p-4">
-              <p className="text-sm font-bold text-snappeal-navy">
+            <section className="rounded-2xl bg-white border border-parkingrabbit-border p-4">
+              <p className="text-sm font-bold text-parkingrabbit-navy">
                 Your PCN details
               </p>
-              <p className="text-[11px] text-snappeal-muted mt-1 leading-snug">
+              <p className="text-[11px] text-parkingrabbit-muted mt-1 leading-snug">
                 Upload your PCN and we&apos;ll prepare the payment. You stay in
                 control — we only pay once you authorise it.
               </p>
@@ -161,7 +161,7 @@ export default function PayTicketPage() {
               type="button"
               disabled={!canContinue}
               onClick={() => setStep("review")}
-              className="rounded-2xl bg-snappeal-primary text-white font-semibold py-4 hover:bg-snappeal-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="rounded-2xl bg-parkingrabbit-primary text-white font-semibold py-4 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
             >
               Review payment
               <ChevronRight className="size-4" strokeWidth={2.5} />
@@ -169,23 +169,23 @@ export default function PayTicketPage() {
           </>
         ) : (
           <>
-            <section className="rounded-3xl bg-white border border-snappeal-border p-5">
+            <section className="rounded-3xl bg-white border border-parkingrabbit-border p-5">
               <div className="flex items-start gap-3">
-                <span className="size-11 rounded-2xl bg-snappeal-primary text-white flex items-center justify-center shrink-0">
+                <span className="size-11 rounded-2xl bg-parkingrabbit-primary text-white flex items-center justify-center shrink-0">
                   <CreditCard className="size-5" strokeWidth={2} />
                 </span>
                 <div>
-                  <p className="text-[15px] font-bold text-snappeal-navy leading-tight">
+                  <p className="text-[15px] font-bold text-parkingrabbit-navy leading-tight">
                     Pay your PCN
                   </p>
-                  <p className="text-[11.5px] text-snappeal-muted mt-1 leading-snug">
+                  <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug">
                     Review the details — nothing is paid until you tap
                     Authorise &amp; Pay.
                   </p>
                 </div>
               </div>
 
-              <dl className="mt-5 pt-4 border-t border-snappeal-border grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              <dl className="mt-5 pt-4 border-t border-parkingrabbit-border grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
                 <Row dt="Issuer" dd={form.issuer} />
                 <Row dt="PCN reference" dd={form.pcnNumber} />
                 <Row dt="Vehicle" dd={form.vehicleReg} />
@@ -197,29 +197,29 @@ export default function PayTicketPage() {
                 )}
               </dl>
 
-              <dl className="mt-5 pt-4 border-t border-snappeal-border grid gap-2 text-[13px]">
+              <dl className="mt-5 pt-4 border-t border-parkingrabbit-border grid gap-2 text-[13px]">
                 <SummaryLine label="Ticket amount" value={formatPence(amountDuePence)} />
                 <SummaryLine
                   label="ParkingRabbit service fee"
                   value={formatPence(SERVICE_FEE_PENCE)}
                 />
-                <div className="border-t border-snappeal-border pt-2 mt-1 flex items-center justify-between">
-                  <span className="font-bold text-snappeal-navy">Total to pay</span>
-                  <span className="text-lg font-extrabold text-snappeal-primary">
+                <div className="border-t border-parkingrabbit-border pt-2 mt-1 flex items-center justify-between">
+                  <span className="font-bold text-parkingrabbit-navy">Total to pay</span>
+                  <span className="text-lg font-extrabold text-parkingrabbit-primary">
                     {formatPence(totalPence)}
                   </span>
                 </div>
               </dl>
             </section>
 
-            <label className="flex items-start gap-3 rounded-2xl bg-snappeal-primary-50/60 border border-snappeal-primary/20 px-4 py-3 cursor-pointer select-none">
+            <label className="flex items-start gap-3 rounded-2xl bg-parkingrabbit-primary-50/60 border border-parkingrabbit-primary/20 px-4 py-3 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={authorised}
                 onChange={(e) => setAuthorised(e.target.checked)}
-                className="mt-0.5 size-4 accent-snappeal-primary shrink-0"
+                className="mt-0.5 size-4 accent-parkingrabbit-primary shrink-0"
               />
-              <span className="text-[12px] text-snappeal-navy leading-snug">
+              <span className="text-[12px] text-parkingrabbit-navy leading-snug">
                 I authorise ParkingRabbit to pay this ticket on my behalf using
                 the details provided.
               </span>
@@ -235,7 +235,7 @@ export default function PayTicketPage() {
               type="button"
               onClick={handlePay}
               disabled={!authorised || busy}
-              className="rounded-2xl bg-snappeal-primary text-white font-bold py-4 hover:bg-snappeal-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-primary/40"
+              className="rounded-2xl bg-parkingrabbit-primary text-white font-bold py-4 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-primary/40"
             >
               {busy ? (
                 <>
@@ -253,13 +253,13 @@ export default function PayTicketPage() {
             <button
               type="button"
               onClick={() => setStep("form")}
-              className="text-xs text-snappeal-muted hover:text-snappeal-navy py-1.5"
+              className="text-xs text-parkingrabbit-muted hover:text-parkingrabbit-navy py-1.5"
             >
               ← Back to edit details
             </button>
 
-            <p className="text-center text-[10.5px] text-snappeal-muted flex items-center justify-center gap-1.5">
-              <ShieldCheck className="size-3 text-snappeal-success" strokeWidth={2.5} />
+            <p className="text-center text-[10.5px] text-parkingrabbit-muted flex items-center justify-center gap-1.5">
+              <ShieldCheck className="size-3 text-parkingrabbit-success" strokeWidth={2.5} />
               Secure payment via Stripe · Apple Pay · Google Pay · Card
             </p>
           </>
@@ -288,12 +288,12 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-snappeal-muted">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-parkingrabbit-muted">
         {label}
       </span>
       <span className="relative inline-flex items-center">
         {prefix && (
-          <span className="absolute left-3 text-snappeal-muted text-sm font-semibold pointer-events-none">
+          <span className="absolute left-3 text-parkingrabbit-muted text-sm font-semibold pointer-events-none">
             {prefix}
           </span>
         )}
@@ -303,7 +303,7 @@ function Field({
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-xl bg-snappeal-bg/60 border border-transparent focus:border-snappeal-primary focus:bg-white px-3 py-2.5 text-sm font-medium text-snappeal-navy outline-none transition ${
+          className={`w-full rounded-xl bg-parkingrabbit-bg/60 border border-transparent focus:border-parkingrabbit-primary focus:bg-white px-3 py-2.5 text-sm font-medium text-parkingrabbit-navy outline-none transition ${
             prefix ? "pl-7" : ""
           }`}
         />
@@ -315,15 +315,15 @@ function Field({
 function Row({ dt, dd }: { dt: string; dd: string }) {
   return (
     <div>
-      <dt className="text-snappeal-muted">{dt}</dt>
-      <dd className="font-semibold text-snappeal-navy truncate">{dd || "—"}</dd>
+      <dt className="text-parkingrabbit-muted">{dt}</dt>
+      <dd className="font-semibold text-parkingrabbit-navy truncate">{dd || "—"}</dd>
     </div>
   );
 }
 
 function SummaryLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between text-snappeal-navy">
+    <div className="flex items-center justify-between text-parkingrabbit-navy">
       <span>{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>
     </div>

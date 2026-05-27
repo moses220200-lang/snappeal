@@ -12,6 +12,7 @@ const Patch = z.object({
   name: z.string().min(2).max(160).optional(),
   type: z.enum(["borough", "corporation", "tfl", "royal_parks"]).optional(),
   appealPortalUrl: z.string().url().optional(),
+  paymentPortalUrl: z.string().url().nullable().optional(),
   appealEmail: z.string().email().nullable().optional(),
   postalAddress: z.string().max(400).nullable().optional(),
   submissionMethods: z.array(z.enum(["portal", "email", "post"])).optional(),

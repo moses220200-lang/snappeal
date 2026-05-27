@@ -1,5 +1,7 @@
 # Vision
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 > **In five years, no Londoner pays a parking ticket they don't deserve to pay.**
 
 Today, around **9.5 million PCNs** are issued across London every year[^1]. Only about **0.45%** are challenged at the London Tribunals stage[^1]. The councils know this. Their enforcement models are calibrated to it.

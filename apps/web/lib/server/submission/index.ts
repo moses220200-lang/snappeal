@@ -3,7 +3,7 @@
  *
  * Decides per council whether the appeal goes via portal automation
  * (Claude + Playwright MCP) or via email. Falls back to a deterministic
- * mock when SNAPPEAL_SUBMISSION_LIVE is unset, so the frontend flow is
+ * mock when PARKINGRABBIT_SUBMISSION_LIVE is unset, so the frontend flow is
  * exercisable end-to-end without network side-effects.
  */
 import type { AppealRecord } from "../appeals";
@@ -22,9 +22,15 @@ export type SubmissionOutcome = {
   screenshotUrl: string | null;
   lastError: string | null;
   submittedAt: Date | null;
+  /** Claude $ spend on this submission attempt (null for email-only
+   *  and mock paths). Plumbed up so the worker can write an accurate
+   *  `ai_calls` row instead of `costUsd: null`. */
+  costUsd: number | null;
+  /** Wall-clock duration of the portal run (ms). Null for email/mock. */
+  durationMs: number | null;
 };
 
-// Default: LIVE on. Opt out by setting SNAPPEAL_SUBMISSION_LIVE=0 (mocks the
+// Default: LIVE on. Opt out by setting PARKINGRABBIT_SUBMISSION_LIVE=0 (mocks the
 // engine so dev work without a Claude CLI / Playwright MCP can still exercise
 // the UI flow). The runtime override at /admin/settings supersedes the env.
 function isLive(): boolean {
@@ -76,6 +82,8 @@ export async function runSubmission({
       screenshotUrl: prior.screenshotUrl ?? null,
       lastError: "already submitted — skipped duplicate filing",
       submittedAt: prior.submittedAt ?? new Date(),
+      costUsd: null,
+      durationMs: null,
     };
   }
 
@@ -134,6 +142,8 @@ export async function runSubmission({
           screenshotUrl: null,
           lastError: `portal failed: ${portalError}; email fallback also failed: ${emailMessage}`,
           submittedAt: null,
+          costUsd: null,
+          durationMs: null,
         };
       }
     }
@@ -146,6 +156,8 @@ export async function runSubmission({
       screenshotUrl: null,
       lastError: portalError,
       submittedAt: null,
+      costUsd: null,
+      durationMs: null,
     };
   }
 
@@ -201,6 +213,8 @@ function portalToOutcome(r: PortalAutomationResult): SubmissionOutcome {
     screenshotUrl: r.screenshotPath,
     lastError: r.success ? null : (r.error ?? "portal automation reported failure"),
     submittedAt: r.success ? new Date() : null,
+    costUsd: r.costUsd,
+    durationMs: r.durationMs,
   };
 }
 
@@ -214,6 +228,8 @@ function emailToOutcome(r: EmailSubmissionResult): SubmissionOutcome {
     screenshotUrl: null,
     lastError: r.error ?? null,
     submittedAt: r.delivered ? new Date() : null,
+    costUsd: null,
+    durationMs: null,
   };
 }
 
@@ -233,5 +249,7 @@ function mockSubmission(
     screenshotUrl: null,
     lastError: warning,
     submittedAt: new Date(),
+    costUsd: null,
+    durationMs: null,
   };
 }

@@ -7,7 +7,7 @@
  *
  * For prod scale this can be lifted into a separate process by importing
  * `runWorker()` from a dedicated entry script (e.g. `node worker.js`) and
- * disabling the auto-boot via `SNAPPEAL_DISABLE_WORKER=1`.
+ * disabling the auto-boot via `PARKINGRABBIT_DISABLE_WORKER=1`.
  */
 import { hostname } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -20,6 +20,8 @@ import { runPortalLookup } from "../submission/lookup";
 import { prewarmMcp } from "../submission/mcp-warm";
 import { getAppealById, persistPortalLookup, recordSubmission } from "../appeals";
 import { getDb, schema } from "../db/client";
+import { recordAiCall, classifyAiError } from "../aiCalls";
+import { dispatchAppealEvent } from "../notifications/dispatchAppealEvent";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1_000;
 
@@ -58,7 +60,7 @@ let booted = false;
  *  AWS Lambda / similar, the function instance is torn down between
  *  requests, so the worker disappears after each invocation and any
  *  job in-flight is orphaned. The proper deployment is a separate
- *  long-lived worker process; see the SNAPPEAL_DISABLE_WORKER comment
+ *  long-lived worker process; see the PARKINGRABBIT_DISABLE_WORKER comment
  *  block below. */
 function detectServerlessHost(): string | null {
   if (process.env.VERCEL === "1" || process.env.VERCEL_ENV) return "vercel";
@@ -70,16 +72,21 @@ function detectServerlessHost(): string | null {
 export function startWorker() {
   if (booted) return;
   booted = true;
-  // SNAPPEAL_DISABLE_WORKER=1 → skip the in-process loop entirely.
-  // Set this on serverless deploys (Vercel / Lambda / Netlify) and run
-  // the worker out-of-band — see scripts/worker.ts (TBD) or any
-  // long-lived Node process that imports `startWorker()` directly with
-  // this env var unset. Without this guard, every cold-start of the
-  // serverless function spawns a worker that gets killed mid-job when
-  // the instance recycles, leaving Postgres rows stuck in `running`
-  // until the 5-minute stale-lock recovery fires on the next boot.
-  if (process.env.SNAPPEAL_DISABLE_WORKER === "1") {
-    console.info("[worker] SNAPPEAL_DISABLE_WORKER=1 — in-process worker NOT started");
+  // workerDisabled (settings layer) → skip the in-process loop.
+  // Set PARKINGRABBIT_DISABLE_WORKER=1 on serverless deploys (Vercel /
+  // Lambda / Netlify) and run the worker out-of-band — see
+  // scripts/worker.ts or any long-lived Node process that imports
+  // `startWorker()` directly with the flag unset. Without this guard,
+  // every cold-start of the serverless function spawns a worker that
+  // gets killed mid-job when the instance recycles, leaving Postgres
+  // rows stuck in `running` until the 5-minute stale-lock recovery
+  // fires on the next boot. The boolean is read through `getSettings()`
+  // so the env→mode-default→admin-override layering stays
+  // authoritative.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getSettings } = require("../settings") as typeof import("../settings");
+  if (getSettings().workerDisabled) {
+    console.info("[worker] workerDisabled=true — in-process worker NOT started");
     return;
   }
   const serverless = detectServerlessHost();
@@ -87,7 +94,7 @@ export function startWorker() {
     console.warn(
       `[worker] running on serverless host (${serverless}). The in-process ` +
         `worker is unreliable here: the function instance dies between ` +
-        `requests, leaving jobs orphaned. Set SNAPPEAL_DISABLE_WORKER=1 ` +
+        `requests, leaving jobs orphaned. Set PARKINGRABBIT_DISABLE_WORKER=1 ` +
         `and run a long-lived worker out-of-band.`,
     );
   }
@@ -220,7 +227,46 @@ async function runHandler(job: Job): Promise<unknown> {
       const appealId = String(job.payload.appealId);
       const appeal = await getAppealById(appealId);
       if (!appeal) throw new Error(`Appeal ${appealId} not found`);
-      const outcome = await runSubmission({ appeal, jobId: job.id });
+      const submitStart = Date.now();
+      let outcome;
+      try {
+        outcome = await runSubmission({ appeal, jobId: job.id });
+        void recordAiCall({
+          appealId,
+          jobId: job.id,
+          stage: "submit",
+          model: "claude-cli",
+          // SubmissionOutcome now plumbs costUsd/durationMs from
+          // runPortalAutomation; the row captures the actual Claude spend
+          // for the submission attempt (NULL for email-only fallback).
+          //
+          // Important: this cost is REPRESENTATIVE of a real submission
+          // even when stopAtReview=true. The brake stops the agent one
+          // click short of Finish — the extra inference round-trip for
+          // that final click is negligible (<1¢) relative to the
+          // multi-turn navigation + form-fill cost we just paid. So
+          // production cost estimation based on dev-mode submissions
+          // is sound.
+          costUsd: outcome.costUsd,
+          durationMs: outcome.durationMs ?? (Date.now() - submitStart),
+          ok: outcome.status === "submitted",
+          errorKind: outcome.status === "submitted" ? null : "mcp",
+          errorMessage: outcome.lastError ?? null,
+        });
+      } catch (err) {
+        void recordAiCall({
+          appealId,
+          jobId: job.id,
+          stage: "submit",
+          model: "claude-cli",
+          costUsd: null,
+          durationMs: Date.now() - submitStart,
+          ok: false,
+          errorKind: classifyAiError(err),
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
       await recordSubmission({
         appealId: appeal.id,
         method: outcome.method,
@@ -232,6 +278,23 @@ async function runHandler(job: Job): Promise<unknown> {
         lastError: outcome.lastError,
         submittedAt: outcome.submittedAt,
       });
+      // Dispatch push notification — best-effort, never blocks the
+      // submission outcome. Success vs failure picks a different
+      // copy entry so the customer sees the right message.
+      void dispatchAppealEvent({
+        appealId,
+        event:
+          outcome.status === "submitted"
+            ? "submission_done"
+            : "submission_failed",
+        councilReference: outcome.councilReference,
+      }).catch((err) =>
+        console.warn(
+          `[worker] dispatch submission push failed for ${appealId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      );
       return outcome;
     }
     case "pcn_lookup": {
@@ -250,19 +313,94 @@ async function runHandler(job: Job): Promise<unknown> {
       const council = councilRows[0];
       if (!council) throw new Error(`Unknown council slug: ${appeal.councilSlug}`);
 
-      const lookup = await runPortalLookup({
-        appeal,
-        council,
-        jobId: job.id,
-        // Persist the verdict the moment the council confirms it so the
-        // customer advances to Pay/appeal immediately. The agent keeps
-        // capturing warden photos in the background; the final persist
-        // below overwrites this with the full snapshot (incl. photos).
-        onVerdictConfirmed: async (snapshot) => {
-          await persistPortalLookup({ appealId, snapshot }).catch(() => null);
-        },
-      });
+      const lookupStart = Date.now();
+      let lookup;
+      try {
+        lookup = await runPortalLookup({
+          appeal,
+          council,
+          jobId: job.id,
+          // Persist the verdict the moment the council confirms it so the
+          // customer advances to Pay/appeal immediately. The agent keeps
+          // capturing warden photos in the background; the final persist
+          // below overwrites this with the full snapshot (incl. photos).
+          onVerdictConfirmed: async (snapshot) => {
+            await persistPortalLookup({ appealId, snapshot }).catch(() => null);
+          },
+        });
+        // Mode telemetry: the deterministic-recipe path costs $0 and
+        // skips the Claude CLI entirely. We detect it by costUsd===0
+        // (Claude responses always have a non-zero cost). Lets the
+        // admin Appeal Tickets list spot fast-path vs fallback rows
+        // and watch the success/drift ratio across deploys.
+        const wasDeterministic =
+          lookup.success && lookup.costUsd === 0;
+        void recordAiCall({
+          appealId,
+          jobId: job.id,
+          stage: "lookup",
+          model: wasDeterministic ? "playwright-recipe" : "claude-cli",
+          mode: wasDeterministic ? "deterministic" : undefined,
+          costUsd: lookup.costUsd,
+          durationMs: lookup.durationMs,
+          ok: lookup.success,
+          errorKind: lookup.success ? null : "mcp",
+          errorMessage: lookup.error ?? null,
+        });
+      } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        void recordAiCall({
+          appealId,
+          jobId: job.id,
+          stage: "lookup",
+          model: "claude-cli",
+          costUsd: null,
+          durationMs: Date.now() - lookupStart,
+          ok: false,
+          errorKind: classifyAiError(err),
+          errorMessage: errMessage,
+        });
+        // CRITICAL: persist an error snapshot so the card recovers
+        // from the validating gate. Without this the appeal sits in
+        // `portal_lookup.status=pending` forever (since we stamped
+        // 'pending' at enqueue time) and the customer's card never
+        // exits the validating gate.
+        await persistPortalLookup({
+          appealId,
+          snapshot: {
+            jobId: job.id,
+            status: "error",
+            photoUrls: [],
+            fetchedAt: new Date().toISOString(),
+            verdictReason: `lookup threw: ${errMessage.slice(0, 200)}`,
+          },
+        }).catch((persistErr) =>
+          console.warn(
+            `[worker] couldn't persist error snapshot for ${appealId}: ${
+              persistErr instanceof Error
+                ? persistErr.message
+                : String(persistErr)
+            }`,
+          ),
+        );
+        throw err;
+      }
       await persistPortalLookup({ appealId, snapshot: lookup.snapshot });
+      // Dispatch push notification when the verdict lands. The copy
+      // entry pulls amount + days-left from the snapshot/appeal so
+      // the customer sees the actual figures (not generic copy).
+      void dispatchAppealEvent({
+        appealId,
+        event: lookup.success ? "validation_done" : "validation_failed",
+        amountPence: lookup.snapshot.metadata?.amountPence ?? null,
+        daysLeftToAppeal: daysUntil(lookup.snapshot.metadata?.dueDateAt ?? null),
+      }).catch((err) =>
+        console.warn(
+          `[worker] dispatch validation push failed for ${appealId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      );
       // Surface the verdict to the SSE consumer so the validating page
       // can pick its redirect target without an extra round-trip.
       return {
@@ -279,6 +417,16 @@ async function runHandler(job: Job): Promise<unknown> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** ISO date string → days from now (rounded floor). NULL when the
+ *  input isn't parseable. Used for push-notification copy so the
+ *  customer sees "32 days left" instead of a raw ISO string. */
+function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((t - Date.now()) / 86_400_000));
 }
 
 /* ─────────────────────── structured logging ─────────────────────── */

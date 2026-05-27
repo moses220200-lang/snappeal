@@ -1,5 +1,7 @@
 # Business plan
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 ## Executive summary
 
 **ParkingRabbit is a mobile app that turns a Penalty Charge Notice into a five-tap automated appeal.** A Londoner photographs their PCN, takes a few photos of the car and the scene, writes one or two sentences about what happened, pays £2.99, and ParkingRabbit drafts a representation letter citing the correct statutory ground and contravention code — and submits it directly to the council's online portal (or by email when the portal is unavailable).
@@ -10,7 +12,7 @@
 
 **Pricing is £2.99 per automated appeal — one-off, non-refundable.** Existing UK competitors sit between £4.99 per letter and £18 per submitted appeal or £50/year[^3] — we undercut the cheapest of them because our cost structure is software-only after the AI cost. We charge for the work (drafted + submitted appeal), not the outcome.
 
-**Phase A** (this milestone) is the public wiki and business plan you are reading. **Phase B** is the admin backend that controls the council knowledge base. **Phase C** is the customer-facing PWA, wrapped as a Capacitor app for iOS and Android in v0.3.
+**Phase A** (wiki + business plan): **shipped**. **Phase B** (admin backend that controls the council knowledge base): **partially live** — 14 pages under `/app/admin/*` cover appeals / councils / submissions / users / jobs / health / settings / wiki / inbound mail. Full CRUD for the wiki editor and bulk-ops on councils remain open work. **Phase C** (customer-facing PWA): **shipped** as `/app/*` at v0.3.7. The Capacitor native wrappers for iOS and Android remain on the roadmap; the PWA is the production surface today.
 
 ---
 

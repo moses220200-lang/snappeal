@@ -1,148 +1,180 @@
 # Data model
 
-Postgres in dev (Docker Compose) → Neon Postgres in production (via Vercel Marketplace). Drizzle ORM, schema in [`apps/web/lib/server/db/schema.ts`](../../apps/web/lib/server/db/schema.ts), migrations under `apps/web/drizzle/`.
+Last refreshed **2026-05-27 (v0.3.10)**.
 
-As of v0.3.1 (2026-05-23) the live schema has **11 tables** with **14 migration files** on disk (`0000`–`0013`). `drizzle/meta/_journal.json` registers `0000`–`0011`; `0012_processing_status.sql` and `0013_appeal_strength_and_kb.sql` were hand-authored and applied directly. All later migrations use `ADD COLUMN IF NOT EXISTS` so they're idempotent — a fresh `npm run db:migrate` from `0000` to `0013` succeeds end-to-end. No schema change between v0.3.0 and v0.3.1.
+Postgres + Drizzle ORM. Schema lives in `apps/web/lib/server/db/schema.ts`. 17 migrations applied (`0000`–`0016`). Local dev: `docker compose up -d db` exposes Postgres 16 at `127.0.0.1:5544` (role + db + password literally `snappeal` because the role table was created under the codename — see [`../handoff.md`](../handoff.md) "Strand A"). Production: Postgres via Vercel Marketplace.
 
-## Entities
+## Tables (15 total)
 
-```mermaid
-erDiagram
-    USERS ||--o{ APPEALS : "owns (claimed on sign-in)"
-    USERS ||--o{ SUBSCRIPTIONS : "Care Plan"
-    USERS ||--o{ CARE_PLAN_WAITLIST : "joined (optional)"
-    COUNCILS ||--o| COUNCIL_AUTOMATION : "has MCP recipe"
-    COUNCILS ||--o{ APPEALS : "issued by (nullable FK)"
-    APPEALS ||--o{ APPEAL_PHOTOS : "warden + evidence + pcn"
-    APPEALS ||--o{ SUBMISSIONS : "delivers as"
-    APPEALS ||--o{ INBOUND_MESSAGES : "receives council mail"
-    APPEALS ||--o{ JOBS : "schedules (soft FK)"
-    APPEALS ||--o| PAYMENTS : "paid by"
-```
+### `users`
+The signed-in account. `id` (text PK, `u_*`), `email` (unique citext), `passwordHash` (`saltHex:hashHex` pbkdf2-sha256 210_000), `displayName`, `phone`, `addressLine1` / `addressLine2` / `addressCity` / `addressPostcode`, `role` (`user` | `admin`), `serviceTier` (`buy_time` | `grounds` | `care_plan`), `notificationPrefs` (jsonb — six channel toggles + asked-at sentinels + push subscription), `emailVerifiedAt`, `createdAt`, `lastSignInAt`. OAuth providers planned but not wired.
 
-## Tables
+### `appeals`
+The single row per PCN. `id` (`ap_*`), `sessionId` (guest-session id; preserved on sign-in claim), `userId` (nullable; null for guests), `replyEmail` (`<id>@appeals.parkingrabbit.com`), `status` (`draft` | `ready` | `submitting` | `submitted` | `under_review` | `decision_pending` | `cancelled` | `rejected`), `step` (workflow sentinel — `photos` | `ticket_confirmed` | `evidence_gathered` | `generation_failed` | …), `ticket` (jsonb — pcnRef, vehicleReg, councilSlug, issuer, contraventionCode, contraventionDescription, location, issuedAt, amountPence), `councilSlug` (text FK to `councils.slug`, hoisted from ticket jsonb), `pcnImageUrl` (Blob), `processing` (jsonb — per-stage status: `{ocr: {status,completedAt}, draft: {status,error,completedAt}, …}`), `portalLookup` (jsonb — `PortalLookupSnapshot`), `grounds` (text[] — `CanonicalGroundId[]`), `notes`, `letterSubject`, `letterBody`, `letterWordCount`, `letterAddressedTo`, `strengthScore` (0–100), `strengthRationale`, `strengthImprovements` (jsonb), `knowledgePackUsed` (jsonb — `{usedIds, tokens}` audit), `preferredMethod` (`portal` | `email` | null), `serviceTier`, `timeline` (jsonb), `createdAt`, `updatedAt`.
 
-| Table | Purpose | Row identifier |
+**v0.3.9–v0.3.10 deletions**: `model_used` (text) and `cost_pence_millis` (numeric) were dropped. Per-call attribution lives in `ai_calls` now — sum `ai_calls.cost_usd WHERE appeal_id = ?` for total cost, or read `mode` per stage for model attribution.
+
+### `councils`
+Per-issuer config. `slug` (PK), `name`, `type` (`borough` | `tfl` | `corporation` | `other`), `appealPortalUrl`, `paymentPortalUrl` (separate from challenge portal — Lambeth uses this), `appealEmail`, `postalAddress`, `discountWindowDays` (default 14), `automationStatus` (`manual` | `automated_beta` | `automated_ga`), `submissionMethods` (jsonb), `logoUrl`, `logoBg`, `identifierHints` (jsonb — keywords the vision model uses to recognise this issuer), `createdAt`, `updatedAt`.
+
+### `council_automation`
+Per-council MCP recipe storage. `councilSlug` (PK + FK), `agentPrompt` (the submission prompt loaded by `runPortalAutomation`), `lookupAgentPrompt` (the lookup prompt for the Claude MCP path), `fieldHints` (jsonb — portal form labels + button text), `lastDryRun` (jsonb — event log + final result from `/admin/councils/<slug>/automation` dry-run), `lastDryRunOk` (`true` | `false` | null), `updatedAt`, `updatedBy`.
+
+### `jobs`
+The work queue. `id` (`job_<kind>_<sortkey>_<short>`), `kind` (`submit_appeal` | `pcn_lookup` | `generate_draft`), `appealId` (text — **NO FK constraint**, only a btree index — jobs can outlive deleted appeals), `payload` (jsonb), `status` (`queued` | `running` | `done` | `failed`), `attempts`, `maxAttempts` (default 3), `runAfter` (when to claim), `lockedAt`, `lockedBy` (worker id), `lastError`, `result` (jsonb), `progress` (jsonb — array of `JobProgressEvent`s the SSE stream serves), `createdAt`, `updatedAt`. Atomic claim: `SELECT … FROM jobs WHERE status='queued' AND runAfter < now() FOR UPDATE SKIP LOCKED LIMIT 1`. Stale-lock recovery: a `running` job with `locked_at < now() - 5 minutes` is reclaimable.
+
+### `submissions`
+Per-submit-attempt history. `id`, `appealId` (FK, cascade), `method` (`portal` | `email` | `mock`), `channel`, `councilReference`, `messageId` (email message-id when applicable), `screenshotUrl`, `status` (`submitted` | `failed`), `retries`, `costUsd`, `durationMs`, `createdAt`. Multiple rows per appeal allowed (retries are distinct).
+
+### `inbound_messages`
+Parsed inbound mail (council replies). `id`, `appealId` (FK, cascade), `messageId`, `subject`, `body`, `classification` (`cancelled` | `rejected` | `acknowledged` | `request_info` | `unknown`), `classificationRationale`, `classifiedModel`, `classifiedAt`, `receivedAt`.
+
+### `appeal_photos`
+PCN + evidence + warden photos. `id`, `appealId` (FK, cascade), `kind` (`pcn` | `evidence` | `warden`), `blobUrl`, `width`, `height`, `bytes`, `createdAt`.
+
+### `payments`
+Stripe PaymentIntent tracking. `id`, `appealId` (FK, `ON DELETE no action` — important for the merge sweep; see `mergeDuplicateDraftIfAny`), `userId` (nullable), `stripePaymentIntentId` (unique), `amountPence`, `currency` (`gbp`), `status` (`requires_payment_method` | `requires_confirmation` | `processing` | `succeeded` | `canceled` | `failed`), `lastError`, `createdAt`, `updatedAt`.
+
+### `subscriptions`
+Stripe Subscription scaffold for Care Plan. `id`, `userId` (FK, cascade), `stripeCustomerId`, `stripeSubscriptionId`, `priceId`, `status`, `currentPeriodEnd`, `cancelAtPeriodEnd`, `createdAt`, `updatedAt`. **Not yet billable** — webhook wiring pending.
+
+### `care_plan_waitlist`
+Pre-launch capture. `id`, `email`, `userId` (nullable), `source`, `createdAt`.
+
+### `ai_calls` (added v0.3.9, migration 0015)
+Per-Claude-call cost telemetry. `id`, `appealId` (FK, cascade), `jobId` (FK to jobs, `ON DELETE SET NULL`), `stage` (text — `council_id` | `ocr` | `lookup` | `draft` | `strength` | `submit` | `strengthen_notes` | `coach` legacy), `model`, `mode` (`cli` | `sdk` | `deterministic`), `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `costUsd` (numeric(10,6)), `durationMs`, `ok` (bool), `errorKind` (`timeout` | `rate_limit` | `parse` | `mcp` | `other`), `errorMessage`, `createdAt`. Indexes on `(appealId, createdAt)`, `(stage, createdAt)`, `(jobId)`. Reads: `getCostBreakdowns(appealIds[])` in `lib/server/aiCalls.ts` powers the admin Appeal Tickets cost columns.
+
+### `notification_dispatches` (added v0.3.9, migration 0016)
+Push dispatch audit. `id`, `userId` (FK, `ON DELETE cascade`), `appealId` (text — FK with `ON DELETE SET NULL` so audit survives appeal deletion), `event` (`validation_done` | `validation_failed` | `submission_done` | `submission_failed` | `council_replied`), `payload` (jsonb — full PushPayload), `result` (`sent` | `toggle_off` | `no_subscription` | `send_gone` | `send_failed` | `no_owner` | `no_vapid` | `no_appeal`), `reason`, `createdAt`. **One row per dispatch attempt including no-ops** — ops grep this table to answer "why wasn't user X notified?".
+
+## Migration history
+
+| # | File | Summary |
 |---|---|---|
-| **`users`** | Email/password (pbkdf2-sha256, `<saltHex>:<hashHex>`) + OAuth-provider accounts. Holds `role` (`user` \| `admin`), `service_tier` (`buy_time` \| `grounds` \| `care_plan`), `notification_prefs` jsonb, plus the UK postal address fields read by the portal-automation agent (`address_line1`, `address_line2`, `address_city`, `address_postcode`, `phone`). | `id` text (ulid-style `u_<hex>`) |
-| **`councils`** | KB row per London authority — portal URL, appeal email, postal address, submission methods, automation status, identifier hints, PCN ref pattern, Wikipedia-hosted `logo_url` + `logo_bg`. Editable via `/admin/councils/[slug]`. | `slug` text (e.g. `westminster`) |
-| **`council_automation`** | Per-council Claude+Playwright MCP recipe — `agent_prompt` (submission), `lookup_agent_prompt` (read-only PCN lookup; nullable, falls back to `FALLBACK_LOOKUP_PROMPT` in code), `field_hints` jsonb, `last_dry_run`, `last_dry_run_at`, `last_dry_run_ok`. Edited via `/admin/councils/[slug]/automation` (with in-page dry-run + canonical-Westminster reset). | `council_slug` text (soft FK to `councils.slug`) |
-| **`appeals`** | The case. Holds `session_id` (always set) + `user_id` (null until sign-in claim), `ticket` jsonb (extracted PCN fields — patched with portal-confirmed values once `pcn_lookup` succeeds), `grounds[]` (canonical ground IDs from `lib/grounds-catalog.ts`), `notes`, `portal_lookup` jsonb (validity verdict + warden-photo URLs + portal metadata), letter fields, `processing` jsonb (per-step status for the inline status rows on the smart card), `pcn_image_url` text (Blob URL), `strength_score` integer (0–100), `strength_rationale` text, `strength_improvements` jsonb (up to 3 evidence asks), `knowledge_pack_used` jsonb (audit trail of which KB entries the drafter saw), `timeline` jsonb, `council_slug` (nullable FK to `councils`), `service_tier`, `preferred_method` (`email` \| `portal` \| NULL), `model_used`, `cost_pence_millis`. | `id` text (`ap_<hex>`) |
-| **`appeal_photos`** | PCN + evidence + portal-side warden photos. `kind: 'pcn' \| 'evidence' \| 'portal'`, `blob_url`. Only `portal` rows are populated today (warden photos pulled by `pcn_lookup`); user-evidence photos still ride sessionStorage data URLs until the upload helper is generalised. | `id` text |
-| **`payments`** | One row per Stripe PaymentIntent. `amount_pence`, `currency`, `status` (mirrors Stripe), `method` (`apple_pay` \| `google_pay` \| `card`), `receipt_email`, `paid_at`, `refunded_at`, `refund_reason`. | `stripe_payment_intent_id` PK |
-| **`submissions`** | One row per submission attempt. `method` (`portal` \| `email` \| `manual`), `channel`, `status` (`queued` \| `submitting` \| `submitted` \| `failed`), `council_reference`, `message_id` (email Message-ID), `screenshot_url`, `last_error`, `retries`. | `id` text (`sub_<hex>`) |
-| **`inbound_messages`** | Council replies received via `/api/inbound` (Brevo/SendGrid webhook). `classification` is the AI verdict (`cancelled` \| `rejected` \| `acknowledged` \| `request` \| `unknown`). | `id` text (`in_<hex>`) |
-| **`jobs`** | Postgres-backed work queue. `kind` (`submit_appeal` \| `pcn_lookup` \| `generate_draft`), `payload` jsonb, `status` (`queued` \| `running` \| `done` \| `failed`), `attempts`, `max_attempts` (default 3), `run_after`, `locked_at`, `locked_by`, `progress` jsonb (append-only `JobProgressEvent[]` for live SSE). See [job-queue.md](job-queue.md). | `id` text |
-| **`subscriptions`** | Care Plan (£9.99/mo) — mirrors Stripe `Subscription` state. | `id` text |
-| **`care_plan_waitlist`** | Pre-launch waitlist signups. Unique on `email`; upsert on conflict. | `id` text |
+| 0000 | `0000_faithful_slapstick.sql` | Initial: users, appeals, councils, council_automation, payments, subscriptions, care_plan_waitlist |
+| 0001–0006 | misc. | Various early v0.1–v0.2 changes |
+| 0007–0009 | council seed + logos | `councils.logo_url` + `logo_bg`; Wikipedia thumb seeding |
+| 0010–0013 | various | Submission methods, evidence schemas, KB audit, strength score |
+| 0014 | knowledge_pack_used | `appeals.knowledge_pack_used` jsonb (KB audit trail) |
+| 0015 | reset_and_ai_calls | **Created `ai_calls` table; dropped `appeals.model_used` + `appeals.cost_pence_millis`** |
+| 0016 | notification_dispatches | **Created `notification_dispatches` table** |
 
-## Enums (Postgres-native)
+Run history is in `apps/web/drizzle/meta/_journal.json`. Down migrations are not maintained — Drizzle's design is forward-only.
 
-- **`appeal_status`** — `draft` · `ready` · `submitting` · `submitted` · `under_review` · `decision_pending` · `cancelled` · `rejected`
-- **`submission_method`** — `portal` · `email` · `manual`
-- **`payment_method`** — `apple_pay` · `google_pay` · `card`
-- **`automation_status`** — `manual` · `automated_beta` · `automated_ga`
+## Key FK realities
 
-## Migrations
+| Relation | Behaviour | Why |
+|---|---|---|
+| `appeals.councilSlug → councils.slug` | nullable, no cascade | OCR may not identify a council; appeals can move between councils via admin edit |
+| `appeal_photos.appealId → appeals.id` | `ON DELETE cascade` | Photos always belong to one appeal |
+| `submissions.appealId → appeals.id` | `ON DELETE cascade` | Per-attempt history dies with the appeal |
+| `inbound_messages.appealId → appeals.id` | `ON DELETE cascade` | Same |
+| `payments.appealId → appeals.id` | `ON DELETE no action` | Payment history survives appeal deletion for audit; the merge sweep clears these explicitly inside the transaction |
+| `notification_dispatches.appealId → appeals.id` | `ON DELETE SET NULL` | Audit log survives so "why wasn't user X notified for THIS appeal" remains greppable |
+| `notification_dispatches.userId → users.id` | `ON DELETE cascade` | User-deletion clears their notification history |
+| `ai_calls.appealId → appeals.id` | `ON DELETE cascade` | Cost rows die with the appeal |
+| `ai_calls.jobId → jobs.id` | `ON DELETE SET NULL` | Cost rows survive job purge for cost analysis |
+| `jobs.appealId` | **NO FK at all** | Jobs may outlive deleted appeals. `mergeDuplicateDraftIfAny` deletes job rows explicitly to prevent orphans |
+| `subscriptions.userId → users.id` | `ON DELETE cascade` | Stripe object survives in their dashboard; our row dies |
 
-| File | What it added |
-|---|---|
-| `0000_faithful_slapstick.sql` | Initial schema — `councils`, `appeals`, `appeal_photos`, `payments`, `submissions` + the four enums above |
-| `0001_spotty_invisible_woman.sql` | Nullable `ticket`, `user_id`, `reply_email` on `appeals`; default empty `timeline`; new `inbound_messages` table |
-| `0002_whole_junta.sql` | `users` table (email, pbkdf2 hash, role, display_name, last_sign_in_at) |
-| `0003_motionless_thor_girl.sql` | `jobs` table — queue + indexes on `(status, run_after)` and `(appeal_id)` |
-| `0004_illegal_exiles.sql` | `appeals.service_tier`, `users.service_tier`, `users.notification_prefs`, `care_plan_waitlist` |
-| `0005_mysterious_peter_parker.sql` | `subscriptions` table |
-| `0006_glossy_morgan_stark.sql` | `council_automation` table — per-council MCP recipes |
-| `0007_live_submission_progress.sql` | `jobs.progress jsonb NOT NULL DEFAULT '[]'` — append-only event log for live SSE streaming |
-| `0008_user_postal_address.sql` | `users.address_line1`, `address_line2`, `address_city`, `address_postcode`, `phone` — read by `loadCustomerProfile()` and injected into the portal-automation agent prompt; captured at sign-up + editable from `/app/profile/personal-details` |
-| `0009_short_quicksilver.sql` | `councils.logo_url`, `councils.logo_bg` — Wikipedia-hosted emblem + background colour used by `<CouncilBadge>`. Also re-emits the column adds from 0007/0008 (idempotent via `ADD COLUMN IF NOT EXISTS`) so a fresh end-to-end migration succeeds. |
-| `0010_portal_lookup.sql` | **`appeals.portal_lookup jsonb`** (validity verdict + warden-photo URLs + portal metadata — populated by the `pcn_lookup` job) and **`council_automation.lookup_agent_prompt text`** (per-council read-only-lookup prompt; nullable, falls back to `FALLBACK_LOOKUP_PROMPT` in code). Hand-written; idempotent. |
-| `0011_appeal_preferred_method.sql` | **`appeals.preferred_method text`** — customer-picked submission path (`email` / `portal` / `NULL`). Stamped from the smart card's recommendation surface; gates the £2.99 PaymentSheet vs free email path inside `/api/submit`. |
-| `0012_processing_status.sql` | **`appeals.processing jsonb`** (per-step status — `ocr` + `analysis` — driving the progressive checklist on the smart card) and **`appeals.pcn_image_url text`** (uploaded PCN photo — Blob URL in prod, data URL in dev — so the card shows the image across refreshes/devices). Hand-applied; not yet in `_journal.json`. |
-| `0013_appeal_strength_and_kb.sql` | **v0.3.0** — `appeals.strength_score integer` (0–100, NULL until drafter runs), `appeals.strength_rationale text` (one-sentence reason shown when < 50), `appeals.strength_improvements jsonb` (up to 3 actionable evidence asks), `appeals.knowledge_pack_used jsonb` (audit trail `{usedIds, tokens}` of the markdown KB entries the drafter saw). All four columns are nullable; old rows render with no badge. Hand-applied; not yet in `_journal.json`. |
+## JSONB shapes worth knowing
 
-## Key embedded types
-
-The four most consequential jsonb shapes — defined in `lib/server/db/schema.ts` and exported for reuse.
+### `PortalLookupSnapshot` (`appeals.portal_lookup`)
 
 ```ts
-type JobProgressEvent =
-  | { ts: string; kind: "status"; message: string }
-  | { ts: string; kind: "step"; message: string }
-  | { ts: string; kind: "thought"; message: string }
-  | { ts: string; kind: "screenshot"; step: number; url: string; caption?: string }
-  | { ts: string; kind: "metadata"; field: string; value: string };
-
-type ProcessingStepStatus = "pending" | "running" | "done" | "failed";
-interface ProcessingStatus {
-  ocr?:      { status: ProcessingStepStatus; error?: string; completedAt?: string };
-  analysis?: { status: ProcessingStepStatus; error?: string; completedAt?: string };
-}
-
-type PortalLookupVerdict = "open" | "paid" | "closed" | "not_found" | "expired" | "unknown";
-interface PortalLookupSnapshot {
-  jobId: string | null;
-  status: "pending" | "verified" | "invalid" | "skipped" | "overridden" | "error";
-  verdict?: PortalLookupVerdict;
-  verdictReason?: string;
-  photoUrls: string[];
+{
+  jobId: string | null,
+  status: "pending" | "verified" | "invalid" | "skipped" | "overridden" | "error",
+  verdict?: "open" | "paid" | "closed" | "not_found" | "expired" | "unknown",
+  verdictReason?: string,
+  photoUrls: string[],           // Blob URLs of warden photos
   metadata?: {
-    pcnRef?: string;
-    vehicleReg?: string;
-    contraventionCode?: string;
-    location?: string;
-    issuedAt?: string;
-    amountPence?: number;
-    discountUntil?: string;
-    fullChargeFrom?: string;
-    dueDateAt?: string;
-    paidAt?: string;
-  };
-  fetchedAt: string;
-}
-
-interface KnowledgePackAudit {
-  usedIds: string[];
-  tokens: number;
+    pcnRef?: string,
+    vehicleReg?: string,
+    contraventionCode?: string,
+    location?: string,
+    issuedAt?: string,           // ISO 8601 (normalised at write boundary)
+    amountPence?: number,
+    discountUntil?: string,      // ISO 8601
+    fullChargeFrom?: string,     // ISO 8601
+    dueDateAt?: string,          // ISO 8601
+    paidAt?: string,             // ISO 8601 (added to normaliser in v0.3.10)
+    currentDuePence?: number,
+    issuer?: string,
+  },
+  fetchedAt: string,             // ISO 8601
 }
 ```
 
-## Field-by-field gotchas
+### `ProcessingStatus` (`appeals.processing`)
 
-- **`appeals.ticket` is nullable.** A draft appeal exists before extraction; we don't backfill placeholder ticket data.
-- **`appeals.council_slug` is nullable and FK-checked.** If Claude returns a slug we don't recognise, we set this to NULL and keep the raw value on the `ticket` jsonb for diagnostics — see `attachDraftToAppeal()` in `lib/server/appeals.ts`.
-- **`appeals.preferred_method` is nullable until the user picks.** NULL means the recommendation card is still being presented; setting it to `portal` triggers the £2.99 PaymentSheet, setting it to `email` (when the council has an `appealEmail`) takes the free fallback path.
-- **`appeals.strength_score` is nullable.** Old rows (pre-v0.3.0) and any appeal that hasn't been drafted yet have no strength badge.
-- **`appeals.processing.{ocr,analysis}.status`** is merged atomically by `setProcessingStep()` in `lib/server/appeals.ts` so two parallel steps can't clobber each other. Portal-lookup status lives on `portal_lookup.status` (separate so each step's error trail stays targeted).
-- **`users.password_hash` is nullable.** OAuth-only users have no hash; auth runs through the OAuth callback in `/api/auth/oauth/[provider]`, not password verification.
-- **`jobs.locked_at` is the stale-lock recovery hook.** A row that's `running` with `locked_at < now() - 5 minutes` is re-claimable — covers the worker-crashed-mid-job case.
-- **`care_plan_waitlist.email` is unique.** Upsert on conflict — duplicate signups are no-ops.
-
-## Joins worth knowing
-
-- **`inbound_messages.to_addr`** encodes the appeal id (`<ap_xxx>@appeals.parkingrabbit.com`). `processInboundMessage()` parses the local part and joins to `appeals.id`.
-- **`appeals.council_slug → councils.slug`** is the only nullable FK — guards against AI-invented slugs.
-- **`jobs.appeal_id`** is a soft pointer (no FK) so jobs survive appeal deletion. Cleanup is via periodic sweep, not cascade.
-
-## Seed data
-
-`apps/web/scripts/seed-councils.ts` inserts the **7 v0.1 councils** sourced from `apps/web/lib/mock-data.ts`: Westminster, Kensington & Chelsea, Camden, Lambeth, Islington, TfL, City of London. Idempotent on `slug` via `onConflictDoUpdate`. Run with `npm run db:seed`. Logos are populated separately by `scripts/populate-council-logos.ts`.
-
-## Migration workflow
-
-```bash
-# Edit lib/server/db/schema.ts
-npm run db:generate    # → new SQL file in drizzle/
-# Inspect the generated SQL
-npm run db:migrate     # → applies pending migrations
+```ts
+{
+  ocr?: { status: "running" | "done" | "failed", completedAt?, error? },
+  draft?: { status: "running" | "done" | "failed", completedAt?, error? },
+  identifyCouncil?: { status: "running" | "done", completedAt? },
+}
 ```
 
-Snapshot files (`drizzle/meta/_journal.json`) are checked in; rollback is a `git revert` + a fresh migration. Hand-authored migrations (0007, 0008, 0010, 0011, 0012, 0013) bypass `db:generate` but live in the same folder and apply through the same `db:migrate` command — they use `ADD COLUMN IF NOT EXISTS` to stay idempotent.
+### `KnowledgePackAudit` (`appeals.knowledge_pack_used`)
 
-## What's intentionally NOT in the schema
+```ts
+{
+  usedIds: string[],            // precedent IDs + code-brief IDs + council slug
+  tokens: number,
+}
+```
 
-- **Photo binary content.** Photos live in Vercel Blob (URL-only in DB). Local dev currently stores user-evidence photos as sessionStorage data URLs (ephemeral) until the upload pipeline is generalised.
-- **Audit log of admin mutations.** Not yet wired — open work.
-- **Push subscriptions as a dedicated table.** Currently inline on `users.notification_prefs.push` jsonb; will become a real table once we have multiple devices per user.
-- **Wiki page editor state.** Markdown is committed via git, not the DB; `/admin/wiki` is a read-only iframe embed of the mkdocs site at `localhost:8800`.
+### `JobProgressEvent[]` (`jobs.progress`)
+
+```ts
+Array<
+  | { ts: string, kind: "status", message: string }
+  | { ts: string, kind: "step", message: string }
+  | { ts: string, kind: "thought", message: string }
+  | { ts: string, kind: "screenshot", step: number, url: string, caption?: string }
+  | { ts: string, kind: "metadata", field: string, value: string }
+>
+```
+
+Streamed verbatim through `/api/jobs/[id]/progress` (SSE) + persisted for replay via `/api/appeals/[id]/submit-progress`.
+
+## Indexes
+
+| Table | Index | Purpose |
+|---|---|---|
+| `users` | `(email)` unique | Sign-in lookup |
+| `appeals` | `(sessionId, createdAt DESC)` | Guest list query |
+| `appeals` | `(userId, createdAt DESC)` | Signed-in list query |
+| `appeals` | `(updatedAt)` | Reconciliation `since=` poll |
+| `jobs` | `(status, runAfter)` | Worker `claimNext` query |
+| `jobs` | `(appealId)` | Idempotency layer 1 query |
+| `submissions` | `(appealId, createdAt DESC)` | History per appeal |
+| `inbound_messages` | `(appealId, createdAt DESC)` | Council reply history |
+| `ai_calls` | `(appealId, createdAt)` | Per-appeal cost breakdown |
+| `ai_calls` | `(stage, createdAt)` | Admin per-stage analytics |
+| `ai_calls` | `(jobId)` | Per-job cost rollup |
+| `notification_dispatches` | `(userId, createdAt DESC)` | User audit |
+| `notification_dispatches` | `(appealId, createdAt DESC)` | Appeal audit |
+| `notification_dispatches` | `(event, createdAt DESC)` | Event-rate dashboards |
+| `notification_dispatches` | `(result, createdAt DESC)` | Failure-mode analysis |
+
+## Dev workflow
+
+- `npm run db:generate` — generate a new migration from schema changes
+- `npm run db:migrate` — apply pending migrations
+- `npm run db:seed` — seed councils from `scripts/seed-councils.ts`
+- `npm run db:studio` — Drizzle Studio (web UI)
+- `scripts/reset-db.sql` — wipes appeals + child rows, keeps councils + admin users (run via `docker exec -i parkingrabbit-db psql -U snappeal -d snappeal < scripts/reset-db.sql`)
+- `scripts/normalize-portal-dates.ts` — one-shot backfill of legacy `portal_lookup` dates to ISO
+
+## Cross-refs
+
+- The connection client + cache-key bump: `apps/web/lib/server/db/client.ts`.
+- Per-call cost telemetry helpers: `apps/web/lib/server/aiCalls.ts`.
+- The appeal service that mutates these tables: `apps/web/lib/server/appeals.ts` (`createAppeal`, `patchAppealDraft`, `persistPortalLookup`, `mergeDuplicateDraftIfAny`, `claimGuestAppealsForUser`).
+- The job queue: [`job-queue.md`](job-queue.md).
+- The submission flow that writes `submissions` + bumps `appeals.status`: [`submission-engine.md`](submission-engine.md).
+- Date normalisation at the write boundary: [`date-handling.md`](date-handling.md).
+- Notifications + audit log mechanics: [`notifications.md`](notifications.md).
+- The smart-card state derivation from these columns: [`appeal-state-machine.md`](appeal-state-machine.md).

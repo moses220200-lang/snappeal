@@ -1,14 +1,16 @@
 # Brand
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The visual and verbal system. Used by the wiki, the admin panel, and the customer app — same tokens, same voice, same name.
 
 ## Name
 
 **ParkingRabbit.**
 
-One word, camel-case. *Parking* anchors the category (so the brand never has to spell out what it's for) and *Rabbit* signals speed + agility — hopping past the bureaucratic friction councils throw at PCN recipients. Reads naturally in both customer copy ("ParkingRabbit drafted my appeal in 30 seconds") and code (component prefix `ParkingRabbit*`, CSS tokens stay `snappeal-*` for legacy reasons — see Implementation note below).
+One word, camel-case. *Parking* anchors the category (so the brand never has to spell out what it's for) and *Rabbit* signals speed + agility — hopping past the bureaucratic friction councils throw at PCN recipients. Reads naturally in both customer copy ("ParkingRabbit drafted my appeal in 30 seconds") and code (component prefix `ParkingRabbit*`, CSS tokens stay `parkingrabbit-*` for legacy reasons — see Implementation note below).
 
-> **History.** The brand was renamed from `Snappeal` on 2026-05-21 (v0.2.0 pivot) when the product scope widened from "challenge a ticket" to a parking-ticket management app (pay, challenge, track). Earlier docs may still reference the old name; the rename was repo-wide for user-visible strings but intentionally left CSS tokens (`--color-snappeal-*`), component identifiers (`SnappealMark` / `SnappealLogo` / `SnappealSplash`), and the `snappeal-*` Tailwind aliases in place to keep the diff small.
+> **History.** The brand was renamed from `Snappeal` to `ParkingRabbit` over two passes: v0.2.0 on 2026-05-21 (product scope widened from "challenge a ticket" to a parking-ticket management app) introduced the new customer-facing name; v0.3.10 on 2026-05-26 completed the cosmetic rename across 273 files including env vars, the JWT cookie name (`parkingrabbit.token`), the session header (`x-parkingrabbit-session`), and the CSS tokens / component identifiers (`ParkingRabbitMark`, `ParkingRabbitLogo`, `ParkingRabbitSplash`, the `parkingrabbit-*` Tailwind aliases). The Postgres role + db remain `snappeal` to keep the dev volume mountable — documented inline in `docker-compose.yml`. Earlier wiki pages that still reference Snappeal are historical and live in `archive.md`.
 
 **Canonical domain**: `parkingrabbit.com`. Inbound mail for per-appeal aliases is `<appeal-id>@appeals.parkingrabbit.com`. DNS provisioning is still pending — see `architecture/deployment.md`.
 
@@ -32,16 +34,16 @@ Defined as CSS variables in `wiki/docs/stylesheets/extra.css` — single source 
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--snappeal-primary` | `#007AFF` | `#3392FF` | Primary CTAs, logo fill, links, in-progress accents (iOS System Blue) |
-| `--snappeal-primary-soft` | `rgba(0,122,255,0.10)` | `rgba(51,146,255,0.16)` | Hover wash, soft fills, status pills |
-| `--snappeal-navy` | `#0A1929` | `#FAFAFA` | Headings + body text on light; primary surface in dark |
-| `--snappeal-surface` | `#FFFFFF` | `#0F172A` | Card backgrounds, modal sheets |
-| `--snappeal-bg` | `#FAFAFA` | `#020617` | Page background (Apple off-white) |
-| `--snappeal-muted` | `#6E6E73` | `#94A3B8` | Secondary text (Apple system gray) |
-| `--snappeal-border` | `#E5E5EA` | `#1E293B` | Dividers, input borders (Apple system gray 5) |
-| `--snappeal-success` | `#34C759` | `#34C759` | Completed states, positive outcomes (iOS Green) |
-| `--snappeal-warning` | `#FF9500` | `#FF9500` | Warnings (iOS Orange — rare in product UI) |
-| `--snappeal-danger` | `#FF3B30` | `#FF3B30` | Errors, destructive actions (iOS Red) |
+| `--parkingrabbit-primary` | `#007AFF` | `#3392FF` | Primary CTAs, logo fill, links, in-progress accents (iOS System Blue) |
+| `--parkingrabbit-primary-soft` | `rgba(0,122,255,0.10)` | `rgba(51,146,255,0.16)` | Hover wash, soft fills, status pills |
+| `--parkingrabbit-navy` | `#0A1929` | `#FAFAFA` | Headings + body text on light; primary surface in dark |
+| `--parkingrabbit-surface` | `#FFFFFF` | `#0F172A` | Card backgrounds, modal sheets |
+| `--parkingrabbit-bg` | `#FAFAFA` | `#020617` | Page background (Apple off-white) |
+| `--parkingrabbit-muted` | `#6E6E73` | `#94A3B8` | Secondary text (Apple system gray) |
+| `--parkingrabbit-border` | `#E5E5EA` | `#1E293B` | Dividers, input borders (Apple system gray 5) |
+| `--parkingrabbit-success` | `#34C759` | `#34C759` | Completed states, positive outcomes (iOS Green) |
+| `--parkingrabbit-warning` | `#FF9500` | `#FF9500` | Warnings (iOS Orange — rare in product UI) |
+| `--parkingrabbit-danger` | `#FF3B30` | `#FF3B30` | Errors, destructive actions (iOS Red) |
 
 **Primary is iOS System Blue `#007AFF`** — decided after a colour-psychology review of the earlier purple. The reasoning, in plain English:
 
@@ -73,7 +75,7 @@ Heading scale (MkDocs follows the same):
 A **navy shield containing a white rabbit silhouette**, served as a raster master from `apps/web/public/logo.png` (also reused as `app/icon.png` favicon and `app/apple-icon.png` for iOS home-screen). The shield (rather than a rounded square) gives the brand a "protect / defend" reading, consistent with intervening between the driver and the council on the driver's behalf.
 
 - **App icon** — 1024×1024 master, no padding; OS rounding handles the corner.
-- **Wordmark** — shield to the left of "ParkingRabbit" set in Inter 700, navy on light backgrounds. Component: `SnappealLogo` (kept as an identifier alias for the brand pivot — every callsite still resolves).
+- **Wordmark** — shield to the left of "ParkingRabbit" set in Inter 700, navy on light backgrounds. Component: `ParkingRabbitLogo` (kept as an identifier alias for the brand pivot — every callsite still resolves).
 
 The earlier System-Blue "S" shield was retired in the v0.2.0 rebrand; legacy assets under `wiki/docs/assets/logo.svg` may still show it.
 

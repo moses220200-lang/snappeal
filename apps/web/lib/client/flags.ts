@@ -9,7 +9,19 @@
 import { useEffect, useState } from "react";
 
 interface HealthFlags {
+  /** Customer preference — show the live MCP screenshot strip during
+   *  PCN validation + council submission. Default false (calm
+   *  destination + push notification when work finishes). Loaded
+   *  from `users.notification_prefs.showMcpLiveView` for signed-in
+   *  users; defaults to false for guests. */
   showMcpLiveView: boolean;
+  /** Dev-only fake-payment buttons on the PaymentSheet. Derived
+   *  server-side from `getSettings().fakePayment` (mode-aware
+   *  default: true in dev, false in prod; admin override at
+   *  /admin/settings). Replaces the raw
+   *  `process.env.NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT` read so the
+   *  toggle is consistent with every other admin knob. */
+  fakePayment: boolean;
 }
 
 interface HealthResponse {
@@ -19,7 +31,7 @@ interface HealthResponse {
 let cached: HealthFlags | null = null;
 let inflight: Promise<HealthFlags> | null = null;
 
-const DEFAULTS: HealthFlags = { showMcpLiveView: false };
+const DEFAULTS: HealthFlags = { showMcpLiveView: false, fakePayment: false };
 
 async function fetchFlags(): Promise<HealthFlags> {
   if (cached) return cached;

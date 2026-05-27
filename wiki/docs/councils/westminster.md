@@ -1,7 +1,12 @@
 # Westminster City Council
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 !!! info "Verification status"
     **✅ Verified 2026-05-19** against the council's own website.
+
+!!! warning "Next to onboard for P11 grounds registry + deterministic recipe"
+    Westminster has Claude MCP automation (lookup + submission) but **no deterministic Playwright recipe and no grounds-registry entry**. The portal is the Imperial Civil Enforcement white-label backend (same stack as Lambeth's `pcnevidence.lambeth.gov.uk`) so the Lambeth recipe pattern should fork cleanly. Awaiting portal screenshots from ops to author `lib/server/submission/grounds/westminster.ts` — see [architecture/grounds-registry.md](../architecture/grounds-registry.md).
 
 ## Issuer details
 
@@ -41,8 +46,9 @@ S98 1TU
 
 ## Submission method
 
-- **Automation status: `automated_beta`** — Westminster is the primary automated council (the per-council MCP prompt for every other automated borough was forked from the Westminster recipe). The submit-appeal job runs `runPortalAutomation()` against `https://appeals.westminster.gov.uk/` end-to-end (5-min wall-clock cap, 30-step agent budget). The read-only `runPortalLookup()` is also wired (parallel `pcn_lookup` job runs during evidence-gathering, returns verdict + warden photos).
-- **Edit the agent prompt + field hints + run dry-runs** from `/admin/councils/westminster/automation`. Reset-to-canonical reverts to the in-code Westminster fallback (the same canonical that seeded every other automated council).
+- **Automation status: `automated_beta`** — both jobs wired via Claude MCP: `runPortalLookup()` (read-only PCN verdict + warden photos via DOM-first URL extraction, fired by the customer's Agree tap under validate-first) and `runPortalAutomation()` (the £2.99 submit). 5-min wall-clock cap, 30-step agent budget. The Westminster prompt is the reference implementation; per-council prompts for the other 26 boroughs are open work — they will fork from Westminster when authored. **No deterministic recipe and no grounds-registry entry yet** — see warning at top of page.
+- **Edit the agent prompt + field hints + run dry-runs** from `/admin/councils/westminster/automation`. Reset-to-canonical reverts to the in-code Westminster fallback (`apps/web/lib/server/submission/prompts/westminster_lookup.ts` + the `FALLBACK_LOOKUP_PROMPT` in `lookup.ts`).
+- **v0.3.7 photo pipeline**: warden photos are harvested as `<img>` URLs via one `browser_evaluate` (not screenshotted), then `uploadPortalPhotosFromUrls()` fetches each URL server-side and re-hosts the bytes to Blob. Only three milestone screenshots are taken (`01-portal-loaded`, `02-ticket-found`, `03-photos-summary`) — these persist into `jobs.progress` for the legal audit record but are NOT shown to the customer (the `<MCPLiveStrip>` is gated to `submit_appeal` only). See `architecture/submission-engine.md` for the full story.
 
 ## Sources
 

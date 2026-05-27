@@ -37,7 +37,7 @@ export function BackHeader({
     <Link
       href={back}
       aria-label="Back"
-      className="size-9 rounded-full border border-snappeal-border bg-white/70 flex items-center justify-center text-snappeal-muted hover:text-snappeal-navy transition"
+      className="size-9 rounded-full border border-parkingrabbit-border bg-white/70 flex items-center justify-center text-parkingrabbit-muted hover:text-parkingrabbit-navy transition"
     >
       <ChevronLeft className="size-5" />
     </Link>
@@ -46,7 +46,7 @@ export function BackHeader({
       type="button"
       onClick={() => router.back()}
       aria-label="Back"
-      className="size-9 rounded-full border border-snappeal-border bg-white/70 flex items-center justify-center text-snappeal-muted hover:text-snappeal-navy transition"
+      className="size-9 rounded-full border border-parkingrabbit-border bg-white/70 flex items-center justify-center text-parkingrabbit-muted hover:text-parkingrabbit-navy transition"
     >
       <ChevronLeft className="size-5" />
     </button>
@@ -57,14 +57,14 @@ export function BackHeader({
       // Sticky in normal flow (no negative top-margin). Reserves its own
       // height — including the iOS safe-area inset — so the first content
       // card below can never slide under it during overscroll bounce.
-      className="snappeal-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
+      className="parkingrabbit-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
       data-scrolled={scrolled}
     >
       <div className="flex items-center gap-3">
         {BackButton}
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold text-snappeal-navy truncate">{title}</h1>
-          {subtitle && <p className="text-xs text-snappeal-muted mt-0.5 truncate">{subtitle}</p>}
+          <h1 className="text-xl font-bold text-parkingrabbit-navy truncate">{title}</h1>
+          {subtitle && <p className="text-xs text-parkingrabbit-muted mt-0.5 truncate">{subtitle}</p>}
         </div>
       </div>
     </div>

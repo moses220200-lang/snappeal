@@ -22,8 +22,12 @@
 import { NextResponse } from "next/server";
 import { getAppealById, DatabaseNotConfiguredError } from "@/lib/server/appeals";
 import { jsonError } from "@/lib/server/contracts";
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "@/lib/server/db/client";
 import { resolveConnector } from "@/lib/server/connectors/registry";
 import { ConnectorError } from "@/lib/server/connectors/types";
+import { snapshotFromPortalLookup } from "@/lib/server/connectors/fromPortalLookup";
+import { snapshotFromOcr } from "@/lib/server/connectors/fromOcr";
 import {
   canViewAppeal,
   getRequestSessionId,
@@ -60,6 +64,69 @@ export async function GET(
         jsonError("BAD_REQUEST", "Appeal is missing PCN ref / vehicle reg — capture the ticket first."),
         { status: 400 },
       );
+    }
+
+    // Snapshot precedence (validate-first architecture):
+    //
+    //   1. portal_lookup — real MCP read of the council's own portal.
+    //      Always wins when present and verified/invalid.
+    //   2. Automated council, no real lookup yet — return a "validating"
+    //      stub snapshot (status_check_pending). The card uses this to
+    //      stay in the validating gate; Pay/Appeal tiles are HIDDEN until
+    //      the lookup lands. We DO NOT fall through to OCR or mock here:
+    //      an automated council has a truth source we trust, and the
+    //      user is briefly waiting (~2 min) for it.
+    //   3. Non-automated council — OCR-derived snapshot. The council
+    //      has no portal we can read, so the user's photo is the only
+    //      signal. Pay/Appeal tiles show with an "Unverified" chip.
+    //   4. Last resort — mock connector. Effectively only triggered
+    //      when we have no councilSlug at all.
+    const fromLookup = snapshotFromPortalLookup(appeal);
+    if (fromLookup) {
+      return NextResponse.json({ snapshot: fromLookup });
+    }
+
+    // Resolve council automation status — needed by both the
+    // validating-stub branch (automated → wait for lookup) and the
+    // OCR-fallback branch (non-automated → show OCR data).
+    let councilAutomated = false;
+    if (appeal.councilSlug) {
+      const db = getDb();
+      if (db) {
+        const rows = await db
+          .select({ automationStatus: schema.councils.automationStatus })
+          .from(schema.councils)
+          .where(eq(schema.councils.slug, appeal.councilSlug));
+        const s = rows[0]?.automationStatus;
+        councilAutomated = s === "automated_beta" || s === "automated_ga";
+      }
+    }
+
+    if (councilAutomated) {
+      // Automated council, no portal_lookup yet — return a validating
+      // stub so the UI shows the validating gate. Pay/Appeal tiles
+      // stay hidden until the real lookup lands. The card's
+      // useAutoValidate hook is responsible for kicking the lookup
+      // job; this endpoint only describes the state.
+      return NextResponse.json({
+        snapshot: {
+          status: "unknown",
+          stage: "status_check_pending",
+          detail: "Validating with the council…",
+          canAppeal: false,
+          canPay: false,
+          fetchedAt: new Date().toISOString(),
+          source: "portal_lookup",
+          rawVerdict: "awaiting_validation",
+        },
+      });
+    }
+
+    // Non-automated council: use OCR snapshot so the user can still
+    // act on the ticket. Surfaces with an Unverified chip in the UI.
+    const fromOcr = snapshotFromOcr(appeal);
+    if (fromOcr) {
+      return NextResponse.json({ snapshot: fromOcr });
     }
 
     const connector = resolveConnector(appeal.councilSlug);

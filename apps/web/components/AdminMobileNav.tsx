@@ -45,7 +45,7 @@ export function AdminMobileNav({ email }: { email: string }) {
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-snappeal-navy text-white flex flex-col">
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-parkingrabbit-navy text-white flex flex-col">
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
                 <p className="text-base font-bold">ParkingRabbit Admin</p>

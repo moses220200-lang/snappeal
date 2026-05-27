@@ -3,15 +3,15 @@ import { Wordmark } from "@/components/Logo";
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-snappeal-bg text-snappeal-navy">
-      <header className="border-b border-snappeal-border bg-snappeal-bg/85 backdrop-blur">
+    <div className="min-h-screen bg-parkingrabbit-bg text-parkingrabbit-navy">
+      <header className="border-b border-parkingrabbit-border bg-parkingrabbit-bg/85 backdrop-blur">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 py-3 flex items-center justify-between">
           <Link href="/">
             <Wordmark />
           </Link>
           <Link
             href="/"
-            className="text-sm font-medium text-snappeal-muted hover:text-snappeal-navy"
+            className="text-sm font-medium text-parkingrabbit-muted hover:text-parkingrabbit-navy"
           >
             ← Home
           </Link>
@@ -19,13 +19,13 @@ export default function PrivacyPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 sm:px-6 py-12 prose-base">
-        <p className="text-xs uppercase tracking-wide text-snappeal-muted">
+        <p className="text-xs uppercase tracking-wide text-parkingrabbit-muted">
           Last updated 2026-05-19
         </p>
         <h1 className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
           Privacy policy
         </h1>
-        <p className="mt-3 rounded-2xl bg-snappeal-primary-50 text-sm text-snappeal-navy px-4 py-3 border border-snappeal-primary-100">
+        <p className="mt-3 rounded-2xl bg-parkingrabbit-primary-50 text-sm text-parkingrabbit-navy px-4 py-3 border border-parkingrabbit-primary-100">
           <strong>Draft / placeholder.</strong> This is the v0.1 prototype of
           our privacy policy. Final wording will be reviewed before public
           launch — see the privacy commitments below for the substance.
@@ -58,11 +58,11 @@ export default function PrivacyPage() {
           />
         </section>
 
-        <footer className="mt-12 pt-6 border-t border-snappeal-border text-xs text-snappeal-muted">
+        <footer className="mt-12 pt-6 border-t border-parkingrabbit-border text-xs text-parkingrabbit-muted">
           Questions?{" "}
           <Link
             href="mailto:hello@parkingrabbit.com"
-            className="text-snappeal-primary font-semibold"
+            className="text-parkingrabbit-primary font-semibold"
           >
             hello@parkingrabbit.com
           </Link>
@@ -75,8 +75,8 @@ export default function PrivacyPage() {
 function Block({ title, body }: { title: string; body: string }) {
   return (
     <div>
-      <h2 className="text-lg font-bold text-snappeal-navy">{title}</h2>
-      <p className="mt-2 text-snappeal-muted leading-relaxed text-sm">{body}</p>
+      <h2 className="text-lg font-bold text-parkingrabbit-navy">{title}</h2>
+      <p className="mt-2 text-parkingrabbit-muted leading-relaxed text-sm">{body}</p>
     </div>
   );
 }

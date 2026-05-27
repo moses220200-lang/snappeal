@@ -38,11 +38,11 @@ export async function POST(request: Request) {
       currency: CURRENCY,
       automatic_payment_methods: { enabled: true },
       description: "ParkingRabbit — automated London PCN appeal",
-      statement_descriptor_suffix: "SNAPPEAL APPEAL",
+      statement_descriptor_suffix: "PARKINGRABBIT APPEAL",
       receipt_email: body.email,
       metadata: {
         session_id: body.sessionId,
-        product: "snappeal_appeal_v0_1",
+        product: "parkingrabbit_appeal_v0_1",
       },
     });
 

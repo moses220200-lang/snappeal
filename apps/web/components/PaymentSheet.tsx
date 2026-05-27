@@ -5,6 +5,7 @@ import { Loader2, Lock, ShieldCheck, X } from "lucide-react";
 import { StripePaymentForm } from "@/components/StripePaymentForm";
 import { FakePaymentButtons } from "@/components/FakePaymentButtons";
 import { getOrCreateSessionId } from "@/lib/client/session";
+import { useFlags } from "@/lib/client/flags";
 
 type PaymentSheetProps = {
   open: boolean;
@@ -18,14 +19,17 @@ type PaymentSheetProps = {
   councilName?: string | null;
 };
 
-const FAKE_MODE =
-  process.env.NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT === "1";
-
 /**
  * Bottom payment sheet — opens over the letter page when the user taps Submit.
  * Renders either the Stripe Payment Element (Apple Pay / Google Pay / card,
  * auto-detected by Stripe on supported browsers) or the FakePaymentButtons
- * dev panel when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1` is set.
+ * dev panel when the server-side `fakePayment` flag is on.
+ *
+ * The flag is loaded via `useFlags()` (cached `/api/health` fetch) so it
+ * reflects the runtime-mutable admin setting — flipping
+ * `fakePayment` in /admin/settings takes effect on next page reload
+ * without rebuilding the client bundle. Replaces the legacy raw
+ * `process.env.NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT` read.
  */
 export function PaymentSheet({
   open,
@@ -35,6 +39,7 @@ export function PaymentSheet({
   busy = false,
   councilName,
 }: PaymentSheetProps) {
+  const FAKE_MODE = useFlags().fakePayment;
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
 
@@ -109,10 +114,10 @@ export function PaymentSheet({
         {/* Header */}
         <div className="px-5 pt-1 pb-3 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-snappeal-navy tracking-tight">
+            <h2 className="text-lg font-bold text-parkingrabbit-navy tracking-tight">
               Submit appeal
             </h2>
-            <p className="text-[12px] text-snappeal-muted mt-0.5 leading-snug">
+            <p className="text-[12px] text-parkingrabbit-muted mt-0.5 leading-snug">
               £2.99 · auto-submits to{" "}
               {councilName ? councilName : "your council"}
             </p>
@@ -122,26 +127,26 @@ export function PaymentSheet({
             onClick={onClose}
             disabled={busy}
             aria-label="Close payment sheet"
-            className="size-9 rounded-full bg-snappeal-bg border border-snappeal-border flex items-center justify-center text-snappeal-navy hover:bg-snappeal-border/60 transition disabled:opacity-50"
+            className="size-9 rounded-full bg-parkingrabbit-bg border border-parkingrabbit-border flex items-center justify-center text-parkingrabbit-navy hover:bg-parkingrabbit-border/60 transition disabled:opacity-50"
           >
             <X className="size-4" strokeWidth={2.25} />
           </button>
         </div>
 
         {/* Order summary */}
-        <div className="mx-5 mb-3 rounded-2xl bg-snappeal-primary-50/60 border border-snappeal-primary/20 px-4 py-3 flex items-center gap-3">
-          <span className="size-10 rounded-xl bg-snappeal-primary text-white flex items-center justify-center flex-shrink-0">
+        <div className="mx-5 mb-3 rounded-2xl bg-parkingrabbit-primary-50/60 border border-parkingrabbit-primary/20 px-4 py-3 flex items-center gap-3">
+          <span className="size-10 rounded-xl bg-parkingrabbit-primary text-white flex items-center justify-center flex-shrink-0">
             <ShieldCheck className="size-5" strokeWidth={2} />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-snappeal-navy">
+            <p className="text-[13px] font-bold text-parkingrabbit-navy">
               ParkingRabbit — Challenge a ticket
             </p>
-            <p className="text-[11px] text-snappeal-muted mt-0.5 leading-snug">
+            <p className="text-[11px] text-parkingrabbit-muted mt-0.5 leading-snug">
               One-off charge · non-refundable
             </p>
           </div>
-          <p className="text-base font-bold text-snappeal-primary whitespace-nowrap">
+          <p className="text-base font-bold text-parkingrabbit-primary whitespace-nowrap">
             £2.99
           </p>
         </div>
@@ -149,8 +154,8 @@ export function PaymentSheet({
         {/* Body — pick the right payment surface */}
         <div className="flex-1 overflow-y-auto px-5 pb-5">
           {busy ? (
-            <div className="rounded-2xl bg-white border border-snappeal-border p-6 flex flex-col items-center gap-2 text-sm text-snappeal-muted">
-              <Loader2 className="size-5 animate-spin text-snappeal-primary" />
+            <div className="rounded-2xl bg-white border border-parkingrabbit-border p-6 flex flex-col items-center gap-2 text-sm text-parkingrabbit-muted">
+              <Loader2 className="size-5 animate-spin text-parkingrabbit-primary" />
               Submitting to council…
             </div>
           ) : FAKE_MODE ? (
@@ -163,7 +168,7 @@ export function PaymentSheet({
             />
           )}
 
-          <p className="mt-4 text-[10.5px] text-snappeal-muted text-center flex items-center justify-center gap-1.5">
+          <p className="mt-4 text-[10.5px] text-parkingrabbit-muted text-center flex items-center justify-center gap-1.5">
             <Lock className="size-3" />
             Powered by Stripe · 256-bit TLS
           </p>

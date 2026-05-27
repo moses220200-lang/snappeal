@@ -25,9 +25,9 @@ const NAME_CLASS: Record<Size, string> = {
 };
 
 const FALLBACK_ICON: Record<Size, string> = {
-  sm: "size-3 text-snappeal-muted",
-  md: "size-4 text-snappeal-muted",
-  lg: "size-5 text-snappeal-muted",
+  sm: "size-3 text-parkingrabbit-muted",
+  md: "size-4 text-parkingrabbit-muted",
+  lg: "size-5 text-parkingrabbit-muted",
 };
 
 const INITIAL_CLASS: Record<Size, string> = {
@@ -59,7 +59,7 @@ export function CouncilBadge({
   return (
     <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
       <span
-        className={`shrink-0 flex items-center justify-center overflow-hidden border border-snappeal-border ${SWATCH[size]}`}
+        className={`shrink-0 flex items-center justify-center overflow-hidden border border-parkingrabbit-border ${SWATCH[size]}`}
         style={{ background: logoBg || "#ffffff" }}
         aria-hidden
       >
@@ -72,7 +72,7 @@ export function CouncilBadge({
           />
         ) : ini ? (
           <span
-            className={`font-bold text-snappeal-navy ${INITIAL_CLASS[size]}`}
+            className={`font-bold text-parkingrabbit-navy ${INITIAL_CLASS[size]}`}
           >
             {ini}
           </span>
@@ -82,7 +82,7 @@ export function CouncilBadge({
       </span>
       {showName && name && (
         <span
-          className={`truncate text-snappeal-navy ${NAME_CLASS[size]}`}
+          className={`truncate text-parkingrabbit-navy ${NAME_CLASS[size]}`}
           title={name}
         >
           {name}

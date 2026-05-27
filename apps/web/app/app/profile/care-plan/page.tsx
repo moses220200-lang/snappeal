@@ -121,7 +121,7 @@ export default function CarePlanPage() {
 
   return (
     <ProfileSubPage title="Care Plan" subtitle="Unlimited appeals · £9.99/mo · coming soon.">
-      <section className="rounded-3xl bg-gradient-to-br from-snappeal-primary to-snappeal-primary-700 text-white p-6">
+      <section className="rounded-3xl bg-gradient-to-br from-parkingrabbit-primary to-parkingrabbit-primary-700 text-white p-6">
         <p className="text-[11px] uppercase tracking-wide text-white/70">Subscription</p>
         <p className="mt-1 text-5xl font-bold tracking-tight">£9.99</p>
         <p className="text-sm text-white/80 mt-1">per month · cancel any time</p>
@@ -129,13 +129,13 @@ export default function CarePlanPage() {
 
       <ul className="flex flex-col gap-2.5">
         {BENEFITS.map((b) => (
-          <li key={b.title} className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-start gap-3">
-            <span className="size-10 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">
+          <li key={b.title} className="rounded-2xl bg-white border border-parkingrabbit-border p-4 flex items-start gap-3">
+            <span className="size-10 rounded-xl bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center flex-shrink-0">
               <b.icon className="size-5" />
             </span>
             <div>
-              <p className="text-sm font-semibold text-snappeal-navy">{b.title}</p>
-              <p className="text-xs text-snappeal-muted mt-0.5 leading-relaxed">{b.body}</p>
+              <p className="text-sm font-semibold text-parkingrabbit-navy">{b.title}</p>
+              <p className="text-xs text-parkingrabbit-muted mt-0.5 leading-relaxed">{b.body}</p>
             </div>
           </li>
         ))}
@@ -160,7 +160,7 @@ export default function CarePlanPage() {
           type="button"
           onClick={subscribe}
           disabled={subscribing}
-          className="rounded-2xl bg-snappeal-action text-white font-semibold py-4 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-60"
+          className="rounded-2xl bg-parkingrabbit-action text-white font-semibold py-4 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-action/40 hover:bg-parkingrabbit-action-600 transition disabled:opacity-60"
         >
           {subscribing ? (
             <>
@@ -184,9 +184,9 @@ export default function CarePlanPage() {
           </div>
         </div>
       ) : (
-        <form onSubmit={join} className="rounded-2xl bg-white border border-snappeal-border p-5 flex flex-col gap-3">
-          <p className="text-sm font-bold text-snappeal-navy">Join the waitlist</p>
-          <p className="text-xs text-snappeal-muted leading-relaxed">
+        <form onSubmit={join} className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex flex-col gap-3">
+          <p className="text-sm font-bold text-parkingrabbit-navy">Join the waitlist</p>
+          <p className="text-xs text-parkingrabbit-muted leading-relaxed">
             We&apos;re finishing the billing wiring. Drop your email and we&apos;ll let you know first.
           </p>
           <input
@@ -195,12 +195,12 @@ export default function CarePlanPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="rounded-xl bg-white border border-snappeal-border focus:border-snappeal-primary px-3 py-2.5 text-sm outline-none"
+            className="rounded-xl bg-white border border-parkingrabbit-border focus:border-parkingrabbit-primary px-3 py-2.5 text-sm outline-none"
           />
           <button
             type="submit"
             disabled={saving}
-            className="rounded-2xl bg-snappeal-action text-white font-semibold py-3.5 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-60"
+            className="rounded-2xl bg-parkingrabbit-action text-white font-semibold py-3.5 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-action/40 hover:bg-parkingrabbit-action-600 transition disabled:opacity-60"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : null}
             Join the waitlist

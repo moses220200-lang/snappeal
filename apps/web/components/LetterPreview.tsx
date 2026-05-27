@@ -40,7 +40,7 @@ export function LetterPreview({
   wordCount,
   defaultOpen = true,
 }: Props) {
-  const seenKey = `snappeal.letterSeen.${appealId}`;
+  const seenKey = `parkingrabbit.letterSeen.${appealId}`;
   const initiallySeen = useMemo(() => {
     if (typeof window === "undefined") return false;
     return window.sessionStorage.getItem(seenKey) === "1";
@@ -131,32 +131,32 @@ export function LetterPreview({
   const isAnimating = revealedChars < body.length;
 
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border overflow-hidden">
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-snappeal-bg/40 transition"
+        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-parkingrabbit-bg/40 transition"
       >
-        <span className="size-8 rounded-lg bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center shrink-0">
+        <span className="size-8 rounded-lg bg-parkingrabbit-primary-50 text-parkingrabbit-primary flex items-center justify-center shrink-0">
           <FileText className="size-4" strokeWidth={2.25} />
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-[13px] font-bold text-snappeal-navy leading-tight">
+          <span className="block text-[13px] font-bold text-parkingrabbit-navy leading-tight">
             Your draft appeal letter
           </span>
-          <span className="block text-[11px] text-snappeal-muted mt-0.5 leading-snug truncate">
+          <span className="block text-[11px] text-parkingrabbit-muted mt-0.5 leading-snug truncate">
             {subject ?? "Representation against PCN"}
             {wordCount != null && (
               <>
-                <span className="text-snappeal-border mx-1.5">·</span>
+                <span className="text-parkingrabbit-border mx-1.5">·</span>
                 {wordCount} words
               </>
             )}
           </span>
         </span>
         <ChevronDown
-          className={`size-4 text-snappeal-muted shrink-0 transition-transform ${
+          className={`size-4 text-parkingrabbit-muted shrink-0 transition-transform ${
             open ? "rotate-180" : ""
           }`}
           strokeWidth={2.25}
@@ -168,17 +168,17 @@ export function LetterPreview({
         }`}
       >
         <div className="overflow-hidden">
-          <div className="px-4 pt-1 pb-4 border-t border-snappeal-border">
+          <div className="px-4 pt-1 pb-4 border-t border-parkingrabbit-border">
             {subject && (
-              <p className="text-[12px] font-bold text-snappeal-navy mt-3">
+              <p className="text-[12px] font-bold text-parkingrabbit-navy mt-3">
                 Subject: <span className="font-semibold">{subject}</span>
               </p>
             )}
-            <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-snappeal-navy/90">
+            <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-parkingrabbit-navy/90">
               {visible}
               {isAnimating && (
                 <span
-                  className="inline-block w-[1px] h-[1em] -mb-[2px] bg-snappeal-primary align-middle ml-0.5 animate-pulse"
+                  className="inline-block w-[1px] h-[1em] -mb-[2px] bg-parkingrabbit-primary align-middle ml-0.5 animate-pulse"
                   aria-hidden
                 />
               )}

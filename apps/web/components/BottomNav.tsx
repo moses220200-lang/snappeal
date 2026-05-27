@@ -51,7 +51,7 @@ export function BottomNav() {
   };
 
   return (
-    <nav className="snappeal-glass-nav fixed bottom-0 inset-x-0 z-40 safe-bottom">
+    <nav className="parkingrabbit-glass-nav fixed bottom-0 inset-x-0 z-40 safe-bottom">
       <div className="mx-auto max-w-md flex items-center justify-around px-2 py-1.5">
         {TABS.slice(0, 2).map((tab) => renderTab(tab))}
         {/* Centre camera button — navigates to /app/scan so the user
@@ -61,7 +61,7 @@ export function BottomNav() {
         <Link
           href="/app/scan"
           aria-label="Scan a new ticket"
-          className="-mt-6 size-14 rounded-full bg-snappeal-primary flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(0,122,255,0.45)] ring-4 ring-white hover:bg-snappeal-primary-600 transition active:scale-95"
+          className="-mt-6 size-14 rounded-full bg-parkingrabbit-primary flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(0,122,255,0.45)] ring-4 ring-white hover:bg-parkingrabbit-primary-600 transition active:scale-95"
         >
           <Camera className="size-6 text-white" strokeWidth={2.25} />
         </Link>
@@ -87,8 +87,8 @@ export function BottomNav() {
         }}
         className={`flex flex-col items-center gap-0.5 px-3 py-1 transition ${
           active
-            ? "text-snappeal-primary"
-            : "text-snappeal-muted hover:text-snappeal-navy"
+            ? "text-parkingrabbit-primary"
+            : "text-parkingrabbit-muted hover:text-parkingrabbit-navy"
         }`}
       >
         <span className="relative inline-flex">
@@ -96,7 +96,7 @@ export function BottomNav() {
           {count > 0 && (
             <span
               aria-label={`${count} unread`}
-              className="absolute -top-1.5 -right-2 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-snappeal-action text-white text-[9px] font-bold shadow"
+              className="absolute -top-1.5 -right-2 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-parkingrabbit-action text-white text-[9px] font-bold shadow"
             >
               {count > 9 ? "9+" : count}
             </span>

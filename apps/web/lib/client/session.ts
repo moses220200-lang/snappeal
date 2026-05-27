@@ -18,11 +18,11 @@
  * too; they've moved to the DB via `lib/client/draft.ts` so the cloud is the
  * authoritative source and the customer never loses a draft on a tab close.
  */
-const KEY_SESSION = "snappeal.sessionId";
-const KEY_PCN = "snappeal.pcnPhoto";
-const KEY_EVIDENCE = "snappeal.evidencePhotos";
-const KEY_APPEAL = "snappeal.currentAppealId";
-const KEY_TIER = "snappeal.serviceTier";
+const KEY_SESSION = "parkingrabbit.sessionId";
+const KEY_PCN = "parkingrabbit.pcnPhoto";
+const KEY_EVIDENCE = "parkingrabbit.evidencePhotos";
+const KEY_APPEAL = "parkingrabbit.currentAppealId";
+const KEY_TIER = "parkingrabbit.serviceTier";
 
 // One-shot cleanup of legacy keys we used to store. Safe to call on every
 // page load — does nothing once the keys are already gone. Runs in module
@@ -35,13 +35,13 @@ const KEY_TIER = "snappeal.serviceTier";
 // localStorage entries are removed once on first load so returning users
 // get a clean slate exactly once.
 const LEGACY_KEYS = [
-  "snappeal.notes",
-  "snappeal.confirmedTicket",
-  "snappeal.selectedGrounds",
+  "parkingrabbit.notes",
+  "parkingrabbit.confirmedTicket",
+  "parkingrabbit.selectedGrounds",
 ];
 const LEGACY_LOCAL_TO_REMOVE = [
-  "snappeal.sessionId",          // moved to sessionStorage in v0.2.7
-  "snappeal.currentAppealId",    // moved to sessionStorage in v0.2.7
+  "parkingrabbit.sessionId",          // moved to sessionStorage in v0.2.7
+  "parkingrabbit.currentAppealId",    // moved to sessionStorage in v0.2.7
 ];
 if (typeof window !== "undefined") {
   for (const k of LEGACY_KEYS) {
@@ -77,7 +77,7 @@ export function getOrCreateSessionId(): string {
   if (typeof window === "undefined") return "ssr";
   // sessionStorage (not localStorage) — clears on tab close so a fresh
   // browser launch never resurrects an old guest session. Signed-in users
-  // are identified by the snappeal.token JWT cookie; this id only ever
+  // are identified by the parkingrabbit.token JWT cookie; this id only ever
   // identifies guests within the lifetime of a single tab.
   let id = window.sessionStorage.getItem(KEY_SESSION);
   if (!id) {
@@ -143,7 +143,7 @@ export function clearCaptureFlow() {
  * smart card can render the review UI (confidence pills, image preview,
  * "2 greens" check, retake popup) without re-running OCR.
  */
-const KEY_OCR = "snappeal.ocrHandoff";
+const KEY_OCR = "parkingrabbit.ocrHandoff";
 
 export interface OcrHandoff {
   appealId: string;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { SnappealMark } from "@/components/Logo";
+import { ParkingRabbitMark } from "@/components/Logo";
 
 /**
  * Square Union Jack badge — used inside the UK pill. Drawn into a square
@@ -15,11 +15,11 @@ function UkFlag({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 30 30" className={className} aria-hidden>
       <defs>
-        <clipPath id="snappeal-uk-clip">
+        <clipPath id="parkingrabbit-uk-clip">
           <circle cx="15" cy="15" r="15" />
         </clipPath>
       </defs>
-      <g clipPath="url(#snappeal-uk-clip)">
+      <g clipPath="url(#parkingrabbit-uk-clip)">
         {/* Navy field */}
         <rect width="30" height="30" fill="#012169" />
         {/* White diagonal saltire (St Andrew) */}
@@ -70,36 +70,36 @@ export function AppHeader({
       // it during overscroll bounce on iOS PWA. Safe-area buffer is added
       // INSIDE the element so the iOS time/Dynamic Island can never collide
       // with the wordmark.
-      className="snappeal-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
+      className="parkingrabbit-glass sticky top-0 z-30 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 px-5"
       data-scrolled={scrolled}
     >
       <div className="flex items-center justify-between gap-2">
         <Link href="/app" className="flex items-center gap-2.5 min-w-0 flex-1">
-          <SnappealMark size={46} variant="dark" className="shrink-0" />
+          <ParkingRabbitMark size={46} variant="dark" className="shrink-0" />
           <div className="flex flex-col leading-tight min-w-0">
-            <span className="text-[17px] font-bold text-snappeal-navy tracking-tight leading-none">
+            <span className="text-[17px] font-bold text-parkingrabbit-navy tracking-tight leading-none">
               ParkingRabbit
             </span>
-            <span className="text-[10.5px] text-snappeal-muted mt-1 leading-tight">
+            <span className="text-[10.5px] text-parkingrabbit-muted mt-1 leading-tight">
               Manage parking tickets quickly
             </span>
           </div>
         </Link>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-full bg-white border border-snappeal-border pl-0.5 pr-1.5 py-0.5 text-[11px] font-semibold text-snappeal-navy shadow-sm shrink-0 hover:bg-snappeal-bg transition"
+          className="inline-flex items-center gap-1 rounded-full bg-white border border-parkingrabbit-border pl-0.5 pr-1.5 py-0.5 text-[11px] font-semibold text-parkingrabbit-navy shadow-sm shrink-0 hover:bg-parkingrabbit-bg transition"
         >
           <UkFlag className="size-[18px] rounded-full" />
           UK
-          <ChevronDown className="size-3 text-snappeal-muted" strokeWidth={2.5} />
+          <ChevronDown className="size-3 text-parkingrabbit-muted" strokeWidth={2.5} />
         </button>
       </div>
       {(title || subtitle) && (
         <div className="mt-4">
           {title && (
-            <h1 className="text-3xl font-bold text-snappeal-navy tracking-tight">{title}</h1>
+            <h1 className="text-3xl font-bold text-parkingrabbit-navy tracking-tight">{title}</h1>
           )}
-          {subtitle && <p className="mt-1 text-sm text-snappeal-muted">{subtitle}</p>}
+          {subtitle && <p className="mt-1 text-sm text-parkingrabbit-muted">{subtitle}</p>}
         </div>
       )}
     </div>

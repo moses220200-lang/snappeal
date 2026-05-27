@@ -9,22 +9,22 @@ import { AdminMobileNav } from "@/components/AdminMobileNav";
  */
 const NAV = [
   { href: "/admin", label: "Overview" },
-  { href: "/admin/appeals", label: "Appeals" },
+  { href: "/admin/appeals", label: "Appeal Tickets" },
   { href: "/admin/councils", label: "Councils" },
   { href: "/admin/submissions", label: "Submissions" },
   { href: "/admin/inbound", label: "Inbound mail" },
   { href: "/admin/jobs", label: "Job queue" },
   { href: "/admin/users", label: "Users" },
-  { href: "/admin/health", label: "System health" },
-  { href: "/admin/settings", label: "Settings" },
+  // /admin/health is merged into /admin/settings (P4). Old route 301-redirects.
+  { href: "/admin/settings", label: "Settings & health" },
   { href: "/admin/wiki", label: "Wiki" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdminPage();
   return (
-    <div className="min-h-screen bg-snappeal-bg flex">
-      <aside className="hidden md:flex w-64 flex-col bg-snappeal-navy text-white">
+    <div className="min-h-screen bg-parkingrabbit-bg flex">
+      <aside className="hidden md:flex w-64 flex-col bg-parkingrabbit-navy text-white">
         <div className="px-6 py-6 border-b border-white/10">
           <Link href="/admin" className="flex items-center gap-2">
             <ShieldP />
@@ -52,7 +52,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
       </aside>
       <main className="flex-1 min-w-0 flex flex-col">
-        <header className="md:hidden bg-snappeal-navy text-white px-5 py-4 flex items-center justify-between sticky top-0 z-30">
+        <header className="md:hidden bg-parkingrabbit-navy text-white px-5 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
             <AdminMobileNav email={user.email} />
             <p className="text-base font-bold">ParkingRabbit Admin</p>

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { SnappealSplash } from "@/components/SnappealSplash";
+import { ParkingRabbitSplash } from "@/components/ParkingRabbitSplash";
 import { InstallBanner } from "@/components/InstallBanner";
 
 const inter = Inter({
@@ -67,7 +67,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="font-sans" suppressHydrationWarning>
-        <SnappealSplash />
+        <ParkingRabbitSplash />
         {children}
         <InstallBanner variant="landing" />
       </body>

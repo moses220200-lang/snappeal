@@ -12,9 +12,10 @@
  *   draft  →  ready (after /api/generate)  →  submitting →  submitted
  *           →  under_review  →  decision_pending  →  cancelled | rejected
  */
-import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { customAlphabet } from "../id";
 import { getDb, schema } from "./db/client";
+import { parseUkDateToIso } from "../parseUkDate";
 import type { GeneratedDraft } from "./ai";
 import type { Appeal as AppealView } from "../mock-data";
 import type {
@@ -23,6 +24,46 @@ import type {
   ProcessingStatus,
 } from "./db/schema";
 import type { JobKind } from "./jobs/queue";
+
+/** `metadata` keys whose values are dates we want stored as ISO 8601
+ *  strings regardless of what shape the council portal emitted. Add to
+ *  this list whenever a new date-typed key joins `PortalLookupSnapshot["metadata"]`. */
+const PORTAL_METADATA_DATE_KEYS = [
+  "issuedAt",
+  "dueDateAt",
+  "discountUntil",
+  "fullChargeFrom",
+  // v0.3.10 — added for paid-PCN snapshots (Imperial/Civica emit
+  // `paidAt` in dd/mm/yyyy on the verdict page). Without it the
+  // "Paid on …" line in AppealNotPossibleCard rendered the raw
+  // scraped string while every other date was normalised.
+  "paidAt",
+] as const;
+
+/** Normalise the date-typed fields in a portal snapshot's `metadata` bag
+ *  to ISO strings. Returns a shallow copy when anything changed; the
+ *  original reference otherwise so callers can rely on stable identity. */
+function normalisePortalSnapshotDates(
+  snapshot: PortalLookupSnapshot,
+): PortalLookupSnapshot {
+  if (!snapshot.metadata) return snapshot;
+  let mutated = false;
+  const meta: Record<string, unknown> = { ...snapshot.metadata };
+  for (const key of PORTAL_METADATA_DATE_KEYS) {
+    const raw = meta[key];
+    if (typeof raw !== "string" || raw.length === 0) continue;
+    const iso = parseUkDateToIso(raw);
+    if (iso && iso !== raw) {
+      meta[key] = iso;
+      mutated = true;
+    }
+  }
+  if (!mutated) return snapshot;
+  return {
+    ...snapshot,
+    metadata: meta as PortalLookupSnapshot["metadata"],
+  };
+}
 
 const newAppealId = customAlphabet(
   "0123456789abcdefghijklmnopqrstuvwxyz",
@@ -104,8 +145,6 @@ export interface AppealRecord {
   councilSlug: string | null;
   councilLogoUrl: string | null;
   councilLogoBg: string | null;
-  modelUsed: string | null;
-  costPenceMillis: number | null;
   createdAt: string;
   updatedAt: string;
   /** Latest queued/running job for this appeal, used by the smart ticket
@@ -160,8 +199,6 @@ function toRecord(
     councilSlug: row.councilSlug,
     councilLogoUrl: council?.logoUrl ?? null,
     councilLogoBg: council?.logoBg ?? null,
-    modelUsed: row.modelUsed,
-    costPenceMillis: row.costPenceMillis,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     activeJobId: activeJob?.id ?? null,
@@ -351,8 +388,6 @@ export async function attachDraftToAppeal(
       letterBody: draft.letter.body,
       letterWordCount: draft.letter.wordCount,
       letterAddressedTo: draft.letter.addressedTo,
-      modelUsed: draft.modelUsed,
-      costPenceMillis: draft.costUsd != null ? Math.round(draft.costUsd * 100_000) : null,
       strengthScore: draft.strength.score,
       strengthRationale: draft.strength.rationale,
       strengthImprovements: draft.strength.improvements,
@@ -379,7 +414,7 @@ export async function attachDraftToAppeal(
  */
 export async function setProcessingStep(
   appealId: string,
-  step: "ocr" | "analysis",
+  step: "ocr" | "analysis" | "draft",
   status: "pending" | "running" | "done" | "failed",
   error?: string | null,
 ): Promise<void> {
@@ -437,10 +472,31 @@ export async function updateAppealStrength(
  */
 export const GENERATION_FAILED_STEP = "generation_failed";
 
-export async function markAppealFailed(appealId: string): Promise<void> {
+export async function markAppealFailed(
+  appealId: string,
+  errorMessage?: string,
+): Promise<void> {
+  // v0.3.6 — also stash the error message inside `processing.draft.error`
+  // so the UI can surface what actually went wrong (the client's
+  // fire-and-forget POST never sees the SSE error body). Dev console
+  // still gets the full stack via the route's catch logger.
+  const existing = await getAppealById(appealId);
+  const draftError = errorMessage ?? null;
+  const nextProcessing: ProcessingStatus = {
+    ...(existing?.processing ?? {}),
+    draft: {
+      status: "failed",
+      error: draftError,
+      completedAt: new Date().toISOString(),
+    },
+  };
   await db()
     .update(schema.appeals)
-    .set({ step: GENERATION_FAILED_STEP, updatedAt: new Date() })
+    .set({
+      step: GENERATION_FAILED_STEP,
+      processing: nextProcessing,
+      updatedAt: new Date(),
+    })
     .where(eq(schema.appeals.id, appealId));
 }
 
@@ -473,13 +529,44 @@ export async function patchAppealDraft(
   if (patch.pcnImageUrl !== undefined) updates.pcnImageUrl = patch.pcnImageUrl;
   if (patch.step !== undefined) updates.step = patch.step;
   if (patch.ticket !== undefined) {
-    updates.ticket = patch.ticket as AppealView["ticket"];
+    // FIELD-LEVEL MERGE — not wholesale replace. The /api/extract
+    // two-pass flow PATCHes a partial ticket twice: pass 1 with
+    // {councilSlug, issuer}, then pass 2 with the full extract.
+    // If pass 2's extract returned `councilSlug:""` (logo occluded on
+    // the second look) a wholesale replace would erase pass 1's good
+    // value. Each PATCH now overlays: incoming non-empty fields win,
+    // incoming empty/null/undefined fields leave the existing value
+    // alone. Set explicit empty/null only via persistPortalLookup's
+    // backfill path or a future dedicated clear endpoint.
+    const incoming = (patch.ticket ?? {}) as Record<string, unknown>;
+    const existingRows = await db()
+      .select({
+        ticket: schema.appeals.ticket,
+        processing: schema.appeals.processing,
+      })
+      .from(schema.appeals)
+      .where(eq(schema.appeals.id, appealId));
+    const existingTicket = (existingRows[0]?.ticket ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const merged: Record<string, unknown> = { ...existingTicket };
+    for (const [k, v] of Object.entries(incoming)) {
+      const isMeaningful =
+        v !== undefined &&
+        v !== null &&
+        !(typeof v === "string" && v.trim() === "");
+      if (isMeaningful) merged[k] = v;
+    }
+    updates.ticket = merged as AppealView["ticket"];
     // The intake flow (manual entry + OCR) puts the council slug inside
     // the ticket jsonb. Hoist it onto the top-level `council_slug` FK
     // column so downstream code (portal lookup, submission engine) can
     // resolve the council row without first reading + re-parsing the
     // ticket. Only set when the slug points at a real councils row.
-    const candidate = (patch.ticket as { councilSlug?: string } | null)?.councilSlug;
+    // Read from the MERGED ticket so a pass-2 empty-string councilSlug
+    // doesn't drop the hoist that pass 1 already did.
+    const candidate = (merged as { councilSlug?: string }).councilSlug;
     if (candidate && /^[a-z0-9-]+$/.test(candidate)) {
       const matches = await db()
         .select({ slug: schema.councils.slug })
@@ -487,11 +574,219 @@ export async function patchAppealDraft(
         .where(eq(schema.councils.slug, candidate));
       if (matches[0]) updates.councilSlug = matches[0].slug;
     }
+
+    // v0.3.11 — manual-entry trap fix.
+    //
+    // When the user lands on "Reading failed" (processing.ocr.status =
+    // 'failed') and recovers via /app/manual-entry, the submit handler
+    // PATCHes the merged ticket here. Without this block the failure
+    // flag stays set forever and deriveCardState keeps returning
+    // extraction_failed even though we now have all the data we need —
+    // the user is trapped on the failure card with no forward path.
+    //
+    // Rule: when the incoming PATCH leaves the merged ticket with both
+    // required fields (pcnRef + vehicleReg) AND ocr.status is currently
+    // 'failed', flip it to 'done'. We're not lying: the data the OCR
+    // step was supposed to deliver is now present, regardless of how it
+    // got there. Audit-trail of WHY the OCR errored is preserved in the
+    // `error` field; we just clear the gating status.
+    const mergedHasRequired =
+      typeof merged.pcnRef === "string" && merged.pcnRef.trim().length > 0 &&
+      typeof merged.vehicleReg === "string" && merged.vehicleReg.trim().length > 0;
+    const existingProcessing = (existingRows[0]?.processing ?? {}) as ProcessingStatus;
+    const ocrFailed = existingProcessing.ocr?.status === "failed";
+    if (mergedHasRequired && ocrFailed && patch.processing === undefined) {
+      updates.processing = {
+        ...existingProcessing,
+        ocr: {
+          ...existingProcessing.ocr,
+          status: "done",
+          completedAt: new Date().toISOString(),
+          // error field preserved from the original failure for audit
+        },
+      };
+    }
   }
   if (patch.serviceTier !== undefined) updates.serviceTier = patch.serviceTier;
   if (patch.grounds !== undefined) updates.grounds = patch.grounds;
   await db().update(schema.appeals).set(updates).where(eq(schema.appeals.id, appealId));
   return getAppealById(appealId);
+}
+
+/**
+ * Merge a freshly-OCR'd draft INTO an older draft that the same viewer
+ * already owns for the same PCN reference + vehicle registration. The
+ * client can't dedupe up-front — `uploadPcn` creates the row at photo-
+ * upload time before OCR resolves the PCN ref — so duplicates appear
+ * naturally when a customer (or test) re-uploads the same ticket. This
+ * collapses them at the first moment the dedup key is known.
+ *
+ * Eligibility (all must hold):
+ *   - `appealId` is still status='draft' and step != 'ticket_confirmed'
+ *     (post-confirm the appeal is committed to its journey and we never
+ *     touch it from here).
+ *   - Its ticket has both `pcnRef` and `vehicleReg`.
+ *   - An OLDER draft with the same (pcnRef, normalised vehicleReg)
+ *     exists, owned by either the same signed-in user OR the same guest
+ *     sessionId. The OLDER one is the keep-target — preserves whatever
+ *     timeline progress that row has accumulated.
+ *
+ * Effect: in one transaction, the older draft is updated with the
+ * fresh photo + any not-yet-set ticket fields + hoisted councilSlug,
+ * the duplicate's non-cascading child rows are swept (jobs has NO FK
+ * at all — orphans would survive a plain DELETE; payments has
+ * `ON DELETE no action` — would throw FK violation; notification_dispatches
+ * is `ON DELETE SET NULL` — swept here for tidiness), and finally the
+ * duplicate row itself is deleted. The remaining child tables
+ * (appeal_photos, submissions, inbound_messages, ai_calls) DO cascade,
+ * so they self-clear with the row.
+ *
+ * Returns `{ mergedInto: <olderId> }` when a merge happened so the
+ * caller can hand the client the surviving appeal id. Returns null when
+ * no merge applies — the appeal stays on its own.
+ *
+ * Idempotent: safe to call multiple times for the same id.
+ */
+export async function mergeDuplicateDraftIfAny(
+  appealId: string,
+): Promise<{ mergedInto: string } | null> {
+  const fresh = await getAppealById(appealId);
+  if (!fresh) return null;
+  if (fresh.status !== "draft") return null;
+  // step sentinel — kept as a literal here so we don't drag the
+  // client-only deriveCardState module into this server file. Mirror in
+  // `lib/deriveCardState.ts` as `TICKET_CONFIRMED_STEP`.
+  if (fresh.step === "ticket_confirmed") return null;
+
+  const pcnRef = fresh.ticket?.pcnRef?.trim();
+  const vehicleReg = fresh.ticket?.vehicleReg?.trim().replace(/\s+/g, "");
+  if (!pcnRef || !vehicleReg) return null;
+
+  // Ownership scope — either the same signed-in user, or the same guest
+  // session. Mirrors `listAppealsForViewer`'s identity model.
+  const ownerCondition = fresh.userId
+    ? or(
+        eq(schema.appeals.userId, fresh.userId),
+        eq(schema.appeals.sessionId, fresh.sessionId),
+      )!
+    : eq(schema.appeals.sessionId, fresh.sessionId);
+
+  // Match on pcnRef + whitespace-stripped vehicleReg via JSONB ops so we
+  // catch "PN65 LBU" duplicating "PN65LBU". CRITICAL — only collapse
+  // INTO a STRICTLY OLDER row. Without this guard, two concurrent
+  // uploads whose OCR completes in reverse order would merge twice in
+  // opposite directions and leave the user with zero appeals. The
+  // older sibling's run is a no-op; the younger sibling's run is the
+  // one that does the merge.
+  const freshCreatedAt = new Date(fresh.createdAt);
+  const candidates = await db()
+    .select()
+    .from(schema.appeals)
+    .where(
+      and(
+        ne(schema.appeals.id, appealId),
+        eq(schema.appeals.status, "draft"),
+        ownerCondition,
+        sql`${schema.appeals.ticket}->>'pcnRef' = ${pcnRef}`,
+        sql`REPLACE(COALESCE(${schema.appeals.ticket}->>'vehicleReg', ''), ' ', '') = ${vehicleReg}`,
+        lt(schema.appeals.createdAt, freshCreatedAt),
+      ),
+    )
+    .orderBy(asc(schema.appeals.createdAt))
+    .limit(1);
+
+  const older = candidates[0];
+  if (!older) return null;
+
+  // Merge: older's ticket wins for fields it already has; the fresh
+  // OCR fills in anything still empty (council_id pass may have stamped
+  // issuer on `fresh` but not `older` if older predates the v0.3.6
+  // two-pass OCR rollout).
+  //
+  // The "empty" check treats 0 as empty because amountPence is the
+  // only numeric field today and 0 means "unknown" by convention.
+  // FUTURE NOTE: if another numeric field is added where 0 is a real
+  // observed value (e.g. wardenObservationSeconds, daysOverdue), this
+  // gate will silently clobber that 0. Carry an explicit per-field
+  // allowlist when that happens — same caveat applies to the
+  // persistPortalLookup backfill below.
+  const olderTicket = (older.ticket ?? {}) as Record<string, unknown>;
+  const freshTicket = (fresh.ticket ?? {}) as Record<string, unknown>;
+  const mergedTicket: Record<string, unknown> = { ...olderTicket };
+  for (const [k, v] of Object.entries(freshTicket)) {
+    if (v === undefined || v === null) continue;
+    const current = mergedTicket[k];
+    const isEmpty =
+      current === undefined ||
+      current === null ||
+      current === "" ||
+      (typeof current === "number" && current === 0);
+    if (isEmpty) mergedTicket[k] = v;
+  }
+
+  // Hoist councilSlug to the top-level FK column if the merged ticket
+  // has one and the older row was missing it. Pass-1 of /api/extract
+  // stamped it on the duplicate but the merge above only writes the
+  // jsonb — without this the FK column stays null and downstream code
+  // (deriveCardState, payment URL, council picker) acts as if no
+  // council is set.
+  const mergedSlug = (mergedTicket as { councilSlug?: string }).councilSlug;
+  let resolvedCouncilSlug: string | null = older.councilSlug ?? null;
+  if (!resolvedCouncilSlug && mergedSlug && /^[a-z0-9-]+$/.test(mergedSlug)) {
+    const matches = await db()
+      .select({ slug: schema.councils.slug })
+      .from(schema.councils)
+      .where(eq(schema.councils.slug, mergedSlug));
+    if (matches[0]) resolvedCouncilSlug = matches[0].slug;
+  }
+
+  // Atomic merge: explicitly clear the FK-less / no-cascade child
+  // rows on the DUPLICATE row, then UPDATE older and DELETE duplicate
+  // in one transaction. The docstring at the top of this function used
+  // to claim FK cascades for everything; in reality:
+  //   - `jobs.appeal_id` has NO FK at all (just a btree index) — orphan
+  //     rows would survive and the worker would pick them up and burn
+  //     retries on a missing appeal.
+  //   - `payments.appeal_id` has `ON DELETE no action` — the DELETE
+  //     below would throw an FK violation and the extract route's
+  //     try/catch would swallow it, leaving the older row already
+  //     mutated and the duplicate still alive.
+  //   - `notification_dispatches.appeal_id` is `ON DELETE SET NULL` —
+  //     correct but we still clear inside the txn so an admin querying
+  //     by appealId after the merge sees the right state.
+  // Wrapping in db().transaction makes the UPDATE + cleanup + DELETE
+  // either all succeed or all roll back.
+  await db().transaction(async (tx) => {
+    await tx
+      .update(schema.appeals)
+      .set({
+        // Prefer the older photo (the user's first capture) but fall
+        // back to the duplicate's photo when the older row never got
+        // one.
+        pcnImageUrl: older.pcnImageUrl ?? fresh.pcnImageUrl ?? null,
+        ticket: mergedTicket as AppealView["ticket"],
+        councilSlug: resolvedCouncilSlug,
+        // Bump updatedAt so the reconciliation poll picks the merged
+        // row up on its next tick and the client's local list state
+        // refreshes.
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.appeals.id, older.id));
+
+    // Sweep child rows that don't cascade so the appeal DELETE below
+    // never trips an FK and the worker never sees an orphaned job.
+    await tx.delete(schema.jobs).where(eq(schema.jobs.appealId, appealId));
+    await tx
+      .delete(schema.payments)
+      .where(eq(schema.payments.appealId, appealId));
+    await tx
+      .delete(schema.notificationDispatches)
+      .where(eq(schema.notificationDispatches.appealId, appealId));
+
+    await tx.delete(schema.appeals).where(eq(schema.appeals.id, appealId));
+  });
+
+  return { mergedInto: older.id };
 }
 
 /**
@@ -523,23 +818,64 @@ export async function persistPortalLookup(input: {
   appealId: string;
   snapshot: PortalLookupSnapshot;
 }): Promise<AppealRecord | null> {
+  // v0.3.7 — read existing FIRST so we can both backfill the ticket
+  // AND preserve `status: "overridden"`. The override is a customer-
+  // initiated gesture (tapping "I disagree — let me appeal anyway" on
+  // the appeal_not_possible card); the agent's final end-of-job
+  // persist must not undo it. Without this guard, if the user
+  // overrides the verdict while the lookup job is still capturing
+  // warden photos, the trailing wholesale-replace at worker.ts:265
+  // clobbers status="overridden" back to "invalid", refreshes the
+  // card back to appeal_not_possible, and the draft-kickoff effect
+  // refuses to fire (verdict=paid/closed/not_found AND status!==
+  // overridden). Customer is stuck on the verdict-refusal screen
+  // with no signal.
+  const existing = await getAppealById(input.appealId);
+  // Normalise portal-scraped date strings to ISO BEFORE anything reads
+  // them downstream — the recipe / Claude MCP path emits dd/mm/yyyy
+  // because that's how Imperial / Civica portals render dates, and JS
+  // Date can't parse them. We collapse to ISO at this single write
+  // boundary so every reader sees a parseable timestamp.
+  const normalisedIncoming = normalisePortalSnapshotDates(input.snapshot);
+  const snapshot: PortalLookupSnapshot =
+    existing?.portalLookup?.status === "overridden"
+      ? { ...normalisedIncoming, status: "overridden" }
+      : normalisedIncoming;
   const updates: Partial<typeof schema.appeals.$inferInsert> = {
-    portalLookup: input.snapshot,
+    portalLookup: snapshot,
     updatedAt: new Date(),
   };
-  // Merge portal-confirmed fields onto the existing OCR'd ticket — the
-  // portal is more authoritative than OCR. We only patch fields the portal
-  // actually returned; missing fields stay as the OCR guess.
-  if (input.snapshot.metadata) {
-    const existing = await getAppealById(input.appealId);
-    const merged = {
-      ...(existing?.ticket ?? {}),
-      ...Object.fromEntries(
-        Object.entries(input.snapshot.metadata).filter(
-          ([, v]) => v !== undefined && v !== null,
-        ),
-      ),
-    };
+  // v0.3.6 — BACKFILL only, never overwrite. Before this change the
+  // merge let council metadata win over the user/OCR'd ticket value,
+  // which silently rewrote what the user typed (e.g. user types £160
+  // at the Agree gate, council says £80, ticket.amountPence flips to
+  // 8000). That made the council-vs-user discrepancy detector
+  // (`getTicketDiscrepancies`) a no-op because by the time it ran
+  // ticket and metadata were the same value.
+  //
+  // New semantics: the council's record stays in
+  // `portalLookup.metadata` (authoritative for display via
+  // `resolveDisplayTicket`); the ticket jsonb keeps what the user
+  // actually captured. The two are compared field-by-field to surface
+  // mismatches in the CouncilCheckChip. We still backfill metadata
+  // into ticket fields the user left empty (OCR couldn't read them /
+  // user didn't type them), but a non-empty user value is never
+  // overwritten.
+  if (normalisedIncoming.metadata) {
+    // existing was already read above for the overridden-status preservation.
+    // Backfill from the normalised metadata so dates land on `ticket` as
+    // ISO too — keeps display formatters honest.
+    const merged: Record<string, unknown> = { ...(existing?.ticket ?? {}) };
+    for (const [k, v] of Object.entries(normalisedIncoming.metadata)) {
+      if (v === undefined || v === null) continue;
+      const current = merged[k];
+      const isEmpty =
+        current === undefined ||
+        current === null ||
+        current === "" ||
+        (typeof current === "number" && current === 0);
+      if (isEmpty) merged[k] = v;
+    }
     updates.ticket = merged as AppealView["ticket"];
   }
   await db()

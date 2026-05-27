@@ -18,7 +18,7 @@ const MAX_BYTES = 8 * 1024 * 1024; // 8MB ceiling per photo
  *   3. Enter PCN     — goes to the manual /app/notes?from=manual route
  *
  * Photos are read into data URLs and stashed in `sessionStorage` under
- * `snappeal.pcnPhoto` so the next step (/app/notes) can pick them up.
+ * `parkingrabbit.pcnPhoto` so the next step (/app/notes) can pick them up.
  * Real backend integration replaces this with Vercel Blob signed-URL
  * uploads in v0.2.
  */
@@ -53,7 +53,7 @@ export function CaptureMethods() {
           reject(reader.error ?? new Error("Couldn't read that file"));
         reader.readAsDataURL(file);
       });
-      window.sessionStorage.setItem("snappeal.pcnPhoto", dataUrl);
+      window.sessionStorage.setItem("parkingrabbit.pcnPhoto", dataUrl);
       router.push(`/app/notes?from=${source}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -69,7 +69,7 @@ export function CaptureMethods() {
           type="button"
           onClick={() => cameraInputRef.current?.click()}
           disabled={reading !== null}
-          className="rounded-2xl border bg-snappeal-primary border-snappeal-primary text-white hover:bg-snappeal-primary-600 shadow-lg shadow-snappeal-primary/30 p-3 flex flex-col items-center gap-1.5 text-center transition disabled:opacity-60"
+          className="rounded-2xl border bg-parkingrabbit-primary border-parkingrabbit-primary text-white hover:bg-parkingrabbit-primary-600 shadow-lg shadow-parkingrabbit-primary/30 p-3 flex flex-col items-center gap-1.5 text-center transition disabled:opacity-60"
         >
           <span className="size-10 rounded-xl bg-white/20 text-white flex items-center justify-center">
             {reading === "camera" ? (
@@ -88,19 +88,19 @@ export function CaptureMethods() {
           type="button"
           onClick={() => libraryInputRef.current?.click()}
           disabled={reading !== null}
-          className="rounded-2xl border bg-white border-snappeal-border hover:border-snappeal-primary p-3 flex flex-col items-center gap-1.5 text-center transition disabled:opacity-60"
+          className="rounded-2xl border bg-white border-parkingrabbit-border hover:border-parkingrabbit-primary p-3 flex flex-col items-center gap-1.5 text-center transition disabled:opacity-60"
         >
-          <span className="size-10 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center">
+          <span className="size-10 rounded-xl bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center">
             {reading === "library" ? (
               <Loader2 className="size-5 animate-spin" />
             ) : (
               <ImageIcon className="size-5" />
             )}
           </span>
-          <p className="text-[12px] font-bold text-snappeal-navy leading-tight">
+          <p className="text-[12px] font-bold text-parkingrabbit-navy leading-tight">
             Upload Photos
           </p>
-          <p className="text-[10px] text-snappeal-muted leading-tight">
+          <p className="text-[10px] text-parkingrabbit-muted leading-tight">
             From library
           </p>
         </button>
@@ -109,15 +109,15 @@ export function CaptureMethods() {
           type="button"
           onClick={() => router.push("/app/notes?from=manual")}
           disabled={reading !== null}
-          className="rounded-2xl border bg-white border-snappeal-border hover:border-snappeal-primary p-3 flex flex-col items-center gap-1.5 text-center transition disabled:opacity-60"
+          className="rounded-2xl border bg-white border-parkingrabbit-border hover:border-parkingrabbit-primary p-3 flex flex-col items-center gap-1.5 text-center transition disabled:opacity-60"
         >
-          <span className="size-10 rounded-xl bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center">
+          <span className="size-10 rounded-xl bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center">
             <Keyboard className="size-5" />
           </span>
-          <p className="text-[12px] font-bold text-snappeal-navy leading-tight">
+          <p className="text-[12px] font-bold text-parkingrabbit-navy leading-tight">
             Enter PCN
           </p>
-          <p className="text-[10px] text-snappeal-muted leading-tight">
+          <p className="text-[10px] text-parkingrabbit-muted leading-tight">
             Type it in
           </p>
         </button>
@@ -166,7 +166,7 @@ export function HeroCameraTrigger() {
         );
         input?.click();
       }}
-      className="rounded-full bg-snappeal-primary px-4 py-2 text-xs font-semibold mt-1 inline-flex items-center gap-1.5 shadow-lg shadow-black/30 text-white hover:bg-snappeal-primary-600 transition"
+      className="rounded-full bg-parkingrabbit-primary px-4 py-2 text-xs font-semibold mt-1 inline-flex items-center gap-1.5 shadow-lg shadow-black/30 text-white hover:bg-parkingrabbit-primary-600 transition"
     >
       <Camera className="size-3.5" /> Open camera
     </button>

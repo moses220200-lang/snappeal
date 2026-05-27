@@ -1,4 +1,4 @@
-# Snappeal knowledge base
+# ParkingRabbit knowledge base
 
 This folder is the corpus the AI drafter draws on when writing a
 representation letter. Every file is markdown with YAML frontmatter

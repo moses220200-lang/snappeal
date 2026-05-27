@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, SearchX } from "lucide-react";
-import { SnappealMark } from "@/components/Logo";
+import { ParkingRabbitMark } from "@/components/Logo";
 
 /**
  * Global 404. Catches any route that doesn't exist OR any explicit
@@ -9,18 +9,18 @@ import { SnappealMark } from "@/components/Logo";
  */
 export default function NotFound() {
   return (
-    <main className="min-h-screen bg-snappeal-bg flex flex-col items-center justify-center px-6 py-20 text-snappeal-navy">
+    <main className="min-h-screen bg-parkingrabbit-bg flex flex-col items-center justify-center px-6 py-20 text-parkingrabbit-navy">
       <div className="w-full max-w-md flex flex-col items-center text-center gap-5">
         <div className="flex items-center gap-2.5">
-          <SnappealMark size={32} variant="dark" />
+          <ParkingRabbitMark size={32} variant="dark" />
           <span className="text-lg font-bold tracking-tight">ParkingRabbit</span>
         </div>
-        <div className="size-14 rounded-full bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center">
+        <div className="size-14 rounded-full bg-parkingrabbit-primary-50 text-parkingrabbit-primary flex items-center justify-center">
           <SearchX className="size-7" strokeWidth={1.75} />
         </div>
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-bold tracking-tight">Page not found</h1>
-          <p className="text-sm text-snappeal-muted leading-relaxed max-w-sm">
+          <p className="text-sm text-parkingrabbit-muted leading-relaxed max-w-sm">
             The link you followed might be out of date, or the page may have moved.
             Your tickets are still safe — head back to your list.
           </p>
@@ -28,14 +28,14 @@ export default function NotFound() {
         <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
           <Link
             href="/app"
-            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl bg-snappeal-navy text-white font-semibold text-sm px-5 py-3"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl bg-parkingrabbit-navy text-white font-semibold text-sm px-5 py-3"
           >
             Open the app
             <ArrowRight className="size-4" strokeWidth={2.25} />
           </Link>
           <Link
             href="/"
-            className="flex-1 inline-flex items-center justify-center rounded-2xl bg-white border border-snappeal-border text-snappeal-navy font-semibold text-sm px-5 py-3 hover:border-snappeal-primary transition"
+            className="flex-1 inline-flex items-center justify-center rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy font-semibold text-sm px-5 py-3 hover:border-parkingrabbit-primary transition"
           >
             Home page
           </Link>

@@ -41,15 +41,20 @@ import {
   setEvidencePhotos,
   type OcrHandoff,
 } from "@/lib/client/session";
+import { getTicketDiscrepancies } from "@/lib/ticketDisplay";
 import { ReviewRecommendation } from "@/components/ReviewRecommendation";
+import { ValidatingCardBody } from "@/components/ValidatingCardBody";
 import type { AppealRecord } from "@/lib/server/appeals";
-import type { CardState } from "@/lib/deriveCardState";
+import { EVIDENCE_DONE_STEP, type CardState } from "@/lib/deriveCardState";
 import type { TicketStatusSnapshot } from "@/lib/server/connectors/types";
+import type { PortalLookupSnapshot } from "@/lib/server/db/schema";
 
 interface CouncilOption {
   slug: string;
   name: string;
+  automationStatus?: "manual" | "automated_beta" | "automated_ga";
   appealPortalUrl?: string | null;
+  paymentPortalUrl?: string | null;
   logoUrl?: string | null;
   logoBg?: string | null;
 }
@@ -66,17 +71,26 @@ interface Props {
   statusSnapshot: TicketStatusSnapshot | null;
   /** Kicks off paid Appeal: PATCH preferredMethod=portal, starts drafting. */
   onStartAppeal: () => void;
+  /** v0.3.6 — fired from PendingReviewCard's "Agree & continue" button.
+   *  Parent PATCHes step=TICKET_CONFIRMED_STEP so the card flips into
+   *  needs_decision and the Pay/Appeal tiles render. */
+  onAgreeTicket: () => void;
+  /** v0.3.6 — fired from ReviewRecommendation's "Edit details" link.
+   *  Parent PATCHes step back to "photos" so the card returns to
+   *  pending_review with the editable fields visible. */
+  onEditTicket: () => void;
   /** Opens the £2.99 PaymentSheet. */
   onOpenPaymentSheet: () => void;
   /** Lookup override — only relevant in `terminal` flavored as invalid-verdict. */
   onOverrideLookup?: () => void;
-  /** v0.2.14 — fired when the user taps "I agree to T&Cs" in the
-   *  pending_review state. The card POSTs /api/appeals/[id]/lookup. */
-  onConfirmTicket?: () => void;
   /** Fired when the user finishes the grounds quiz + dictation in the
    *  gathering_evidence state. The card PATCHes grounds + notes + step
    *  sentinel atomically then triggers /api/generate-stream. */
   onConfirmEvidence?: (input: { grounds: string[]; notes: string }) => void;
+  /** v0.3.6 — fired from the drafting-failed row's "Try again" button.
+   *  Parent PATCHes step back to EVIDENCE_DONE_STEP and clears the
+   *  draft-kickoff guard so /api/generate-stream re-fires. */
+  onRetryDraft?: () => void;
   /** Re-scores the appeal with the latest evidence photos (no redraft).
    *  Surfaced inside PaidSubmitCta when the strength scorer flagged the
    *  draft as weak — adding evidence updates the score in place. */
@@ -98,6 +112,11 @@ interface Props {
   pcnImage?: string | null;
   /** Pending-review OCR confidence + photo-coach handoff. */
   ocrHandoff?: OcrHandoff | null;
+  /** v0.3.6 — live MCP agent thought during the council lookup
+   *  (when pcn_lookup is queued/running). Surfaced inside the
+   *  CouncilCheckChip in the gathering_evidence body. NULL when the
+   *  lookup isn't running. */
+  liveCouncilThought?: string | null;
   /** Set while a method-pick or submit is in flight. */
   busy?: boolean;
 }
@@ -107,16 +126,20 @@ export function TicketCardBody({
   state,
   payUrl,
   councilName,
+  councils,
   statusSnapshot,
   onStartAppeal,
+  onAgreeTicket,
+  onEditTicket,
   onOpenPaymentSheet,
   onOverrideLookup,
-  onConfirmTicket,
   onConfirmEvidence,
+  onRetryDraft,
   onRescoreWithEvidence,
   onEditTicketField,
   pcnImage,
   ocrHandoff,
+  liveCouncilThought,
   busy,
 }: Props) {
   switch (state.kind) {
@@ -133,36 +156,80 @@ export function TicketCardBody({
         <PendingReviewCard
           appeal={appeal}
           ocrHandoff={ocrHandoff ?? null}
-          onConfirm={onConfirmTicket ?? (() => {})}
+          onAgree={onAgreeTicket}
           onEditField={onEditTicketField}
           busy={busy}
         />
       );
     case "scanning":
-    case "validating":
       return (
         <InlineStatusRow
           icon={ShieldCheck}
-          title="Validating with the council"
+          title="Reading your ticket"
           body={
-            state.caption ??
-            "Reading the council portal to confirm what's on record."
+            state.caption ?? "We're scanning the photo — just a few seconds."
           }
           tone="info"
         />
       );
-    case "drafting":
+    case "validating": {
+      // Resolve council branding from the cached councils list so the
+      // hero matches the issuer the user just saw on the OCR step.
+      // Falls back to the OCR-extracted issuer name when the list
+      // hasn't loaded yet (rare — the fetch is fire-and-forget).
+      const matched = councils?.find((c) => c.slug === appeal.councilSlug) ?? null;
       return (
-        <InlineStatusRow
-          icon={Sparkles}
-          title="Drafting your appeal"
-          body={
-            state.caption ??
-            "ParkingRabbit AI is writing your appeal letter — usually 20–30 seconds."
-          }
-          tone="info"
+        <ValidatingCardBody
+          councilName={matched?.name ?? councilName ?? appeal.ticket?.issuer ?? null}
+          councilLogoUrl={matched?.logoUrl ?? null}
+          councilLogoBg={matched?.logoBg ?? null}
+          liveThought={liveCouncilThought ?? null}
+          liveStep={state.caption ?? null}
+          onProceedWithoutValidation={undefined}
+          busy={busy}
         />
       );
+    }
+    case "drafting": {
+      // v0.3.6 — drafting renders THREE possible surfaces:
+      //   1. CouncilConfirmedDetails — full structured listing of the
+      //      council-confirmed metadata.
+      //   2. Status row — live state (waiting on lookup / Claude streaming /
+      //      failed with the actual error + a Retry button).
+      const waitingOnLookup =
+        appeal.step === EVIDENCE_DONE_STEP &&
+        appeal.portalLookup?.status === "pending";
+      const failed = appeal.step === "generation_failed";
+      const draftError = appeal.processing?.draft?.error ?? null;
+      return (
+        <div className="flex flex-col gap-3">
+          <CouncilConfirmedDetails appeal={appeal} />
+          {failed ? (
+            <DraftingFailedRow
+              errorMessage={draftError}
+              onRetry={onRetryDraft ?? (() => {})}
+              busy={busy}
+            />
+          ) : (
+            <InlineStatusRow
+              icon={Sparkles}
+              title={
+                waitingOnLookup
+                  ? "Waiting for council confirmation"
+                  : "Drafting your appeal"
+              }
+              body={
+                waitingOnLookup
+                  ? "Rabbit is finishing the council check before drafting your appeal — usually a few more seconds."
+                  : state.caption ??
+                    "ParkingRabbit AI is writing your appeal letter — usually 20–30 seconds."
+              }
+              tone="info"
+            />
+          )}
+        </div>
+      );
+    }
     case "submitting":
       return (
         <InlineStatusRow
@@ -181,6 +248,7 @@ export function TicketCardBody({
           appeal={appeal}
           busy={busy}
           onConfirm={onConfirmEvidence ?? (() => {})}
+          liveCouncilThought={liveCouncilThought ?? null}
         />
       );
     case "letter_ready":
@@ -225,6 +293,7 @@ export function TicketCardBody({
       return (
         <ReviewRecommendation
           onStartAppeal={onStartAppeal}
+          onEditTicket={onEditTicket}
           payUrl={payUrl}
           councilName={councilName}
           canAppeal={state.canAppeal && !!appeal.councilSlug}
@@ -235,14 +304,30 @@ export function TicketCardBody({
     case "info_needed":
       // Same surface as pending_review — the user fills in the missing
       // fields inline; the only difference is the lifecycle step shows
-      // a failed badge instead of an active loader.
+      // a failed badge instead of an active loader. Agree button is
+      // gated by fieldsFilled inside PendingReviewCard, so it won't
+      // fire until the missing fields are in.
       return (
         <PendingReviewCard
           appeal={appeal}
           ocrHandoff={ocrHandoff ?? null}
-          onConfirm={onConfirmTicket ?? (() => {})}
+          onAgree={onAgreeTicket}
           onEditField={onEditTicketField}
           busy={busy}
+        />
+      );
+    case "appeal_not_possible":
+      // v0.3.5 — the lazy lookup came back with a verdict the submit
+      // gate would refuse (paid / closed / not_found). Show the
+      // explainer, offer Pay yourself, and surface the override link
+      // for the rare case where the user disagrees with the council's
+      // record and wants to draft anyway.
+      return (
+        <AppealNotPossibleCard
+          appeal={appeal}
+          state={state}
+          payUrl={payUrl}
+          onOverrideLookup={onOverrideLookup}
         />
       );
     case "image_issue":
@@ -254,6 +339,114 @@ export function TicketCardBody({
       // The body has nothing to add here.
       return null;
   }
+}
+
+/* ──────────── appeal_not_possible (v0.3.5) ────────────
+ *
+ * Fires when the user picked Appeal, the lazy council lookup ran in
+ * parallel with the Build-appeal conversation, and the verdict came
+ * back as paid / closed / not_found. We must NOT draft a letter that
+ * /api/submit would refuse — but the user has invested time picking
+ * grounds, so we surface a calm explainer with three exits:
+ *
+ *   1. Pay yourself — if the verdict says "already paid", this is a
+ *      no-op deep-link; if the verdict says "open but closed", it
+ *      still goes to the council payment page in case the user wants
+ *      to settle.
+ *   2. Mark this resolved — soft close on the appeal row (handled by
+ *      whatever cancellation flow the user follows elsewhere; not in
+ *      scope here).
+ *   3. I disagree — let me appeal anyway — fires onOverrideLookup,
+ *      which sets portalLookup.status = "overridden". The
+ *      appeal_not_possible branch in deriveCardState then falls
+ *      through to gathering_evidence / drafting and the letter is
+ *      generated.
+ */
+function AppealNotPossibleCard({
+  appeal,
+  state,
+  payUrl,
+  onOverrideLookup,
+}: {
+  appeal: AppealRecord;
+  state: CardState;
+  payUrl: string | null;
+  onOverrideLookup?: () => void;
+}) {
+  const verdict = appeal.portalLookup?.verdict;
+  const tone: "positive" | "warn" =
+    verdict === "paid" ? "positive" : "warn";
+  return (
+    <section
+      className={`rounded-2xl border p-4 flex flex-col gap-3 ${
+        tone === "positive"
+          ? "bg-green-50 border-green-200"
+          : "bg-amber-50 border-amber-200"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${
+            tone === "positive"
+              ? "bg-green-600 text-white"
+              : "bg-amber-600 text-white"
+          }`}
+        >
+          {tone === "positive" ? (
+            <CheckCircle2 className="size-5" strokeWidth={2} />
+          ) : (
+            <AlertOctagon className="size-5" strokeWidth={2} />
+          )}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p
+            className={`text-sm font-bold ${
+              tone === "positive" ? "text-green-900" : "text-amber-900"
+            }`}
+          >
+            {state.pillLabel}
+          </p>
+          <p
+            className={`text-[12px] mt-0.5 leading-snug ${
+              tone === "positive" ? "text-green-800/80" : "text-amber-800/85"
+            }`}
+          >
+            {state.caption ??
+              "The council's record means an appeal can't be filed for this PCN."}
+            {appeal.portalLookup?.verdictReason && (
+              <>
+                {" "}
+                <span className="opacity-80">
+                  ({appeal.portalLookup.verdictReason})
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {verdict !== "paid" && payUrl && (
+        <a
+          href={payUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-xl bg-parkingrabbit-primary text-white font-bold text-[13px] py-2.5 px-3 hover:bg-parkingrabbit-primary-600 transition flex items-center justify-center gap-2 active:scale-[0.99]"
+        >
+          Open council payment page
+        </a>
+      )}
+
+      {onOverrideLookup && (
+        <button
+          type="button"
+          onClick={onOverrideLookup}
+          className="self-start text-[11.5px] text-parkingrabbit-primary font-semibold hover:underline underline-offset-2"
+        >
+          I disagree — let me appeal anyway →
+        </button>
+      )}
+    </section>
+  );
 }
 
 /* ──────────── processing (v0.2.15) ────────────
@@ -292,17 +485,17 @@ function ProcessingCard({
   const ocrError = ocr?.error ?? null;
 
   return (
-    <section className="rounded-3xl bg-white border border-snappeal-border p-5 flex flex-col gap-4">
+    <section className="rounded-3xl bg-white border border-parkingrabbit-border p-5 flex flex-col gap-4">
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-snappeal-primary">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-parkingrabbit-primary">
           {state.pillLabel === "Needs review" ? "Couldn't read photo" : "Setting up your ticket"}
         </p>
-        <p className="text-[15px] font-bold text-snappeal-navy mt-1 leading-tight">
+        <p className="text-[15px] font-bold text-parkingrabbit-navy mt-1 leading-tight">
           {state.pillLabel === "Needs review"
             ? "We hit a snag reading your PCN."
             : "Hold tight — Rabbit is reading your PCN now."}
         </p>
-        <p className="text-[12px] text-snappeal-muted mt-1 leading-snug">
+        <p className="text-[12px] text-parkingrabbit-muted mt-1 leading-snug">
           You&apos;ll get a notification as soon as scanning&apos;s done.
           Feel free to leave this page — your ticket keeps working in the
           background, and you can pop back any time to see progress.
@@ -313,7 +506,7 @@ function ProcessingCard({
        *  they sent in. Falls back to a placeholder if the photo isn't in
        *  this tab's sessionStorage (cross-device load). */}
       {pcnImage && (
-        <div className="rounded-2xl overflow-hidden border border-snappeal-border bg-snappeal-bg">
+        <div className="rounded-2xl overflow-hidden border border-parkingrabbit-border bg-parkingrabbit-bg">
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL or Blob URL */}
           <img
             src={pcnImage}
@@ -400,7 +593,7 @@ function ProcessingCard({
       {ocrStatus === "failed" && (
         <Link
           href="/app/capture"
-          className="self-start inline-flex items-center gap-1.5 rounded-2xl bg-snappeal-navy text-white font-semibold text-[13px] px-4 py-2.5 hover:bg-snappeal-navy/90 transition"
+          className="self-start inline-flex items-center gap-1.5 rounded-2xl bg-parkingrabbit-navy text-white font-semibold text-[13px] px-4 py-2.5 hover:bg-parkingrabbit-navy/90 transition"
         >
           <Camera className="size-4" strokeWidth={2.25} />
           Try again with a clearer photo
@@ -437,29 +630,29 @@ function ProcessingStepRow({
     : isDone
       ? "bg-green-50 text-green-700 border-green-200"
       : isPending
-        ? "bg-snappeal-bg text-snappeal-muted border-snappeal-border"
-        : "bg-snappeal-primary-50 text-snappeal-primary border-snappeal-primary/20";
+        ? "bg-parkingrabbit-bg text-parkingrabbit-muted border-parkingrabbit-border"
+        : "bg-parkingrabbit-primary-50 text-parkingrabbit-primary border-parkingrabbit-primary/20";
   return (
     <div className={`rounded-2xl border p-3.5 flex items-start gap-3 ${tone}`}>
       <span className="size-9 rounded-xl bg-white shrink-0 flex items-center justify-center">
         {isRunning ? (
-          <Loader2 className="size-4 animate-spin text-snappeal-primary" strokeWidth={2.25} />
+          <Loader2 className="size-4 animate-spin text-parkingrabbit-primary" strokeWidth={2.25} />
         ) : isFailed ? (
           <AlertTriangle className="size-4 text-red-700" strokeWidth={2.25} />
         ) : isDone ? (
           <CheckCircle2 className="size-4 text-green-700" strokeWidth={2.25} />
         ) : (
-          <Icon className="size-4 text-snappeal-muted" strokeWidth={2} />
+          <Icon className="size-4 text-parkingrabbit-muted" strokeWidth={2} />
         )}
       </span>
       <div className="flex-1 min-w-0">
-        <p className={`text-[13px] font-bold ${isPending ? "text-snappeal-muted" : "text-snappeal-navy"}`}>
+        <p className={`text-[13px] font-bold ${isPending ? "text-parkingrabbit-muted" : "text-parkingrabbit-navy"}`}>
           {title}
           {isRunning && (
-            <span className="text-snappeal-muted font-semibold">…</span>
+            <span className="text-parkingrabbit-muted font-semibold">…</span>
           )}
         </p>
-        <p className="text-[11.5px] mt-0.5 leading-snug text-snappeal-navy/70">
+        <p className="text-[11.5px] mt-0.5 leading-snug text-parkingrabbit-navy/70">
           {errorMessage ?? done ?? running ?? pendingMessage}
         </p>
       </div>
@@ -467,28 +660,38 @@ function ProcessingStepRow({
   );
 }
 
-/* ──────────── pending review (v0.2.14) ────────────
+/* ──────────── pending review (v0.3.6) ────────────
  *
- * After /app/capture uploads the photo and OCR succeeds, the user lands
- * directly on the smart card here. The card shows the photo at the top,
- * the OCR'd fields with confidence pills, the resolved council, and a
- * single "I agree to T&Cs" button. On submit we check whether both PCN
- * ref + vehicle reg came back HIGH confidence ("two greens") AND the
- * photo coach said quality === "good"; if not, we surface an inline
- * popup with "Try again" / "Use anyway" so the user is never surprised
- * by a poor-quality submission.
+ * After OCR completes, the user lands here. The card shows the OCR'd
+ * fields (PCN ref, vehicle reg, council picker) inline-editable so a
+ * misread can be corrected, plus the photo-coach hint when the photo
+ * was iffy. The user taps "Agree to continue" once everything looks
+ * right — that's the explicit confirmation gesture that the OCR was
+ * read correctly. Only AFTER Agree does the Pay/Appeal decision
+ * surface render (in needs_decision, via ReviewRecommendation).
+ *
+ * The Agree gesture is purely client→server PATCH of
+ * step=TICKET_CONFIRMED_STEP — no AI work, no MCP, no cost. The
+ * council lookup is still lazy and only fires when the user picks
+ * Appeal on the next surface (v0.3.5 lazy-lookup rule preserved).
+ *
+ * The "Edit details" link on the needs_decision surface PATCHes step
+ * back so the user can land here again to fix typos.
  */
 
 function PendingReviewCard({
   appeal,
   ocrHandoff,
-  onConfirm,
+  onAgree,
   onEditField,
   busy,
 }: {
   appeal: AppealRecord;
   ocrHandoff: OcrHandoff | null;
-  onConfirm: () => void;
+  /** Fired when the user taps "Agree to continue". Parent PATCHes
+   *  step=TICKET_CONFIRMED_STEP so the card flips into needs_decision
+   *  on the next derive pass. */
+  onAgree: () => void;
   /** v0.2.17 — debounced PATCH of a single ticket field. Numeric
    *  (amountPence) and date (issuedAt) values are forwarded as strings;
    *  the parent handler coerces / persists them appropriately. */
@@ -507,18 +710,38 @@ function PendingReviewCard({
   const ticket = appeal.ticket;
   const coach = ocrHandoff?.photoCoach ?? null;
   // Optimistic local state so typing feels instant even on a slow PATCH.
-  // Only the two fields the council lookup actually needs are editable
-  // here — PCN reference + registration. Amount and issue date are NOT
-  // shown/edited at this stage: the OCR'd figures are treated as a
-  // preview and the council's record is authoritative once verified, so
-  // surfacing an editable (and occasionally misread) amount here just
-  // invited mistrust.
+  // PCN reference + registration are always editable. v0.3.6 adds
+  // conditional Amount + Issue-date inputs: they ONLY appear when OCR
+  // couldn't read those fields (amountPence === 0 / issuedAt === "").
+  // When OCR did read them, the council's record is treated as
+  // authoritative post-lookup and we keep the inputs hidden to avoid
+  // inviting second-guessing.
   const [pcnRefLocal, setPcnRefLocal] = useState<string>(ticket?.pcnRef ?? "");
   const [vehicleRegLocal, setVehicleRegLocal] = useState<string>(
     ticket?.vehicleReg ?? "",
   );
+  // Amount: stored as pounds string (e.g. "160" or "160.50") for the
+  // text input. Converted to integer pence when forwarded via onEditField
+  // (the parent's editTicketField helper expects amountPence in pence).
+  const [amountLocal, setAmountLocal] = useState<string>(() =>
+    ticket?.amountPence ? String(ticket.amountPence / 100) : "",
+  );
+  // Issue date: stored as yyyy-MM-dd for the native date input.
+  // Server side stores an ISO string; we slice on render and pass back
+  // the date-only value (parent persists as-is).
+  const [issuedAtLocal, setIssuedAtLocal] = useState<string>(
+    ticket?.issuedAt ? ticket.issuedAt.slice(0, 10) : "",
+  );
   // Sync local state when the appeal row refreshes (e.g. from a
   // reconciliation poll). All setStates are external-sync (prop->state).
+  //
+  // NOTE: amountPence + issuedAt are INTENTIONALLY excluded from the dep
+  // array. Those fields go through a lossy round-trip (pounds string ↔
+  // integer pence; date string ↔ ISO timestamp) where every keystroke
+  // updates the parent and the parent update re-triggers this effect,
+  // overwriting in-progress typing — e.g. "1." collapses to "1" before
+  // the user can type the decimal. The text fields below (PCN + reg)
+  // are 1:1 strings so the round-trip is lossless and safe.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setPcnRefLocal(ticket?.pcnRef ?? "");
@@ -526,26 +749,50 @@ function PendingReviewCard({
   }, [ticket?.pcnRef, ticket?.vehicleReg]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // OCR-missing flags. The input must STAY MOUNTED while the user
+  // edits even after their first keystroke lifts amountPence above
+  // zero — earlier behaviour unmounted on the first character and
+  // looked like the field "ate" the input. But pure latch-on-mount
+  // is also wrong: if the council lookup later fills in the amount
+  // and the user never touched the field, the empty input should
+  // disappear because the data is now displayed elsewhere.
+  //
+  // Solution: render-time predicate that's true whenever EITHER (a)
+  // OCR is still empty, OR (b) the user has touched the field this
+  // session. Touched is tracked in refs so it never re-renders the
+  // tree — only the derived `needsAmount` value changes.
+  const amountTouchedRef = useRef(false);
+  const dateTouchedRef = useRef(false);
+  const needsAmount =
+    amountTouchedRef.current ||
+    !ticket?.amountPence ||
+    ticket.amountPence === 0;
+  const needsDate =
+    dateTouchedRef.current ||
+    !ticket?.issuedAt ||
+    ticket.issuedAt.trim().length === 0;
+
   // Inline-validate: PCN ref + vehicle reg + council are the minimum
-  // we need to fire the council lookup. Amount / date / location are
-  // helpful but can be filled by the portal check itself.
+  // we need to fire the council lookup. Plus: any field whose input
+  // we're showing here must also be filled before Agree is enabled.
   const councilSlug = appeal.councilSlug ?? appeal.ticket?.councilSlug ?? null;
+  const amountValid = !needsAmount || (() => {
+    const n = Number(amountLocal);
+    return Number.isFinite(n) && n > 0;
+  })();
+  const dateValid = !needsDate || issuedAtLocal.length > 0;
   const fieldsFilled =
     pcnRefLocal.trim().length > 0 &&
     vehicleRegLocal.trim().length > 0 &&
-    !!councilSlug;
-
-  const submit = () => {
-    if (busy) return;
-    if (!fieldsFilled) return;
-    onConfirm();
-  };
+    !!councilSlug &&
+    amountValid &&
+    dateValid;
 
   return (
-    // No outer rounded card wrapper, no duplicate "Confirm your
-    // ticket" header — the parent lifecycle step ("Confirm details" /
-    // "Check the details below.") already provides the section
-    // framing. Just the editable fields, stacked vertically full-width.
+    // No outer rounded card wrapper, no duplicate header — the parent
+    // lifecycle step provides the section framing. Editable fields
+    // stacked on top, then the three Pay/Appeal tiles, then a tiny
+    // T&Cs footer. One card, one decision.
     <section className="flex flex-col gap-2.5 relative">
       <EditableFieldRow
         label="PCN reference"
@@ -569,14 +816,54 @@ function PendingReviewCard({
         placeholder="AB12 CDE"
         autoCapitalize="characters"
       />
-      {/* Issuing council field lives on the council logo tile in the
-       *  ticket header — tapping the square logo opens the picker.
-       *  Amount + issue date are intentionally NOT editable here: the
-       *  council's record is authoritative once verified, so we don't
-       *  surface a (sometimes misread) amount for the user to second-
-       *  guess at this stage. */}
+      {/* v0.3.6 — Amount + Issue-date inputs ONLY appear when OCR
+       *  couldn't read them. Otherwise the OCR's figures are treated
+       *  as the preview value and the council's record is
+       *  authoritative once verified. The amount is entered in
+       *  pounds and converted to integer pence at the boundary
+       *  before forwarding to the parent (which stores amountPence). */}
+      {needsAmount && (
+        <EditableFieldRow
+          label="Amount"
+          value={amountLocal}
+          onChange={(v) => {
+            // Allow only digits + a single decimal point.
+            const cleaned = v.replace(/[^\d.]/g, "");
+            // Touched — `needsAmount` will stay true even if the
+            // council lookup later fills in amountPence; the input
+            // can't be yanked out from under the user mid-edit.
+            amountTouchedRef.current = true;
+            setAmountLocal(cleaned);
+            const n = Number(cleaned);
+            if (Number.isFinite(n) && n > 0) {
+              onEditField?.("amountPence", String(Math.round(n * 100)));
+            }
+          }}
+          placeholder="160"
+          prefix="£"
+          inputMode="decimal"
+        />
+      )}
+      {needsDate && (
+        <EditableFieldRow
+          label="Issue date"
+          value={issuedAtLocal}
+          onChange={(v) => {
+            dateTouchedRef.current = true;
+            setIssuedAtLocal(v);
+            if (v.length > 0) {
+              onEditField?.("issuedAt", v);
+            }
+          }}
+          type="date"
+        />
+      )}
+      {/* Issuing council lives on the council logo tile in the
+       *  ticket header — tapping the square logo opens the picker. */}
 
-      {/* Photo-coach hint (only when not "good") */}
+      {/* Photo-coach hint (only when not "good"). Surfaces above the
+       *  decision tiles so the user has a chance to scan again before
+       *  committing to either Pay or Appeal. */}
       {coach && coach.quality !== "good" && coach.advice && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2.5">
           <AlertTriangle
@@ -594,36 +881,39 @@ function PendingReviewCard({
         </div>
       )}
 
+      {/* v0.3.9 — Confirm & validate with council. The customer's
+       *  explicit eyeball on PCN ref + VRM before we burn MCP tokens
+       *  ($0.30/run) on a council-portal lookup. PATCHes
+       *  step=TICKET_CONFIRMED_STEP AND fires the pcn_lookup job;
+       *  card flips into the validating gate while the agent reads
+       *  the portal. Disabled until PCN ref + registration + council
+       *  are all set. */}
       <button
         type="button"
-        onClick={submit}
+        onClick={() => {
+          if (busy || !fieldsFilled) return;
+          onAgree();
+        }}
         disabled={busy || !fieldsFilled}
-        className="rounded-2xl bg-snappeal-primary text-white font-bold py-3.5 hover:bg-snappeal-primary-600 transition disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-primary/30 active:scale-[0.99]"
+        className="rounded-2xl bg-parkingrabbit-primary text-white font-bold py-3.5 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-primary/30 active:scale-[0.99]"
       >
         {busy ? (
           <>
             <Loader2 className="size-4 animate-spin" />
-            Starting validation…
+            Saving…
           </>
         ) : (
           <>
             <ShieldCheck className="size-4" strokeWidth={2.25} />
-            I agree and confirm details
+            Confirm &amp; validate with council
           </>
         )}
       </button>
 
-      <p className="text-[10.5px] text-snappeal-muted text-center leading-snug">
-        By tapping above you confirm these details and agree to our{" "}
-        <Link
-          href="/terms"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline underline-offset-2 hover:text-snappeal-navy"
-        >
-          Terms &amp; Conditions
-        </Link>
-        .
+      <p className="text-[10.5px] text-parkingrabbit-muted text-center leading-snug">
+        Tapping Confirm locks in the PCN reference and reg above so we can
+        check them against the council&apos;s portal. You only pay if you
+        choose Appeal.
       </p>
 
     </section>
@@ -671,12 +961,12 @@ function EditableFieldRow({
     : undefined;
   return (
     <label
-      className={`rounded-xl border border-snappeal-border flex flex-col gap-0.5 focus-within:border-snappeal-primary focus-within:ring-2 focus-within:ring-snappeal-primary/15 transition min-w-0 ${
+      className={`rounded-xl border border-parkingrabbit-border flex flex-col gap-0.5 focus-within:border-parkingrabbit-primary focus-within:ring-2 focus-within:ring-parkingrabbit-primary/15 transition min-w-0 ${
         tight ? "p-3 max-[380px]:p-2.5" : "p-3"
       }`}
     >
       <span
-        className="text-[11px] uppercase text-snappeal-muted whitespace-nowrap overflow-hidden text-ellipsis"
+        className="text-[11px] uppercase text-parkingrabbit-muted whitespace-nowrap overflow-hidden text-ellipsis"
         style={{ letterSpacing: "0.04em" }}
       >
         {label}
@@ -684,7 +974,7 @@ function EditableFieldRow({
       <div className="flex items-center gap-1.5 min-w-0">
         {prefix && (
           <span
-            className={`font-bold text-snappeal-navy shrink-0 ${
+            className={`font-bold text-parkingrabbit-navy shrink-0 ${
               tight ? "text-[16px]" : "text-[14px]"
             }`}
           >
@@ -700,7 +990,7 @@ function EditableFieldRow({
           autoCapitalize={autoCapitalize ?? "off"}
           spellCheck={false}
           style={valueStyle}
-          className={`flex-1 min-w-0 bg-transparent font-bold text-snappeal-navy focus:outline-none placeholder:text-snappeal-muted/60 overflow-hidden text-ellipsis whitespace-nowrap ${
+          className={`flex-1 min-w-0 bg-transparent font-bold text-parkingrabbit-navy focus:outline-none placeholder:text-parkingrabbit-muted/60 overflow-hidden text-ellipsis whitespace-nowrap ${
             tight ? "" : "text-[14px]"
           }`}
         />
@@ -724,24 +1014,24 @@ function InlineStatusRow({
 }) {
   const palette =
     tone === "info"
-      ? "bg-snappeal-primary-50 text-snappeal-primary"
+      ? "bg-parkingrabbit-primary-50 text-parkingrabbit-primary"
       : tone === "warn"
         ? "bg-amber-50 text-amber-700"
         : "bg-green-50 text-green-700";
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-start gap-3">
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border p-4 flex items-start gap-3">
       <span className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${palette}`}>
         <span className="relative">
           <Icon className="size-5" strokeWidth={2} />
           <Loader2
-            className="size-3 animate-spin absolute -top-1 -right-1.5 text-snappeal-primary"
+            className="size-3 animate-spin absolute -top-1 -right-1.5 text-parkingrabbit-primary"
             strokeWidth={2.5}
           />
         </span>
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-snappeal-navy">{title}</p>
-        <p className="text-[11.5px] text-snappeal-muted mt-1 leading-snug">{body}</p>
+        <p className="text-sm font-bold text-parkingrabbit-navy">{title}</p>
+        <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug">{body}</p>
       </div>
     </section>
   );
@@ -960,14 +1250,265 @@ const COMMON_REASONS: CommonReason[] = [
 const MAX_EVIDENCE = 6;
 const MAX_NOTES = 2000;
 
+/** Council-check ambient status chip (v0.3.6). Single surface that
+ *  narrates the lazy lookup AND, when verified, surfaces any fields
+ *  the council's record changed vs. what the user/OCR had.
+ *
+ *    - pending: muted blue pill, spinning dot, "Checking with the
+ *      council in the background…" (chip stays compact).
+ *    - verified + no diffs: green pill, "Council confirmed".
+ *    - verified + diffs: grows into a green CARD listing each field
+ *      the council overrode (Amount: £160 → £130, etc.).
+ *    - overridden / skipped: green pill, "Council confirmed".
+ *    - error: amber pill, "Couldn't reach the council — we'll try
+ *      again before submitting."
+ *    - null / no lookup yet: nothing rendered.
+ *
+ *  Invalid verdicts (paid/closed/not_found) never render here — the
+ *  appeal_not_possible CardKind takes over the surface upstream. */
+function CouncilCheckChip({
+  status,
+  discrepancies = [],
+  liveThought = null,
+}: {
+  status: PortalLookupSnapshot["status"] | null;
+  /** v0.3.6 — when the chip is in `verified` state and these are
+   *  non-empty, the chip expands into a small card listing the
+   *  field-level diffs (old → new). Comes from
+   *  `getTicketDiscrepancies(appeal)` upstream. */
+  discrepancies?: Array<{
+    field: string;
+    label: string;
+    userValue: string;
+    councilValue: string;
+  }>;
+  /** v0.3.6 — live MCP agent thought during the lookup (e.g. "Filling
+   *  in PCN ref", "Navigating to the ticket-details page"). When
+   *  present AND status is "pending", the chip prints this instead of
+   *  the generic "Checking with the council…" placeholder so the user
+   *  can see what the agent is actually doing. NULL between thoughts. */
+  liveThought?: string | null;
+}) {
+  if (!status) return null;
+  if (status === "pending") {
+    const thought = liveThought?.trim();
+    return (
+      <div className="inline-flex items-start gap-2 self-start rounded-2xl bg-parkingrabbit-primary-50 border border-parkingrabbit-primary/20 px-3 py-1.5 text-[11.5px] font-semibold text-parkingrabbit-primary max-w-full">
+        <span className="relative size-2 shrink-0 mt-1.5">
+          <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary animate-ping opacity-75" />
+          <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary" />
+        </span>
+        <span className="leading-snug">
+          {thought ? thought : "Checking with the council in the background…"}
+        </span>
+      </div>
+    );
+  }
+  if (
+    status === "verified" ||
+    status === "overridden" ||
+    status === "skipped"
+  ) {
+    const hasDiffs = status === "verified" && discrepancies.length > 0;
+    if (!hasDiffs) {
+      return (
+        <div className="inline-flex items-center gap-2 self-start rounded-full bg-green-50 border border-green-200 px-3 py-1.5 text-[11.5px] font-semibold text-green-800">
+          <CheckCircle2 className="size-3.5" strokeWidth={2.5} />
+          Council confirmed
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-2xl bg-green-50 border border-green-200 p-3 flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <CheckCircle2
+            className="size-3.5 text-green-700 shrink-0"
+            strokeWidth={2.5}
+          />
+          <p className="text-[11.5px] font-bold text-green-900">
+            Council confirmed — updated{" "}
+            {discrepancies.length === 1
+              ? "1 detail"
+              : `${discrepancies.length} details`}
+          </p>
+        </div>
+        <ul className="flex flex-col gap-1 text-[11px] text-green-900/85 leading-snug pl-5">
+          {discrepancies.map((d) => (
+            <li key={d.field} className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="font-semibold text-green-900">{d.label}:</span>
+              <span className="line-through text-green-900/55">
+                {d.userValue}
+              </span>
+              <span aria-hidden>→</span>
+              <span className="font-semibold">{d.councilValue}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  if (status === "error") {
+    return (
+      <div className="inline-flex items-center gap-2 self-start rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-[11.5px] font-semibold text-amber-900">
+        <AlertTriangle className="size-3.5" strokeWidth={2.5} />
+        Couldn&apos;t reach the council — we&apos;ll try again before submitting.
+      </div>
+    );
+  }
+  // "invalid" — appeal_not_possible upstream handles this; nothing
+  // sensible to show here.
+  return null;
+}
+
+/** v0.3.6 — "Council confirms" details block. Rendered during the
+ *  drafting state so the user can read exactly what record the AI is
+ *  drafting against. Lists every field the council's portal returned
+ *  in a clean key/value grid:
+ *    PCN Ref, Vehicle Reg, Contravention Code, Location, Issued At,
+ *    Amount, Discount Until, Full Charge From.
+ *  Hidden when there's no verified lookup (e.g. lookup errored or was
+ *  overridden — the user knows there's no council confirmation to show).
+ */
+function CouncilConfirmedDetails({ appeal }: { appeal: AppealRecord }) {
+  const lookup = appeal.portalLookup;
+  if (!lookup) return null;
+  if (lookup.status !== "verified") return null;
+  const m = lookup.metadata;
+  if (!m) return null;
+
+  const fmtDateTime = (iso?: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+  const fmtDate = (iso?: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+  const fmtAmount = (p?: number | null) => {
+    if (p == null || !Number.isFinite(p) || p === 0) return null;
+    return `£${(p / 100).toFixed(2).replace(/\.00$/, "")}`;
+  };
+
+  const rows: Array<{ label: string; value: string | null }> = [
+    { label: "PCN Ref", value: m.pcnRef ?? null },
+    { label: "Vehicle Reg", value: m.vehicleReg ?? null },
+    { label: "Contravention Code", value: m.contraventionCode ?? null },
+    { label: "Location", value: m.location ?? null },
+    { label: "Issued At", value: fmtDateTime(m.issuedAt) },
+    { label: "Amount", value: fmtAmount(m.amountPence) },
+    { label: "Discount Until", value: fmtDate(m.discountUntil) },
+    { label: "Full Charge From", value: fmtDate(m.fullChargeFrom) },
+  ].filter((r): r is { label: string; value: string } => !!r.value);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="rounded-2xl bg-green-50 border border-green-200 p-3.5 flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <CheckCircle2
+          className="size-4 text-green-700 shrink-0"
+          strokeWidth={2.25}
+        />
+        <p className="text-[12.5px] font-bold text-green-900">
+          Council confirms
+        </p>
+      </div>
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-[12px] leading-snug">
+        {rows.map((r) => (
+          <div key={r.label} className="contents">
+            <dt className="text-green-900/70 font-medium">{r.label}</dt>
+            <dd className="text-green-900 font-semibold break-words">
+              {r.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** v0.3.6 — drafting-failed surface. Shown when step === "generation_failed"
+ *  inside the drafting state's body. Renders the actual error message
+ *  (captured into processing.draft.error by /api/generate-stream's
+ *  catch) + a Retry button. Without this the customer is stuck staring
+ *  at a forever-spinning "Drafting your appeal" or falls through to
+ *  the decision tiles with no explanation of what went wrong. */
+function DraftingFailedRow({
+  errorMessage,
+  onRetry,
+  busy,
+}: {
+  errorMessage: string | null;
+  onRetry: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <section className="rounded-2xl bg-red-50 border border-red-200 p-3.5 flex flex-col gap-3">
+      <div className="flex items-start gap-3">
+        <span className="size-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+          <AlertOctagon className="size-4" strokeWidth={2} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-bold text-red-900 leading-tight">
+            Drafting hit a snag
+          </p>
+          {errorMessage && (
+            <p className="text-[11.5px] text-red-900/80 mt-1 leading-snug break-words">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={busy}
+        className="rounded-xl bg-red-600 text-white font-bold text-[12.5px] py-2.5 px-3 hover:bg-red-700 transition disabled:opacity-60 flex items-center justify-center gap-2 active:scale-[0.99]"
+      >
+        {busy ? (
+          <>
+            <Loader2 className="size-3.5 animate-spin" />
+            Retrying…
+          </>
+        ) : (
+          <>
+            <ArrowRight className="size-3.5" strokeWidth={2.5} />
+            Try again
+          </>
+        )}
+      </button>
+    </section>
+  );
+}
+
 function GatheringEvidenceCard({
   appeal,
   busy,
   onConfirm,
+  liveCouncilThought,
 }: {
   appeal: AppealRecord;
   busy?: boolean;
   onConfirm: (input: { grounds: string[]; notes: string }) => void;
+  /** v0.3.6 — when the council lookup is in flight (pcn_lookup live
+   *  job is queued/running) this is the agent's most recent thought
+   *  or step caption. Streamed into the CouncilCheckChip so the user
+   *  sees what the MCP agent is doing in real time. */
+  liveCouncilThought?: string | null;
 }) {
   // Free-text "what happened" — the notes the drafter reads. Pre-filled
   // from any saved notes so nothing the user wrote is ever lost.
@@ -1159,13 +1700,38 @@ function GatheringEvidenceCard({
       className="flex flex-col gap-6"
       style={{ paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}
     >
+      {/* ── Council-check ambient chip (v0.3.5) ──
+       *  The lazy lookup fires the moment the user taps Appeal and runs
+       *  in parallel with this Build-appeal conversation. The chip
+       *  reflects portalLookup.status so the user knows the background
+       *  work is happening; the drafting kickoff (in TicketCard.tsx)
+       *  waits for the lookup to settle before firing
+       *  /api/generate-stream. When the lookup ends in a refusing
+       *  verdict (paid / closed / not_found) the card unmounts and
+       *  appeal_not_possible takes over upstream. */}
+      {/* v0.3.6 — CouncilCheckChip is the single ambient surface for
+       *  the council-check signal:
+       *    pending → live MCP agent thought streams here ("Filling in
+       *              PCN ref…", "Navigating to ticket details…"); chip
+       *              falls back to "Checking with the council…" when
+       *              the agent hasn't emitted a step yet.
+       *    verified → compact pill OR grown card listing field diffs.
+       *    error    → amber retry pill.
+       *  The "Checking council" timeline step is GONE (v0.3.6) — this
+       *  chip is the only place that narrates the lookup. */}
+      <CouncilCheckChip
+        status={appeal.portalLookup?.status ?? null}
+        discrepancies={getTicketDiscrepancies(appeal)}
+        liveThought={liveCouncilThought ?? null}
+      />
+
       {/* ── What happened? — dictation-first ── */}
       <div className="flex flex-col gap-4">
         <div>
-          <h3 className="text-[20px] font-extrabold text-snappeal-navy tracking-tight">
+          <h3 className="text-[20px] font-extrabold text-parkingrabbit-navy tracking-tight">
             What happened?
           </h3>
-          <p className="text-[13px] text-snappeal-muted mt-1 leading-snug">
+          <p className="text-[13px] text-parkingrabbit-muted mt-1 leading-snug">
             Tell us what happened in your own words
           </p>
         </div>
@@ -1174,8 +1740,8 @@ function GatheringEvidenceCard({
          *  and turns blue while active; the "+" (bottom-left) attaches a
          *  photo/doc and is identical in both states. */}
         <div
-          className={`relative rounded-3xl bg-white border-2 shadow-[0_10px_34px_-16px_rgba(16,24,40,0.22)] transition focus-within:border-snappeal-primary/50 focus-within:shadow-[0_0_0_4px_rgba(47,115,255,0.14)] ${
-            recording ? "border-snappeal-primary/40" : "border-snappeal-primary/15"
+          className={`relative rounded-3xl bg-white border-2 shadow-[0_10px_34px_-16px_rgba(16,24,40,0.22)] transition focus-within:border-parkingrabbit-primary/50 focus-within:shadow-[0_0_0_4px_rgba(47,115,255,0.14)] ${
+            recording ? "border-parkingrabbit-primary/40" : "border-parkingrabbit-primary/15"
           }`}
         >
           <textarea
@@ -1185,7 +1751,7 @@ function GatheringEvidenceCard({
             maxLength={MAX_NOTES}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Why is this ticket unfair?"
-            className="w-full bg-transparent resize-none px-5 pt-5 pb-16 text-[15px] leading-relaxed text-snappeal-navy placeholder:text-snappeal-muted/80 focus:outline-none"
+            className="w-full bg-transparent resize-none px-5 pt-5 pb-16 text-[15px] leading-relaxed text-parkingrabbit-navy placeholder:text-parkingrabbit-muted/80 focus:outline-none"
             style={{ minHeight: 210, maxHeight: 360 }}
           />
           {/* Bottom-left: attach evidence. Identical in both modes. */}
@@ -1193,7 +1759,7 @@ function GatheringEvidenceCard({
             type="button"
             onClick={() => uploadInputRef.current?.click()}
             aria-label="Add evidence"
-            className="absolute bottom-3 left-3 h-10 inline-flex items-center gap-1.5 rounded-full border border-snappeal-border bg-white text-snappeal-navy text-[12px] font-bold tracking-wide px-3.5 hover:border-snappeal-primary/50 hover:text-snappeal-primary transition active:scale-95"
+            className="absolute bottom-3 left-3 h-10 inline-flex items-center gap-1.5 rounded-full border border-parkingrabbit-border bg-white text-parkingrabbit-navy text-[12px] font-bold tracking-wide px-3.5 hover:border-parkingrabbit-primary/50 hover:text-parkingrabbit-primary transition active:scale-95"
           >
             <Plus className="size-4" strokeWidth={2.75} />
             EVIDENCE
@@ -1207,12 +1773,12 @@ function GatheringEvidenceCard({
             aria-label={recording ? "Stop dictating" : "Start dictating"}
             className={`absolute bottom-3 right-3 size-11 rounded-full flex items-center justify-center transition active:scale-95 disabled:opacity-60 ${
               recording
-                ? "bg-snappeal-primary text-white shadow-[0_8px_22px_-6px_rgba(47,115,255,0.6)]"
-                : "text-snappeal-muted hover:bg-snappeal-bg"
+                ? "bg-parkingrabbit-primary text-white shadow-[0_8px_22px_-6px_rgba(47,115,255,0.6)]"
+                : "text-parkingrabbit-muted hover:bg-parkingrabbit-bg"
             }`}
           >
             {recording && (
-              <span className="absolute inset-0 rounded-full bg-snappeal-primary/25 animate-ping" />
+              <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary/25 animate-ping" />
             )}
             {transcribing ? (
               <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
@@ -1232,7 +1798,7 @@ function GatheringEvidenceCard({
             {evidence.map((src, i) => (
               <div
                 key={i}
-                className="relative aspect-square rounded-xl overflow-hidden border border-snappeal-border bg-snappeal-bg"
+                className="relative aspect-square rounded-xl overflow-hidden border border-parkingrabbit-border bg-parkingrabbit-bg"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -1261,7 +1827,7 @@ function GatheringEvidenceCard({
 
       {/* ── Common reasons (pills, clamped to 3 rows) — unchanged behaviour ── */}
       <div className="flex flex-col gap-3">
-        <p className="text-[12px] font-bold text-snappeal-muted uppercase tracking-[0.08em]">
+        <p className="text-[12px] font-bold text-parkingrabbit-muted uppercase tracking-[0.08em]">
           Common reasons
         </p>
         <div
@@ -1283,8 +1849,8 @@ function GatheringEvidenceCard({
                 onClick={() => setSelectedReasonId(active ? null : r.id)}
                 className={`rounded-full text-[13.5px] font-semibold px-4 py-2.5 transition active:scale-[0.97] ${
                   active
-                    ? "bg-snappeal-primary text-white shadow-[0_6px_16px_-4px_rgba(47,115,255,0.5)] -translate-y-px"
-                    : "bg-white text-snappeal-navy border border-[#E5E7EB] hover:border-snappeal-primary/50"
+                    ? "bg-parkingrabbit-primary text-white shadow-[0_6px_16px_-4px_rgba(47,115,255,0.5)] -translate-y-px"
+                    : "bg-white text-parkingrabbit-navy border border-[#E5E7EB] hover:border-parkingrabbit-primary/50"
                 }`}
               >
                 {r.label}
@@ -1296,7 +1862,7 @@ function GatheringEvidenceCard({
           <button
             type="button"
             onClick={() => setReasonsExpanded((o) => !o)}
-            className="self-start inline-flex items-center gap-1 text-[12.5px] font-bold text-snappeal-primary hover:underline"
+            className="self-start inline-flex items-center gap-1 text-[12.5px] font-bold text-parkingrabbit-primary hover:underline"
           >
             {reasonsExpanded ? "Show fewer" : "Show all reasons"}
             <ChevronDown
@@ -1306,27 +1872,27 @@ function GatheringEvidenceCard({
           </button>
         )}
         {selectedReason && (
-          <div className="rounded-3xl border border-snappeal-primary/25 bg-[#F5F9FF] p-5 flex flex-col gap-3 snappeal-mcp-fade-in">
+          <div className="rounded-3xl border border-parkingrabbit-primary/25 bg-[#F5F9FF] p-5 flex flex-col gap-3 parkingrabbit-mcp-fade-in">
             <div>
-              <p className="text-[16px] font-bold text-snappeal-navy leading-tight">
+              <p className="text-[16px] font-bold text-parkingrabbit-navy leading-tight">
                 {selectedReason.title}
               </p>
-              <p className="text-[13px] text-snappeal-muted mt-1 leading-snug">
+              <p className="text-[13px] text-parkingrabbit-muted mt-1 leading-snug">
                 {selectedReason.explanation}
               </p>
             </div>
             <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-wide text-snappeal-primary mb-1.5">
+              <p className="text-[10.5px] font-bold uppercase tracking-wide text-parkingrabbit-primary mb-1.5">
                 Helpful evidence
               </p>
               <ul className="flex flex-col gap-1.5">
                 {selectedReason.evidence.map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-2 text-[13px] text-snappeal-navy/85 leading-snug"
+                    className="flex items-start gap-2 text-[13px] text-parkingrabbit-navy/85 leading-snug"
                   >
                     <Check
-                      className="size-3.5 mt-0.5 shrink-0 text-snappeal-primary"
+                      className="size-3.5 mt-0.5 shrink-0 text-parkingrabbit-primary"
                       strokeWidth={3}
                     />
                     <span className="min-w-0">{item}</span>
@@ -1343,7 +1909,7 @@ function GatheringEvidenceCard({
         type="button"
         onClick={handleContinue}
         disabled={!canContinue || busy}
-        className="rounded-2xl bg-snappeal-primary text-white font-bold py-4 hover:bg-snappeal-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-primary/30 active:scale-[0.99]"
+        className="rounded-2xl bg-parkingrabbit-primary text-white font-bold py-4 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-primary/30 active:scale-[0.99]"
       >
         {busy ? (
           <>
@@ -1359,7 +1925,7 @@ function GatheringEvidenceCard({
         )}
       </button>
 
-      <p className="text-[10.5px] text-snappeal-muted text-center leading-snug inline-flex items-center justify-center gap-1">
+      <p className="text-[10.5px] text-parkingrabbit-muted text-center leading-snug inline-flex items-center justify-center gap-1">
         <Lock className="size-3" strokeWidth={2.25} />
         You can change this later if needed.
       </p>
@@ -1474,7 +2040,7 @@ function PaidSubmitCta({
             <button
               type="button"
               onClick={() => setEvidenceOpen(true)}
-              className="mt-1 w-full rounded-2xl bg-snappeal-primary text-white font-bold py-3 text-[13px] hover:bg-snappeal-primary-600 transition active:scale-[0.99] inline-flex items-center justify-center gap-2"
+              className="mt-1 w-full rounded-2xl bg-parkingrabbit-primary text-white font-bold py-3 text-[13px] hover:bg-parkingrabbit-primary-600 transition active:scale-[0.99] inline-flex items-center justify-center gap-2"
             >
               <Camera className="size-4" strokeWidth={2.25} />
               Add more evidence
@@ -1483,13 +2049,13 @@ function PaidSubmitCta({
 
           {evidenceOpen && (
             <div className="mt-1 rounded-2xl bg-white border border-red-200 p-3 flex flex-col gap-2.5">
-              <p className="text-[11.5px] text-snappeal-muted leading-snug">
+              <p className="text-[11.5px] text-parkingrabbit-muted leading-snug">
                 Add photos of the sign, markings, or scene — Rabbit
                 re-scores your appeal automatically as you add them.
               </p>
               <EvidenceCarousel onChange={handleEvidenceChange} />
               {rescoring && (
-                <p className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-snappeal-primary">
+                <p className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-parkingrabbit-primary">
                   <Loader2 className="size-3.5 animate-spin" strokeWidth={2.5} />
                   Re-scoring your appeal…
                 </p>
@@ -1510,22 +2076,22 @@ function PaidSubmitCta({
       )}
 
       {ctaVisible && (
-      <section className="relative rounded-3xl bg-gradient-to-br from-snappeal-primary-50 via-white to-white border-2 border-snappeal-primary/40 p-5 shadow-xl shadow-snappeal-primary/10">
-        <span className="absolute -top-2.5 left-5 inline-flex items-center gap-1 rounded-full bg-snappeal-primary text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 shadow-md shadow-snappeal-primary/30">
+      <section className="relative rounded-3xl bg-gradient-to-br from-parkingrabbit-primary-50 via-white to-white border-2 border-parkingrabbit-primary/40 p-5 shadow-xl shadow-parkingrabbit-primary/10">
+        <span className="absolute -top-2.5 left-5 inline-flex items-center gap-1 rounded-full bg-parkingrabbit-primary text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 shadow-md shadow-parkingrabbit-primary/30">
           <Sparkles className="size-3" strokeWidth={2.5} fill="white" />
           Ready to submit
         </span>
         <div className="flex items-start gap-3">
-          <span className="size-11 rounded-2xl bg-snappeal-primary text-white flex items-center justify-center shrink-0 shadow-lg shadow-snappeal-primary/40">
+          <span className="size-11 rounded-2xl bg-parkingrabbit-primary text-white flex items-center justify-center shrink-0 shadow-lg shadow-parkingrabbit-primary/40">
             <Sparkles className="size-5" strokeWidth={2.25} />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-[15px] font-bold text-snappeal-navy leading-tight">
+            <p className="text-[15px] font-bold text-parkingrabbit-navy leading-tight">
               Your appeal letter is ready
             </p>
-            <p className="text-[11.5px] text-snappeal-muted mt-1 leading-snug">
+            <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug">
               Submit £2.99 and our{" "}
-              <span className="font-semibold text-snappeal-navy">AI Auto-Submit Agent</span>{" "}
+              <span className="font-semibold text-parkingrabbit-navy">AI Auto-Submit Agent</span>{" "}
               files it through {appeal.ticket?.issuer ?? "the council's"} portal — live, end-to-end.
             </p>
           </div>
@@ -1548,7 +2114,7 @@ function PaidSubmitCta({
           type="button"
           onClick={onOpenPaymentSheet}
           disabled={busy}
-          className="mt-4 w-full rounded-2xl bg-snappeal-primary text-white font-bold py-4 hover:bg-snappeal-primary-600 transition disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-primary/40 active:scale-[0.99]"
+          className="mt-4 w-full rounded-2xl bg-parkingrabbit-primary text-white font-bold py-4 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-primary/40 active:scale-[0.99]"
         >
           {busy ? (
             <>
@@ -1626,7 +2192,7 @@ function TerminalCard({
           ? "bg-green-50 border-green-200"
           : config.tone === "danger"
             ? "bg-red-50 border-red-200"
-            : "bg-snappeal-bg/40 border-snappeal-border"
+            : "bg-parkingrabbit-bg/40 border-parkingrabbit-border"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -1636,7 +2202,7 @@ function TerminalCard({
               ? "bg-green-600 text-white"
               : config.tone === "danger"
                 ? "bg-red-600 text-white"
-                : "bg-snappeal-navy/80 text-white"
+                : "bg-parkingrabbit-navy/80 text-white"
           }`}
         >
           <Icon className="size-5" strokeWidth={2} />
@@ -1648,7 +2214,7 @@ function TerminalCard({
                 ? "text-green-900"
                 : config.tone === "danger"
                   ? "text-red-900"
-                  : "text-snappeal-navy"
+                  : "text-parkingrabbit-navy"
             }`}
           >
             {config.title}
@@ -1659,7 +2225,7 @@ function TerminalCard({
                 ? "text-green-800/80"
                 : config.tone === "danger"
                   ? "text-red-800/80"
-                  : "text-snappeal-muted"
+                  : "text-parkingrabbit-muted"
             }`}
           >
             {config.body}
@@ -1670,7 +2236,7 @@ function TerminalCard({
         <button
           type="button"
           onClick={onOverrideLookup}
-          className="self-start text-[11.5px] text-snappeal-primary font-semibold hover:underline underline-offset-2"
+          className="self-start text-[11.5px] text-parkingrabbit-primary font-semibold hover:underline underline-offset-2"
         >
           I disagree — let me appeal anyway →
         </button>
@@ -1757,7 +2323,7 @@ function EscalationCard({
       : null;
 
   return (
-    <section className="rounded-3xl bg-white border border-snappeal-border p-5 flex flex-col gap-4">
+    <section className="rounded-3xl bg-white border border-parkingrabbit-border p-5 flex flex-col gap-4">
       <div className="rounded-2xl bg-red-50 border border-red-200 p-4 flex items-start gap-3">
         <span className="size-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
           <AlertOctagon className="size-5" strokeWidth={2} />
@@ -1776,24 +2342,24 @@ function EscalationCard({
           href={payUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-2xl bg-white border-2 border-snappeal-primary p-4 flex items-center gap-3 text-left transition active:scale-[0.99] hover:border-snappeal-primary/60 shadow-md shadow-snappeal-primary/15"
+          className="rounded-2xl bg-white border-2 border-parkingrabbit-primary p-4 flex items-center gap-3 text-left transition active:scale-[0.99] hover:border-parkingrabbit-primary/60 shadow-md shadow-parkingrabbit-primary/15"
         >
-          <span className="size-11 rounded-xl bg-snappeal-primary-50 text-snappeal-primary flex items-center justify-center shrink-0">
+          <span className="size-11 rounded-xl bg-parkingrabbit-primary-50 text-parkingrabbit-primary flex items-center justify-center shrink-0">
             <Calendar className="size-5" strokeWidth={2} />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-bold text-snappeal-navy">Pay yourself</p>
-            <p className="text-[11.5px] text-snappeal-muted mt-0.5 leading-snug">
+            <p className="text-[14px] font-bold text-parkingrabbit-navy">Pay yourself</p>
+            <p className="text-[11.5px] text-parkingrabbit-muted mt-0.5 leading-snug">
               Open the official {councilName ?? "council"} payment page and settle directly.
             </p>
-            <p className="text-[11px] text-snappeal-primary font-semibold mt-1.5">
+            <p className="text-[11px] text-parkingrabbit-primary font-semibold mt-1.5">
               Open payment page →
             </p>
           </div>
-          <ArrowRight className="size-4 text-snappeal-muted shrink-0" strokeWidth={2.5} />
+          <ArrowRight className="size-4 text-parkingrabbit-muted shrink-0" strokeWidth={2.5} />
         </a>
       ) : (
-        <div className="rounded-2xl bg-white border border-snappeal-border p-4 text-center text-[12px] text-snappeal-muted">
+        <div className="rounded-2xl bg-white border border-parkingrabbit-border p-4 text-center text-[12px] text-parkingrabbit-muted">
           Contact {councilName ?? "the council"} directly to settle — no in-app link
           available for this issuer yet.
         </div>

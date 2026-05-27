@@ -25,8 +25,8 @@ export default function EvidenceRedirect() {
     else router.replace("/app/tickets");
   }, [router]);
   return (
-    <div className="flex flex-col items-center justify-center pt-32 gap-3 text-snappeal-muted">
-      <Loader2 className="size-5 animate-spin text-snappeal-primary" />
+    <div className="flex flex-col items-center justify-center pt-32 gap-3 text-parkingrabbit-muted">
+      <Loader2 className="size-5 animate-spin text-parkingrabbit-primary" />
       <p className="text-xs">Taking you to your ticket…</p>
     </div>
   );

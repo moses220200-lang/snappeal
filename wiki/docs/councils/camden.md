@@ -1,7 +1,12 @@
 # London Borough of Camden
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 !!! info "Verification status"
     **✅ Verified 2026-05-19** against the council's own website.
+
+!!! warning "Manual today — needs prompts + grounds-registry entry"
+    Camden has a wiki entry and a DB row but no `agent_prompt` / `lookup_agent_prompt` and no grounds-registry entry. Runs as `manual` until those land — see [architecture/grounds-registry.md](../architecture/grounds-registry.md) for the onboarding checklist.
 
 ## Issuer details
 

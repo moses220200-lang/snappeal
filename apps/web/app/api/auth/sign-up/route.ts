@@ -21,7 +21,7 @@ const Body = z.object({
   addressCity: z.string().max(80).optional().nullable(),
   addressPostcode: z.string().max(20).optional().nullable(),
   /** Optional: anonymous session id whose guest appeals should be claimed
-   *  onto the new user. Only honoured if it matches the `x-snappeal-session`
+   *  onto the new user. Only honoured if it matches the `x-parkingrabbit-session`
    *  header — otherwise an attacker could inherit someone else's appeals
    *  by guessing their sessionId. */
   sessionId: z.string().max(128).optional(),
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     await setSessionCookie(signJwt(user));
 
     // Claim guest appeals for this anonymous session — only if the body's
-    // sessionId matches the `x-snappeal-session` header the browser itself
+    // sessionId matches the `x-parkingrabbit-session` header the browser itself
     // sends from localStorage. The header is the source of truth; the body
     // field is a UX leftover that we no longer trust on its own.
     const headerSession = getRequestSessionId(request);

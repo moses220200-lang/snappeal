@@ -1,5 +1,7 @@
 # Gamification
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 Gamification in ParkingRabbit is **light, earned, and never coercive**. Users come to fight a parking ticket — not to grind XP. The goal is to make the wins feel like wins and to surface honest progress.
 
 ## What's live today
@@ -8,7 +10,7 @@ Gamification in ParkingRabbit is **light, earned, and never coercive**. Users co
 A circular SVG progress ring on the Home navy hero. Shows the user's **personal win rate** as a percent — `cancelled appeals / (cancelled + rejected)`. Stays muted until at least one appeal has resolved (a 0% ring on day one would be the wrong message). The fill animates from 0 to the target over 600 ms on first paint.
 
 ### Confetti burst (`components/Confetti.tsx`)
-A 30-piece confetti shower triggered when an appeal flips to `cancelled`. Particles are pre-computed in `useEffect` (purity-safe), fall with random horizontal drift and rotation, fade out over 3 seconds. `sessionStorage`-gated so it fires **once per appeal id** — refreshing the page doesn't re-fire it. Respects `prefers-reduced-motion` via `snappeal-confetti-fall` keyframes (not yet, see open work).
+A 30-piece confetti shower triggered when an appeal flips to `cancelled`. Particles are pre-computed in `useEffect` (purity-safe), fall with random horizontal drift and rotation, fade out over 3 seconds. `sessionStorage`-gated so it fires **once per appeal id** — refreshing the page doesn't re-fire it. Respects `prefers-reduced-motion` via `parkingrabbit-confetti-fall` keyframes (not yet, see open work).
 
 ### Haptic success buzz
 On the same `cancelled` transition the device buzzes with the `success` haptic pattern (12-40-18 ms). Combined with the confetti, it lands as a small but satisfying "you did it" moment.

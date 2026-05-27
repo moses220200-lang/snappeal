@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     await setSessionCookie(signJwt(user));
 
     // Same defence as sign-up: only claim guest appeals when the body's
-    // sessionId matches the `x-snappeal-session` header set from the
+    // sessionId matches the `x-parkingrabbit-session` header set from the
     // browser's own localStorage.
     const headerSession = getRequestSessionId(request);
     const claimSession =

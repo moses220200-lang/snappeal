@@ -3,7 +3,8 @@ slug: "lambeth"
 name: "London Borough of Lambeth"
 parkingServicesAddress: "London Borough of Lambeth, PO Box 333, Darlington, DL1 9LG"
 appealEmail: "parkingservices@lambeth.gov.uk"
-portalUrl: "https://www.lambeth.gov.uk/parking-transport-and-streets/parking/challenge-parking-ticket-pcn-bus-lane-or-moving-traffic-pcn"
+portalUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php"
+paymentUrl: "https://lambethparking.paypcn.com/default.aspx"
 acceptsGrounds: ["signage-unclear", "valid-permit", "blue-badge", "loading-unloading", "vehicle-not-mine"]
 strictOn: []
 evidenceBar: "medium"

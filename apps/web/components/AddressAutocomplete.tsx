@@ -117,10 +117,10 @@ export function AddressAutocomplete({ value, onChange, required }: Props) {
             value={value.postcode}
             onChange={(e) => setField("postcode", e.target.value.toUpperCase())}
             placeholder="e.g. SW1A 2AA"
-            className="w-full rounded-xl border border-snappeal-border bg-white px-3.5 py-2.5 pr-10 text-snappeal-navy placeholder:text-snappeal-muted focus:outline-none focus:ring-2 focus:ring-snappeal-primary/40"
+            className="w-full rounded-xl border border-parkingrabbit-border bg-white px-3.5 py-2.5 pr-10 text-parkingrabbit-navy placeholder:text-parkingrabbit-muted focus:outline-none focus:ring-2 focus:ring-parkingrabbit-primary/40"
             required={required}
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-snappeal-muted">
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-parkingrabbit-muted">
             {lookup === "loading" ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -129,13 +129,13 @@ export function AddressAutocomplete({ value, onChange, required }: Props) {
           </span>
         </div>
         {hint && lookup === "ok" && (
-          <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-snappeal-success">
+          <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-parkingrabbit-success">
             <MapPin className="size-3" />
             {hint}
           </p>
         )}
         {lookup === "miss" && hint && (
-          <p className="mt-1 text-[11px] text-snappeal-muted">{hint}</p>
+          <p className="mt-1 text-[11px] text-parkingrabbit-muted">{hint}</p>
         )}
       </FieldLabel>
 
@@ -146,7 +146,7 @@ export function AddressAutocomplete({ value, onChange, required }: Props) {
           value={value.line1}
           onChange={(e) => setField("line1", e.target.value)}
           placeholder="House number + street"
-          className="w-full rounded-xl border border-snappeal-border bg-white px-3.5 py-2.5 text-snappeal-navy placeholder:text-snappeal-muted focus:outline-none focus:ring-2 focus:ring-snappeal-primary/40"
+          className="w-full rounded-xl border border-parkingrabbit-border bg-white px-3.5 py-2.5 text-parkingrabbit-navy placeholder:text-parkingrabbit-muted focus:outline-none focus:ring-2 focus:ring-parkingrabbit-primary/40"
           required={required}
         />
       </FieldLabel>
@@ -158,7 +158,7 @@ export function AddressAutocomplete({ value, onChange, required }: Props) {
           value={value.line2}
           onChange={(e) => setField("line2", e.target.value)}
           placeholder="Flat, building, etc."
-          className="w-full rounded-xl border border-snappeal-border bg-white px-3.5 py-2.5 text-snappeal-navy placeholder:text-snappeal-muted focus:outline-none focus:ring-2 focus:ring-snappeal-primary/40"
+          className="w-full rounded-xl border border-parkingrabbit-border bg-white px-3.5 py-2.5 text-parkingrabbit-navy placeholder:text-parkingrabbit-muted focus:outline-none focus:ring-2 focus:ring-parkingrabbit-primary/40"
         />
       </FieldLabel>
 
@@ -169,7 +169,7 @@ export function AddressAutocomplete({ value, onChange, required }: Props) {
           value={value.city}
           onChange={(e) => setField("city", e.target.value)}
           placeholder="London"
-          className="w-full rounded-xl border border-snappeal-border bg-white px-3.5 py-2.5 text-snappeal-navy placeholder:text-snappeal-muted focus:outline-none focus:ring-2 focus:ring-snappeal-primary/40"
+          className="w-full rounded-xl border border-parkingrabbit-border bg-white px-3.5 py-2.5 text-parkingrabbit-navy placeholder:text-parkingrabbit-muted focus:outline-none focus:ring-2 focus:ring-parkingrabbit-primary/40"
           required={required}
         />
       </FieldLabel>
@@ -187,10 +187,10 @@ function FieldLabel({
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5 text-[12px] font-semibold text-snappeal-navy">
+    <label className="flex flex-col gap-1.5 text-[12px] font-semibold text-parkingrabbit-navy">
       <span>
         {label}
-        {required && <span className="text-snappeal-action ml-0.5">*</span>}
+        {required && <span className="text-parkingrabbit-action ml-0.5">*</span>}
       </span>
       {children}
     </label>

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ArrowRight, Loader2, Mail, Lock, Phone, User } from "lucide-react";
 import { getOrCreateSessionId } from "@/lib/client/session";
-import { SnappealMark } from "@/components/Logo";
+import { ParkingRabbitMark } from "@/components/Logo";
 import { OAuthButtons } from "@/components/OAuthButtons";
 import {
   AddressAutocomplete,
@@ -27,7 +27,7 @@ export default function SignUpPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center text-sm text-snappeal-muted">
+        <div className="min-h-screen flex items-center justify-center text-sm text-parkingrabbit-muted">
           Loading…
         </div>
       }
@@ -65,7 +65,7 @@ function SignUpInner() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-snappeal-session": sessionId,
+          "x-parkingrabbit-session": sessionId,
         },
         body: JSON.stringify({
           email,
@@ -97,19 +97,19 @@ function SignUpInner() {
   };
 
   return (
-    <div className="min-h-screen bg-snappeal-bg flex flex-col items-center justify-center px-5 py-12">
+    <div className="min-h-screen bg-parkingrabbit-bg flex flex-col items-center justify-center px-5 py-12">
       <div className="w-full max-w-sm">
         <Link href="/app" className="flex items-center gap-2.5 mb-6 justify-center">
-          <SnappealMark size={36} variant="dark" />
-          <span className="text-xl font-bold text-snappeal-navy tracking-tight">
+          <ParkingRabbitMark size={36} variant="dark" />
+          <span className="text-xl font-bold text-parkingrabbit-navy tracking-tight">
             ParkingRabbit
           </span>
         </Link>
-        <div className="rounded-3xl bg-white border border-snappeal-border p-6">
-          <h1 className="text-2xl font-bold text-snappeal-navy">
+        <div className="rounded-3xl bg-white border border-parkingrabbit-border p-6">
+          <h1 className="text-2xl font-bold text-parkingrabbit-navy">
             Create your account
           </h1>
-          <p className="text-sm text-snappeal-muted mt-1">
+          <p className="text-sm text-parkingrabbit-muted mt-1">
             Keep your appeals synced across devices and let the AI fill council
             forms with your registered-keeper details.
           </p>
@@ -121,11 +121,11 @@ function SignUpInner() {
           </div>
 
           <div className="flex items-center gap-3 my-5">
-            <span className="flex-1 h-px bg-snappeal-border" />
-            <span className="text-[11px] uppercase tracking-wider text-snappeal-muted">
+            <span className="flex-1 h-px bg-parkingrabbit-border" />
+            <span className="text-[11px] uppercase tracking-wider text-parkingrabbit-muted">
               or with email
             </span>
-            <span className="flex-1 h-px bg-snappeal-border" />
+            <span className="flex-1 h-px bg-parkingrabbit-border" />
           </div>
 
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
@@ -156,8 +156,8 @@ function SignUpInner() {
               onChange={setPhone}
             />
 
-            <div className="rounded-2xl border border-snappeal-border bg-white p-3.5 flex flex-col gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-snappeal-muted">
+            <div className="rounded-2xl border border-parkingrabbit-border bg-white p-3.5 flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-parkingrabbit-muted">
                 Registered keeper address
               </p>
               <AddressAutocomplete value={address} onChange={setAddress} />
@@ -182,7 +182,7 @@ function SignUpInner() {
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-2xl bg-snappeal-action text-white font-semibold py-3.5 flex items-center justify-center gap-2 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-60"
+              className="rounded-2xl bg-parkingrabbit-action text-white font-semibold py-3.5 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-action/40 hover:bg-parkingrabbit-action-600 transition disabled:opacity-60"
             >
               {submitting ? (
                 <>
@@ -197,7 +197,7 @@ function SignUpInner() {
               )}
             </button>
 
-            <p className="text-[11px] text-snappeal-muted text-center mt-1">
+            <p className="text-[11px] text-parkingrabbit-muted text-center mt-1">
               By creating an account you agree to our{" "}
               <Link href="/terms" className="underline">
                 Terms
@@ -209,11 +209,11 @@ function SignUpInner() {
               .
             </p>
 
-            <p className="text-xs text-snappeal-muted text-center mt-2">
+            <p className="text-xs text-parkingrabbit-muted text-center mt-2">
               Already have one?{" "}
               <Link
                 href={`/sign-in?next=${encodeURIComponent(next)}`}
-                className="font-semibold text-snappeal-primary"
+                className="font-semibold text-parkingrabbit-primary"
               >
                 Sign in
               </Link>
@@ -243,8 +243,8 @@ function Field({
   required?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-2xl border border-snappeal-border bg-white px-3 py-2.5 focus-within:border-snappeal-primary transition">
-      <Icon className="size-4 text-snappeal-muted" />
+    <label className="flex items-center gap-2 rounded-2xl border border-parkingrabbit-border bg-white px-3 py-2.5 focus-within:border-parkingrabbit-primary transition">
+      <Icon className="size-4 text-parkingrabbit-muted" />
       <input
         type={type}
         autoComplete={autoComplete}
@@ -252,7 +252,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
-        className="flex-1 text-sm outline-none bg-transparent placeholder:text-snappeal-muted"
+        className="flex-1 text-sm outline-none bg-transparent placeholder:text-parkingrabbit-muted"
       />
     </label>
   );

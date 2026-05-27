@@ -85,6 +85,41 @@
       "when": 1779494400000,
       "tag": "0011_appeal_preferred_method",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779580800000,
+      "tag": "0012_processing_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779667200000,
+      "tag": "0013_appeal_strength_and_kb",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779753600000,
+      "tag": "0014_council_payment_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1779840000000,
+      "tag": "0015_reset_and_ai_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1779926400000,
+      "tag": "0016_notification_dispatches",
+      "breakpoints": true
     }
   ]
 }

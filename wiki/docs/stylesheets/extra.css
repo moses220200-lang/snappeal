@@ -1,4 +1,4 @@
-/* Snappeal — brand tokens
+/* ParkingRabbit — brand tokens
  * Single source of truth for colour, typography and spacing.
  * Synced with apps/web/app/globals.css.
  *
@@ -10,49 +10,49 @@
  */
 
 :root {
-  --snappeal-primary: #007aff;
-  --snappeal-primary-soft: rgba(0, 122, 255, 0.10);
-  --snappeal-navy: #0a1929;
-  --snappeal-surface: #ffffff;
-  --snappeal-bg: #fafafa;
-  --snappeal-text: #0a1929;
-  --snappeal-muted: #6e6e73;
-  --snappeal-border: #e5e5ea;
-  --snappeal-success: #34c759;
-  --snappeal-warning: #ff9500;
-  --snappeal-danger: #ff3b30;
+  --parkingrabbit-primary: #007aff;
+  --parkingrabbit-primary-soft: rgba(0, 122, 255, 0.10);
+  --parkingrabbit-navy: #0a1929;
+  --parkingrabbit-surface: #ffffff;
+  --parkingrabbit-bg: #fafafa;
+  --parkingrabbit-text: #0a1929;
+  --parkingrabbit-muted: #6e6e73;
+  --parkingrabbit-border: #e5e5ea;
+  --parkingrabbit-success: #34c759;
+  --parkingrabbit-warning: #ff9500;
+  --parkingrabbit-danger: #ff3b30;
 
   /* Legacy aliases — kept until the transition is complete */
-  --appeal-blue: var(--snappeal-primary);
-  --appeal-blue-soft: var(--snappeal-primary-soft);
-  --appeal-surface: var(--snappeal-surface);
-  --appeal-bg: var(--snappeal-bg);
-  --appeal-text: var(--snappeal-text);
-  --appeal-muted: var(--snappeal-muted);
-  --appeal-border: var(--snappeal-border);
-  --appeal-success: var(--snappeal-success);
-  --appeal-warning: var(--snappeal-warning);
-  --appeal-danger: var(--snappeal-danger);
+  --appeal-blue: var(--parkingrabbit-primary);
+  --appeal-blue-soft: var(--parkingrabbit-primary-soft);
+  --appeal-surface: var(--parkingrabbit-surface);
+  --appeal-bg: var(--parkingrabbit-bg);
+  --appeal-text: var(--parkingrabbit-text);
+  --appeal-muted: var(--parkingrabbit-muted);
+  --appeal-border: var(--parkingrabbit-border);
+  --appeal-success: var(--parkingrabbit-success);
+  --appeal-warning: var(--parkingrabbit-warning);
+  --appeal-danger: var(--parkingrabbit-danger);
 
   /* Material theme overrides */
-  --md-primary-fg-color: var(--snappeal-primary);
+  --md-primary-fg-color: var(--parkingrabbit-primary);
   --md-primary-fg-color--light: #3392ff;
   --md-primary-fg-color--dark: #0064d6;
-  --md-accent-fg-color: var(--snappeal-primary);
-  --md-typeset-a-color: var(--snappeal-primary);
+  --md-accent-fg-color: var(--parkingrabbit-primary);
+  --md-typeset-a-color: var(--parkingrabbit-primary);
 }
 
 [data-md-color-scheme="slate"] {
-  --snappeal-primary: #3392ff;
-  --snappeal-primary-soft: rgba(51, 146, 255, 0.16);
-  --snappeal-surface: #0f172a;
-  --snappeal-bg: #020617;
-  --snappeal-text: #fafafa;
-  --snappeal-navy: #fafafa;
-  --snappeal-muted: #94a3b8;
-  --snappeal-border: #1e293b;
-  --md-primary-fg-color: var(--snappeal-primary);
-  --md-accent-fg-color: var(--snappeal-primary);
+  --parkingrabbit-primary: #3392ff;
+  --parkingrabbit-primary-soft: rgba(51, 146, 255, 0.16);
+  --parkingrabbit-surface: #0f172a;
+  --parkingrabbit-bg: #020617;
+  --parkingrabbit-text: #fafafa;
+  --parkingrabbit-navy: #fafafa;
+  --parkingrabbit-muted: #94a3b8;
+  --parkingrabbit-border: #1e293b;
+  --md-primary-fg-color: var(--parkingrabbit-primary);
+  --md-accent-fg-color: var(--parkingrabbit-primary);
 }
 
 .md-typeset h1,
@@ -78,28 +78,28 @@
 .appeal-hero a {
   display: block;
   padding: 1.25rem;
-  border: 1px solid var(--snappeal-border);
+  border: 1px solid var(--parkingrabbit-border);
   border-radius: 12px;
-  background: var(--snappeal-surface);
+  background: var(--parkingrabbit-surface);
   text-decoration: none;
-  color: var(--snappeal-text);
+  color: var(--parkingrabbit-text);
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .appeal-hero a:hover {
-  border-color: var(--snappeal-primary);
+  border-color: var(--parkingrabbit-primary);
   transform: translateY(-1px);
 }
 
 .appeal-hero a strong {
   display: block;
   margin-bottom: 0.25rem;
-  color: var(--snappeal-text);
+  color: var(--parkingrabbit-text);
   font-size: 1.05rem;
 }
 
 .appeal-hero a span {
-  color: var(--snappeal-muted);
+  color: var(--parkingrabbit-muted);
   font-size: 0.9rem;
 }
 
@@ -107,8 +107,8 @@
 .stat {
   display: inline-block;
   padding: 0.15rem 0.5rem;
-  background: var(--snappeal-primary-soft);
-  color: var(--snappeal-primary);
+  background: var(--parkingrabbit-primary-soft);
+  color: var(--parkingrabbit-primary);
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.85em;
@@ -121,5 +121,5 @@
 
 .md-typeset table:not([class]) th {
   font-weight: 600;
-  background: var(--snappeal-primary-soft);
+  background: var(--parkingrabbit-primary-soft);
 }

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Snappeal brand tokens — Apple iOS system palette.
+  /* ParkingRabbit brand tokens — Apple iOS system palette.
    *
    * Colour psychology, in plain English:
    *   System Blue (#007AFF)  — trust + authority + action. Used by every
@@ -17,54 +17,54 @@
    */
 
   /* Primary — System Blue */
-  --color-snappeal-primary: #007aff;
-  --color-snappeal-primary-50: #e6f1ff;
-  --color-snappeal-primary-100: #cce4ff;
-  --color-snappeal-primary-200: #99c9ff;
-  --color-snappeal-primary-300: #66adff;
-  --color-snappeal-primary-400: #3392ff;
-  --color-snappeal-primary-500: #007aff;
-  --color-snappeal-primary-600: #0064d6;
-  --color-snappeal-primary-700: #004fae;
-  --color-snappeal-primary-800: #003d85;
-  --color-snappeal-primary-900: #002a5c;
+  --color-parkingrabbit-primary: #007aff;
+  --color-parkingrabbit-primary-50: #e6f1ff;
+  --color-parkingrabbit-primary-100: #cce4ff;
+  --color-parkingrabbit-primary-200: #99c9ff;
+  --color-parkingrabbit-primary-300: #66adff;
+  --color-parkingrabbit-primary-400: #3392ff;
+  --color-parkingrabbit-primary-500: #007aff;
+  --color-parkingrabbit-primary-600: #0064d6;
+  --color-parkingrabbit-primary-700: #004fae;
+  --color-parkingrabbit-primary-800: #003d85;
+  --color-parkingrabbit-primary-900: #002a5c;
 
   /* Brand navy — typography + dark surfaces */
-  --color-snappeal-navy: #0a1929;
-  --color-snappeal-navy-soft: #1c2e44;
+  --color-parkingrabbit-navy: #0a1929;
+  --color-parkingrabbit-navy-soft: #1c2e44;
 
   /* Surfaces */
-  --color-snappeal-bg: #fafafa;
-  --color-snappeal-surface: #ffffff;
-  --color-snappeal-muted: #6e6e73; /* Apple system gray */
-  --color-snappeal-border: #e5e5ea; /* Apple system gray 5 */
+  --color-parkingrabbit-bg: #fafafa;
+  --color-parkingrabbit-surface: #ffffff;
+  --color-parkingrabbit-muted: #6e6e73; /* Apple system gray */
+  --color-parkingrabbit-border: #e5e5ea; /* Apple system gray 5 */
 
   /* Action — primary CTA red (mocked variant of system orange-red) */
-  --color-snappeal-action: #f5454d;
-  --color-snappeal-action-600: #de3038;
-  --color-snappeal-action-50: #fef1f2;
-  --color-snappeal-action-100: #fde0e2;
+  --color-parkingrabbit-action: #f5454d;
+  --color-parkingrabbit-action-600: #de3038;
+  --color-parkingrabbit-action-50: #fef1f2;
+  --color-parkingrabbit-action-100: #fde0e2;
 
   /* Functional */
-  --color-snappeal-success: #34c759;
-  --color-snappeal-success-soft: #e6f7eb;
-  --color-snappeal-warning: #ff9500;
-  --color-snappeal-danger: #ff3b30;
+  --color-parkingrabbit-success: #34c759;
+  --color-parkingrabbit-success-soft: #e6f7eb;
+  --color-parkingrabbit-warning: #ff9500;
+  --color-parkingrabbit-danger: #ff3b30;
 
   /* Appealed — purple status semantics (scoped to ticket-list status only;
    * brand surfaces remain purple-free per the hero comment above). */
-  --color-snappeal-appealed: #7c3aed;
-  --color-snappeal-appealed-50: #f5f3ff;
-  --color-snappeal-appealed-100: #ede9fe;
-  --color-snappeal-appealed-700: #5b21b6;
+  --color-parkingrabbit-appealed: #7c3aed;
+  --color-parkingrabbit-appealed-50: #f5f3ff;
+  --color-parkingrabbit-appealed-100: #ede9fe;
+  --color-parkingrabbit-appealed-700: #5b21b6;
 
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui,
     sans-serif;
 }
 
 :root {
-  background: var(--color-snappeal-bg);
-  color: var(--color-snappeal-navy);
+  background: var(--color-parkingrabbit-bg);
+  color: var(--color-parkingrabbit-navy);
 }
 
 html,
@@ -96,7 +96,7 @@ body {
   background:
     radial-gradient(60% 50% at 15% 30%, rgba(0, 122, 255, 0.06) 0%, transparent 60%),
     radial-gradient(50% 40% at 90% 10%, rgba(0, 122, 255, 0.05) 0%, transparent 60%),
-    var(--color-snappeal-bg);
+    var(--color-parkingrabbit-bg);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -129,7 +129,7 @@ body {
  * Camera button + the iOS home indicator. Tuned to the actual nav height
  * (~64px) + safe-area bottom inset + a comfortable air gap so the last
  * card on a tickets/inbox list never disappears behind the bottom nav. */
-.snappeal-content-bottom {
+.parkingrabbit-content-bottom {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6.5rem);
 }
 
@@ -138,7 +138,7 @@ body {
  * title block has proper visual breathing room and doesn't read as
  * flush with the header — especially important on notched iOS PWAs
  * where the header gets visually taller via the safe-area inset. */
-.snappeal-content-top {
+.parkingrabbit-content-top {
   padding-top: 1.25rem;
 }
 
@@ -152,26 +152,26 @@ html {
 /* Pages without their own AppHeader/BackHeader can use this on their
  * outer wrapper to clear the iOS status bar / notch. Mirrors what the
  * glass headers do internally. */
-.snappeal-page-top {
+.parkingrabbit-page-top {
   padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
 }
 
 /* Liquid-glass sticky header — translucent background with backdrop blur
  * and a thin border that fades in once scrolled. Matches iOS 17+ stacking. */
-.snappeal-glass {
+.parkingrabbit-glass {
   background: rgba(250, 250, 250, 0.72);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid rgba(229, 229, 234, 0);
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
-.snappeal-glass[data-scrolled="true"] {
+.parkingrabbit-glass[data-scrolled="true"] {
   background: rgba(250, 250, 250, 0.88);
   border-bottom-color: rgba(229, 229, 234, 0.7);
 }
 
 /* Bottom nav uses the same glass language. */
-.snappeal-glass-nav {
+.parkingrabbit-glass-nav {
   background: rgba(255, 255, 255, 0.78);
   backdrop-filter: saturate(180%) blur(22px);
   -webkit-backdrop-filter: saturate(180%) blur(22px);
@@ -181,14 +181,14 @@ html {
 /* Dark variant of the liquid-glass header — same blur language, but tuned
  * for pages with a navy/black background (currently /app/submitting/[id]).
  * Border fades in once scrolled, matching the light variant's behaviour. */
-.snappeal-glass-dark {
+.parkingrabbit-glass-dark {
   background: rgba(10, 25, 41, 0.55);
   backdrop-filter: saturate(160%) blur(22px);
   -webkit-backdrop-filter: saturate(160%) blur(22px);
   border-bottom: 1px solid rgba(255, 255, 255, 0);
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
-.snappeal-glass-dark[data-scrolled="true"] {
+.parkingrabbit-glass-dark[data-scrolled="true"] {
   background: rgba(10, 25, 41, 0.78);
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
@@ -200,7 +200,7 @@ html {
 }
 
 /* ────────────────────────────────────────────────────────────────
- * Snappeal splash animation
+ * ParkingRabbit splash animation
  *   Total runtime: 3.0s. Each layer has its own keyframe schedule
  *   on the same timeline so the splash *feels* like one continuous
  *   motion: ticket flies in → camera flash → AI scan → wordmark.
@@ -263,35 +263,35 @@ html {
   100%    { opacity: 1; transform: scale(1); }
 }
 
-.snappeal-splash {
+.parkingrabbit-splash {
   animation: splash-stage 3.05s ease-in forwards;
 }
-.snappeal-splash-ticket {
+.parkingrabbit-splash-ticket {
   animation: splash-ticket-in 3.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
-.snappeal-splash-flash {
+.parkingrabbit-splash-flash {
   animation: splash-flash 3.05s ease-out forwards;
 }
-.snappeal-splash-brackets {
+.parkingrabbit-splash-brackets {
   animation: splash-brackets 3.05s ease forwards;
 }
-.snappeal-splash-scan {
+.parkingrabbit-splash-scan {
   animation: splash-scan 3.05s ease-in-out forwards;
 }
-.snappeal-splash-wordmark {
+.parkingrabbit-splash-wordmark {
   animation: splash-wordmark-in 3.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
-.snappeal-splash-dot {
+.parkingrabbit-splash-dot {
   animation: splash-dot 1s ease-in-out infinite;
 }
-.snappeal-splash-dot:nth-child(2) { animation-delay: 0.15s; }
-.snappeal-splash-dot:nth-child(3) { animation-delay: 0.3s; }
-.snappeal-splash-tick {
+.parkingrabbit-splash-dot:nth-child(2) { animation-delay: 0.15s; }
+.parkingrabbit-splash-dot:nth-child(3) { animation-delay: 0.3s; }
+.parkingrabbit-splash-tick {
   animation: splash-tick-in 3.05s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 /* Confetti — one-shot burst when an appeal flips to cancelled */
-@keyframes snappeal-confetti-fall {
+@keyframes parkingrabbit-confetti-fall {
   0% {
     opacity: 0;
     transform: translate3d(0, 0, 0) rotate(0deg);
@@ -299,8 +299,8 @@ html {
   10% { opacity: 1; }
   100% {
     opacity: 0;
-    transform: translate3d(var(--snappeal-confetti-drift, 0), 100vh, 0)
-      rotate(var(--snappeal-confetti-rotate, 360deg));
+    transform: translate3d(var(--parkingrabbit-confetti-drift, 0), 100vh, 0)
+      rotate(var(--parkingrabbit-confetti-rotate, 360deg));
   }
 }
 
@@ -309,27 +309,27 @@ html {
   0%   { transform: translateY(-130%); }
   100% { transform: translateY(130%); }
 }
-.snappeal-generating-line {
+.parkingrabbit-generating-line {
   animation: generating-line 1.6s ease-in-out infinite alternate;
 }
 
 /* Bottom-sheet slide-in — used by NotificationPermissionSheet and any
  * other contextual modal that wants the same iOS-style entrance curve. */
-@keyframes snappeal-sheet-up {
+@keyframes parkingrabbit-sheet-up {
   0%   { opacity: 0; transform: translateY(28%); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
 /* Hero scan animation — used on /app home to animate a blue scan line over
  * the yellow PCN ticket inside the dark navy hero card. Loops forever. */
-@keyframes snappeal-hero-scan {
+@keyframes parkingrabbit-hero-scan {
   0%   { transform: translateY(-110%); opacity: 0; }
   12%  { opacity: 1; }
   88%  { opacity: 1; }
   100% { transform: translateY(110%); opacity: 0; }
 }
-.snappeal-hero-scan {
-  animation: snappeal-hero-scan 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+.parkingrabbit-hero-scan {
+  animation: parkingrabbit-hero-scan 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
 /* Caret blink for the live letter preview in the generating overlay. */
@@ -346,54 +346,54 @@ html {
 /* Cross-fade between consecutive screenshots. Both layers stack at
  * opacity 0 by default; the "active" one ramps to 1, the previous one
  * fades down. 400ms reads as live without smearing. */
-@keyframes snappeal-mcp-fade-in {
+@keyframes parkingrabbit-mcp-fade-in {
   from { opacity: 0; transform: scale(1.005); }
   to   { opacity: 1; transform: scale(1); }
 }
 
 /* One-shot radial spotlight pinged on each new screenshot — draws the
  * eye even if the user is mid-scroll. White ring scales out + fades. */
-@keyframes snappeal-mcp-spotlight {
+@keyframes parkingrabbit-mcp-spotlight {
   0%   { opacity: 0; transform: scale(0.92); }
   18%  { opacity: 0.65; }
   100% { opacity: 0; transform: scale(1.08); }
 }
-.snappeal-mcp-spotlight {
+.parkingrabbit-mcp-spotlight {
   background: radial-gradient(circle at center, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 60%);
-  animation: snappeal-mcp-spotlight 800ms ease-out;
+  animation: parkingrabbit-mcp-spotlight 800ms ease-out;
   pointer-events: none;
 }
 
 /* Ambient pre-first-screenshot state. A long horizontal scan line
  * traverses a navy rectangle so the user has *something* to watch
  * while the secure browser warms up. */
-@keyframes snappeal-mcp-warmup {
+@keyframes parkingrabbit-mcp-warmup {
   0%   { transform: translateX(-30%); opacity: 0; }
   20%  { opacity: 1; }
   80%  { opacity: 1; }
   100% { transform: translateX(130%); opacity: 0; }
 }
-.snappeal-mcp-warmup-line {
-  animation: snappeal-mcp-warmup 2.2s ease-in-out infinite;
+.parkingrabbit-mcp-warmup-line {
+  animation: parkingrabbit-mcp-warmup 2.2s ease-in-out infinite;
 }
 
 /* Action ticker — promoted "what's the agent doing right now" chip
  * under the screenshot. New text fades up; old text fades down. */
-@keyframes snappeal-mcp-ticker-in {
+@keyframes parkingrabbit-mcp-ticker-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Milestone row fill — slides a left-to-right colour bar across the
  * milestone row when it transitions to "reached". */
-@keyframes snappeal-mcp-milestone-fill {
+@keyframes parkingrabbit-mcp-milestone-fill {
   from { transform: scaleX(0); }
   to   { transform: scaleX(1); }
 }
 
 /* Verdict-reveal modal slides up from the bottom, scales subtly, then
  * holds. Used on the validating page when the lookup verdict lands. */
-@keyframes snappeal-mcp-verdict-in {
+@keyframes parkingrabbit-mcp-verdict-in {
   0%   { opacity: 0; transform: translateY(48px) scale(0.97); }
   60%  { opacity: 1; transform: translateY(-4px) scale(1.005); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -402,22 +402,22 @@ html {
 /* Per-row fade-up for the "Council confirms" live data panel. Each
  * row plays this once when it first becomes visible (i.e. when a
  * `metadata` SSE event arrives carrying that field). */
-@keyframes snappeal-data-row-in {
+@keyframes parkingrabbit-data-row-in {
   from { opacity: 0; transform: translateY(6px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* "AI driving" pulse — tied to a CSS var the React state updates on
  * each new tool_use event. Drives the badge dot's scale + opacity. */
-@keyframes snappeal-mcp-tick-pulse {
+@keyframes parkingrabbit-mcp-tick-pulse {
   0%   { opacity: 0.5; transform: scale(0.9); }
   50%  { opacity: 1; transform: scale(1.25); }
   100% { opacity: 0.5; transform: scale(0.9); }
 }
-.snappeal-mcp-tick-dot {
-  animation: snappeal-mcp-tick-pulse 900ms ease-in-out infinite;
+.parkingrabbit-mcp-tick-dot {
+  animation: parkingrabbit-mcp-tick-pulse 900ms ease-in-out infinite;
 }
-.snappeal-generating-cursor {
+.parkingrabbit-generating-cursor {
   animation: generating-cursor 1s steps(1, end) infinite;
 }
 
@@ -429,49 +429,61 @@ html {
  * ──────────────────────────────────────────────────────────────── */
 
 /* Logo "snaps" into place with a subtle settle bounce. */
-@keyframes snappeal-issuer-land {
+@keyframes parkingrabbit-issuer-land {
   0%   { transform: scale(0.84); }
   55%  { transform: scale(1.07); }
   100% { transform: scale(1); }
 }
-.snappeal-issuer-land {
-  animation: snappeal-issuer-land 540ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.parkingrabbit-issuer-land {
+  animation: parkingrabbit-issuer-land 540ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* One-shot blue confirmation glow radiating from the locked-in logo. */
-@keyframes snappeal-issuer-glow {
+@keyframes parkingrabbit-issuer-glow {
   0%   { opacity: 0; transform: scale(0.6); }
   35%  { opacity: 0.85; }
   100% { opacity: 0; transform: scale(1.3); }
 }
-.snappeal-issuer-glow {
+.parkingrabbit-issuer-glow {
   background: radial-gradient(circle at center, rgba(0, 122, 255, 0.45) 0%, rgba(0, 122, 255, 0) 65%);
-  animation: snappeal-issuer-glow 760ms ease-out forwards;
+  animation: parkingrabbit-issuer-glow 760ms ease-out forwards;
 }
 
 /* Gentle reveal for the "council adjusted the amount" note in the card
  * header — when the verified figure differs from what was scanned the
  * explanation fades in rather than the number swapping silently. */
-.snappeal-amount-note {
-  animation: snappeal-mcp-fade-in 420ms ease-out;
+.parkingrabbit-amount-note {
+  animation: parkingrabbit-mcp-fade-in 420ms ease-out;
+}
+
+/* Validating-state thought bubble — when the agent emits a new
+ * `thought`/`step` event the text remounts (React `key` change) and
+ * fades + slides in. Keeps the live read from feeling like a janky
+ * text swap. */
+@keyframes parkingrabbit-thought-fade {
+  0%   { opacity: 0; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.parkingrabbit-thought-fade {
+  animation: parkingrabbit-thought-fade 240ms ease-out;
 }
 
 /* Respect users who want reduced motion — fall back to a quick fade */
 @media (prefers-reduced-motion: reduce) {
-  .snappeal-issuer-land,
-  .snappeal-issuer-glow {
+  .parkingrabbit-issuer-land,
+  .parkingrabbit-issuer-glow {
     animation: none;
   }
-  .snappeal-splash {
+  .parkingrabbit-splash {
     animation: splash-stage 0.5s linear forwards;
   }
-  .snappeal-splash-ticket,
-  .snappeal-splash-flash,
-  .snappeal-splash-brackets,
-  .snappeal-splash-scan,
-  .snappeal-splash-wordmark,
-  .snappeal-splash-dot,
-  .snappeal-splash-tick {
+  .parkingrabbit-splash-ticket,
+  .parkingrabbit-splash-flash,
+  .parkingrabbit-splash-brackets,
+  .parkingrabbit-splash-scan,
+  .parkingrabbit-splash-wordmark,
+  .parkingrabbit-splash-dot,
+  .parkingrabbit-splash-tick {
     animation: none;
   }
 }

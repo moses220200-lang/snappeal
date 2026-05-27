@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SnappealMark } from "@/components/Logo";
+import { ParkingRabbitMark } from "@/components/Logo";
 
-const SESSION_KEY = "snappeal.splashShown";
+const SESSION_KEY = "parkingrabbit.splashShown";
 
 /**
  * Branded splash overlay that plays for ~3 seconds on the first page load
@@ -22,7 +22,7 @@ const SESSION_KEY = "snappeal.splashShown";
  *
  * Respects `prefers-reduced-motion: reduce` — collapses to a quick fade.
  */
-export function SnappealSplash() {
+export function ParkingRabbitSplash() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function SnappealSplash() {
   return (
     <div
       aria-hidden
-      className="snappeal-splash fixed inset-0 z-[100] flex items-center justify-center bg-snappeal-navy overflow-hidden"
+      className="parkingrabbit-splash fixed inset-0 z-[100] flex items-center justify-center bg-parkingrabbit-navy overflow-hidden"
     >
       {/* Subtle dotted grid behind the action */}
       <div
@@ -72,14 +72,14 @@ export function SnappealSplash() {
       <div className="relative w-72 h-96 flex items-center justify-center">
         {/* PCN ticket — flat vector, Westminster-branded */}
         <div
-          className="snappeal-splash-ticket absolute w-56 origin-center"
+          className="parkingrabbit-splash-ticket absolute w-56 origin-center"
           style={{ filter: "drop-shadow(0 16px 32px rgba(0,0,0,0.5))" }}
         >
           <WestminsterPCN />
         </div>
 
         {/* Viewfinder brackets */}
-        <div className="snappeal-splash-brackets absolute inset-4 pointer-events-none">
+        <div className="parkingrabbit-splash-brackets absolute inset-4 pointer-events-none">
           <span className="absolute -top-1 -left-1 size-12 border-t-[3px] border-l-[3px] border-white rounded-tl-xl" />
           <span className="absolute -top-1 -right-1 size-12 border-t-[3px] border-r-[3px] border-white rounded-tr-xl" />
           <span className="absolute -bottom-1 -left-1 size-12 border-b-[3px] border-l-[3px] border-white rounded-bl-xl" />
@@ -87,7 +87,7 @@ export function SnappealSplash() {
         </div>
 
         {/* AI scan line */}
-        <div className="snappeal-splash-scan absolute inset-0 pointer-events-none">
+        <div className="parkingrabbit-splash-scan absolute inset-0 pointer-events-none">
           <div
             className="absolute left-0 right-0 h-1.5 rounded-full"
             style={{
@@ -102,16 +102,16 @@ export function SnappealSplash() {
         {/* Camera-shutter white flash — constrained to the viewfinder frame
          *  (matches the brackets' inset-4) so the flash never bleeds past
          *  the white scan corners into the surrounding navy. */}
-        <div className="snappeal-splash-flash absolute inset-4 bg-white rounded-xl pointer-events-none" />
+        <div className="parkingrabbit-splash-flash absolute inset-4 bg-white rounded-xl pointer-events-none" />
       </div>
 
       {/* Wordmark + loading dots — bottom of the screen */}
-      <div className="snappeal-splash-wordmark absolute bottom-[18%] inset-x-0 flex flex-col items-center gap-4 px-6 text-center">
+      <div className="parkingrabbit-splash-wordmark absolute bottom-[18%] inset-x-0 flex flex-col items-center gap-4 px-6 text-center">
         <div className="relative">
           {/* Canonical ParkingRabbit shield — same mark used everywhere else. */}
-          <SnappealMark size={72} variant="light" />
+          <ParkingRabbitMark size={72} variant="light" />
           {/* Success tick that pops in over the shield in the final beat */}
-          <span className="snappeal-splash-tick absolute -bottom-2 -right-2 size-7 rounded-full bg-snappeal-success flex items-center justify-center ring-4 ring-snappeal-navy">
+          <span className="parkingrabbit-splash-tick absolute -bottom-2 -right-2 size-7 rounded-full bg-parkingrabbit-success flex items-center justify-center ring-4 ring-parkingrabbit-navy">
             <svg
               width="14"
               height="14"
@@ -134,9 +134,9 @@ export function SnappealSplash() {
           <div className="flex items-center gap-2 text-sm text-white/80">
             <span>Drafting your appeal</span>
             <span className="flex gap-1">
-              <span className="snappeal-splash-dot size-1.5 rounded-full bg-snappeal-primary" />
-              <span className="snappeal-splash-dot size-1.5 rounded-full bg-snappeal-primary" />
-              <span className="snappeal-splash-dot size-1.5 rounded-full bg-snappeal-primary" />
+              <span className="parkingrabbit-splash-dot size-1.5 rounded-full bg-parkingrabbit-primary" />
+              <span className="parkingrabbit-splash-dot size-1.5 rounded-full bg-parkingrabbit-primary" />
+              <span className="parkingrabbit-splash-dot size-1.5 rounded-full bg-parkingrabbit-primary" />
             </span>
           </div>
         </div>

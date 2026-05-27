@@ -1,7 +1,12 @@
 # City of London Corporation
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 !!! info "Verification status"
     **✅ Verified 2026-05-19** against the council's own website.
+
+!!! warning "Manual today — Taranto-platform prompt is fork-base for other Taranto councils"
+    No `agent_prompt` / `lookup_agent_prompt` and no grounds-registry entry. The Taranto-platform agent prompt can be forked once authored — see [architecture/grounds-registry.md](../architecture/grounds-registry.md).
 
 ## Issuer details
 

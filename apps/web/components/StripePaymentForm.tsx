@@ -73,17 +73,17 @@ export function StripePaymentForm({
 
   if (stripeAvailable === false) {
     return (
-      <div className="rounded-2xl bg-white border border-snappeal-border p-5 text-sm text-snappeal-muted leading-relaxed">
-        <p className="font-semibold text-snappeal-navy mb-1">
+      <div className="rounded-2xl bg-white border border-parkingrabbit-border p-5 text-sm text-parkingrabbit-muted leading-relaxed">
+        <p className="font-semibold text-parkingrabbit-navy mb-1">
           Stripe isn&apos;t configured yet
         </p>
         <p>
-          Set <code className="text-snappeal-primary">NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</code>{" "}
+          Set <code className="text-parkingrabbit-primary">NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</code>{" "}
           and{" "}
-          <code className="text-snappeal-primary">STRIPE_SECRET_KEY</code> in{" "}
-          <code className="text-snappeal-primary">apps/web/.env.local</code>{" "}
+          <code className="text-parkingrabbit-primary">STRIPE_SECRET_KEY</code> in{" "}
+          <code className="text-parkingrabbit-primary">apps/web/.env.local</code>{" "}
           to enable the real payment flow. See{" "}
-          <code className="text-snappeal-primary">.env.example</code>.
+          <code className="text-parkingrabbit-primary">.env.example</code>.
         </p>
       </div>
     );
@@ -100,7 +100,7 @@ export function StripePaymentForm({
 
   if (!clientSecret) {
     return (
-      <div className="rounded-2xl bg-white border border-snappeal-border p-6 flex items-center justify-center gap-2 text-sm text-snappeal-muted">
+      <div className="rounded-2xl bg-white border border-parkingrabbit-border p-6 flex items-center justify-center gap-2 text-sm text-parkingrabbit-muted">
         <Loader2 className="size-4 animate-spin" />
         Preparing secure payment…
       </div>
@@ -182,7 +182,7 @@ function CheckoutForm({
       <button
         type="submit"
         disabled={!stripe || submitting}
-        className="w-full rounded-2xl bg-snappeal-primary text-white font-semibold py-4 flex items-center justify-center gap-2 hover:bg-snappeal-primary-600 transition disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full rounded-2xl bg-parkingrabbit-primary text-white font-semibold py-4 flex items-center justify-center gap-2 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {submitting ? (
           <>
@@ -196,7 +196,7 @@ function CheckoutForm({
           </>
         )}
       </button>
-      <p className="text-[11px] text-snappeal-muted text-center flex items-center justify-center gap-1.5">
+      <p className="text-[11px] text-parkingrabbit-muted text-center flex items-center justify-center gap-1.5">
         <Lock className="size-3" />
         Payments are processed securely by Stripe.
       </p>

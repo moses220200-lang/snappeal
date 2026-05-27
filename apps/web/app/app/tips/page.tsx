@@ -21,9 +21,9 @@ type Tip = {
 
 const TONE = {
   blue: {
-    bg: "bg-snappeal-primary-100",
-    text: "text-snappeal-primary",
-    badge: "bg-snappeal-primary text-white",
+    bg: "bg-parkingrabbit-primary-100",
+    text: "text-parkingrabbit-primary",
+    badge: "bg-parkingrabbit-primary text-white",
   },
   green: {
     bg: "bg-green-100",
@@ -129,7 +129,7 @@ export default function TipsPage() {
         subtitle="Plain-English advice to make your appeal stronger"
         back="/app"
       />
-      <div className="flex flex-col gap-5 px-5 pt-4 pb-6 snappeal-content-top">
+      <div className="flex flex-col gap-5 px-5 pt-4 pb-6 parkingrabbit-content-top">
 
       {/* Featured tip — the 14-day rule */}
       <Link
@@ -143,13 +143,13 @@ export default function TipsPage() {
             <FEATURED.icon className="size-5" />
           </span>
           <div className="flex-1">
-            <p className="text-xs uppercase tracking-wide font-semibold text-snappeal-navy/60">
+            <p className="text-xs uppercase tracking-wide font-semibold text-parkingrabbit-navy/60">
               Featured tip
             </p>
-            <h2 className="text-lg font-bold text-snappeal-navy mt-0.5">
+            <h2 className="text-lg font-bold text-parkingrabbit-navy mt-0.5">
               {FEATURED.title}
             </h2>
-            <p className="text-sm text-snappeal-navy/85 mt-2 leading-relaxed">
+            <p className="text-sm text-parkingrabbit-navy/85 mt-2 leading-relaxed">
               {FEATURED.body}
             </p>
             <span
@@ -164,7 +164,7 @@ export default function TipsPage() {
 
       {SECTIONS.map((section) => (
         <section key={section.heading}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-snappeal-muted mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-parkingrabbit-muted mb-2">
             {section.heading}
           </p>
           <div className="flex flex-col gap-2.5">
@@ -174,7 +174,7 @@ export default function TipsPage() {
                 <Link
                   key={tip.title}
                   href={tip.href}
-                  className="rounded-2xl bg-white border border-snappeal-border p-4 flex items-start gap-3 hover:border-snappeal-primary transition"
+                  className="rounded-2xl bg-white border border-parkingrabbit-border p-4 flex items-start gap-3 hover:border-parkingrabbit-primary transition"
                 >
                   <span
                     className={`size-10 rounded-xl ${tone.bg} ${tone.text} flex items-center justify-center flex-shrink-0`}
@@ -182,14 +182,14 @@ export default function TipsPage() {
                     <tip.icon className="size-[1.125rem]" />
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-snappeal-navy">
+                    <p className="text-sm font-bold text-parkingrabbit-navy">
                       {tip.title}
                     </p>
-                    <p className="text-xs text-snappeal-muted mt-1 leading-relaxed">
+                    <p className="text-xs text-parkingrabbit-muted mt-1 leading-relaxed">
                       {tip.body}
                     </p>
                   </div>
-                  <ChevronRight className="size-4 text-snappeal-muted flex-shrink-0 self-center" />
+                  <ChevronRight className="size-4 text-parkingrabbit-muted flex-shrink-0 self-center" />
                 </Link>
               );
             })}
@@ -197,9 +197,9 @@ export default function TipsPage() {
         </section>
       ))}
 
-      <div className="text-[11px] text-snappeal-muted text-center pt-2 pb-4 leading-relaxed">
+      <div className="text-[11px] text-parkingrabbit-muted text-center pt-2 pb-4 leading-relaxed">
         Tips are drawn from the public wiki at{" "}
-        <Link href="/wiki/users/" className="text-snappeal-primary font-semibold">
+        <Link href="/wiki/users/" className="text-parkingrabbit-primary font-semibold">
           parkingrabbit.com/wiki/users
         </Link>{" "}
         — keep it open for the deep-dive.

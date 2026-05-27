@@ -17,11 +17,13 @@ async function main() {
         strength_score: number | null;
         created_at: Date;
         updated_at: Date;
-        model_used: string | null;
       }>
     >`
+      -- model_used dropped in migration 0015 (per-stage cost telemetry
+      -- moved to the ai_calls table). Use \`SELECT * FROM ai_calls WHERE
+      -- appeal_id = ?\` for per-call model attribution.
       SELECT id, status, step, ticket, grounds, notes, preferred_method, processing,
-             letter_body, strength_score, created_at, updated_at, model_used
+             letter_body, strength_score, created_at, updated_at
       FROM appeals ORDER BY created_at DESC LIMIT 3`;
     if (rows.length === 0) {
       console.log("no appeals");
@@ -43,7 +45,6 @@ async function main() {
       console.log(`processing      ${JSON.stringify(proc)}`);
       console.log(`letterBodyLen   ${(r.letter_body ?? "").length}`);
       console.log(`strengthScore   ${r.strength_score}`);
-      console.log(`modelUsed       ${r.model_used ?? "—"}`);
       console.log(`updated         ${r.updated_at.toISOString()} (${(ageMs / 1000).toFixed(0)}s ago)`);
     }
   } finally {

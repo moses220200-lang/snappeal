@@ -15,11 +15,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_TONE: Record<string, string> = {
   draft: "bg-slate-100 text-slate-600",
-  ready: "bg-snappeal-primary-100 text-snappeal-primary-700",
-  submitting: "bg-snappeal-primary-100 text-snappeal-primary-700",
-  submitted: "bg-snappeal-primary-100 text-snappeal-primary-700",
-  under_review: "bg-snappeal-primary-100 text-snappeal-primary-700",
-  decision_pending: "bg-snappeal-primary-100 text-snappeal-primary-700",
+  ready: "bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700",
+  submitting: "bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700",
+  submitted: "bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700",
+  under_review: "bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700",
+  decision_pending: "bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700",
   cancelled: "bg-green-50 text-green-700",
   rejected: "bg-red-50 text-red-700",
 };
@@ -35,7 +35,7 @@ export function AppealCard({ appeal }: { appeal: AppealRecord }) {
   return (
     <Link
       href={`/app/tickets/${appeal.id}`}
-      className="block rounded-2xl bg-white border border-snappeal-border p-4 hover:border-snappeal-primary transition"
+      className="block rounded-2xl bg-white border border-parkingrabbit-border p-4 hover:border-parkingrabbit-primary transition"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -46,40 +46,40 @@ export function AppealCard({ appeal }: { appeal: AppealRecord }) {
               {STATUS_LABEL[appeal.status] ?? appeal.status}
             </span>
             {appeal.ticket?.contraventionCode && (
-              <span className="text-[11px] text-snappeal-muted">
+              <span className="text-[11px] text-parkingrabbit-muted">
                 Code {appeal.ticket.contraventionCode}
               </span>
             )}
           </div>
-          <p className="mt-1.5 text-sm font-semibold text-snappeal-navy truncate">
+          <p className="mt-1.5 text-sm font-semibold text-parkingrabbit-navy truncate">
             {appeal.ticket?.issuer ?? "Draft appeal"}
           </p>
-          <p className="text-xs text-snappeal-muted truncate mt-0.5">
+          <p className="text-xs text-parkingrabbit-muted truncate mt-0.5">
             {appeal.ticket?.pcnRef ? `PCN ${appeal.ticket.pcnRef} · ` : ""}
             {appeal.ticket?.vehicleReg ?? ""}
           </p>
           {appeal.ticket?.location && (
-            <p className="text-xs text-snappeal-muted truncate">
+            <p className="text-xs text-parkingrabbit-muted truncate">
               {appeal.ticket.location}
             </p>
           )}
         </div>
         <div className="text-right flex-shrink-0">
           {appeal.ticket?.amountPence != null && (
-            <p className="text-sm font-semibold text-snappeal-navy">
+            <p className="text-sm font-semibold text-parkingrabbit-navy">
               {fmtPence(appeal.ticket.amountPence)}
             </p>
           )}
-          <p className="text-[11px] text-snappeal-muted mt-0.5">
+          <p className="text-[11px] text-parkingrabbit-muted mt-0.5">
             {fmtDate(appeal.createdAt)}
           </p>
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between text-xs">
-        <span className="text-snappeal-muted">
+        <span className="text-parkingrabbit-muted">
           {appeal.timeline.filter((s) => s.state === "completed").length} of {appeal.timeline.length} steps complete
         </span>
-        <ChevronRight className="size-4 text-snappeal-muted" />
+        <ChevronRight className="size-4 text-parkingrabbit-muted" />
       </div>
     </Link>
   );

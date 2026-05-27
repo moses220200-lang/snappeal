@@ -1,5 +1,7 @@
 # Design principles
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The rules every screen follows. Anything that violates one of these is wrong, even if it tests well.
 
 ## 1. One decision per screen

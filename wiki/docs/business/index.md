@@ -1,5 +1,7 @@
 # Business
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The business case for ParkingRabbit — why this is a real opportunity, what we're building, how we'll make money, and what could go wrong.
 
 - [Mission](mission.md) — why ParkingRabbit exists.

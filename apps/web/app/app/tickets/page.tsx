@@ -18,12 +18,16 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, FileText, Images, Loader2, Plus, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Camera, FileText, Images, Loader2, Plus, ShieldCheck } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { TicketCard } from "@/components/TicketCard";
 import { getOrCreateSessionId } from "@/lib/client/session";
 import { readFileAsDataUrl, uploadPcn } from "@/lib/client/uploadPcn";
 import type { AppealRecord } from "@/lib/server/appeals";
+import {
+  deadlineSortKey,
+  getDeadlineProximity,
+} from "@/lib/deriveDeadlineProximity";
 
 type DisplayState = "at_risk" | "due" | "appealed" | "rejected" | "resolved";
 type Filter = "all" | "due" | "appealed" | "resolved";
@@ -59,7 +63,7 @@ function deriveDisplayState(a: AppealRecord, now: number): DisplayState {
     : "at_risk";
 }
 
-const HIDDEN_KEY = "snappeal.hidden";
+const HIDDEN_KEY = "parkingrabbit.hidden";
 
 function readHidden(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -119,16 +123,26 @@ export default function TicketsPage() {
   // that's mid-lifecycle (anything that's not a terminal state). The user
   // arrived here from /app/capture or from a notification; they want to
   // see the live state immediately, not tap a chevron first.
+  //
+  // v0.3.10 — if `expandedId` was set from the URL ?expand= param but
+  // no card in the loaded list matches that id (because the post-OCR
+  // merge fold collapsed it onto an older draft), fall back to the
+  // newest in-flight card so the user doesn't land on an empty
+  // expand slot.
   useEffect(() => {
-    if (autoExpandedRef.current) return;
     if (!appeals || appeals.length === 0) return;
+    if (expandedId && appeals.some((a) => a.id === expandedId)) {
+      // URL-targeted id is still around; nothing to do.
+      return;
+    }
+    if (autoExpandedRef.current && !expandedId) return;
     const target = appeals.find((a) => isInFlight(a));
     if (target) {
       autoExpandedRef.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedId(target.id);
     }
-  }, [appeals]);
+  }, [appeals, expandedId]);
 
   // ─── initial load ───
   // v0.2.15+ — the v0.2.7 "guests don't see a list" rule is dropped.
@@ -319,18 +333,95 @@ export default function TicketsPage() {
 
   const visible = useMemo(() => {
     if (!appeals) return [];
-    // Newest first by createdAt — the just-scanned ticket should always
-    // pop to the top of the list. Fall back to updatedAt when createdAt
-    // is somehow missing (defence against legacy rows).
+    // Backlog-safe sort:
+    //   1. Unsettled tickets with a critical deadline ≤7 days away —
+    //      sorted by soonest deadline first. The user MUST see these
+    //      before anything else; a stack of older tickets can hide a
+    //      ticket about to escalate past its statutory window.
+    //   2. Other unsettled tickets — newest first by createdAt.
+    //   3. Settled tickets (submitted / cancelled / closed) — newest
+    //      first.
+    // Each ticket goes into exactly one bucket; sort within bucket
+    // then concatenate.
+    const all = appeals.filter((a) => !hidden.has(a.id));
+    const urgent: typeof all = [];
+    const open: typeof all = [];
+    const done: typeof all = [];
+    for (const a of all) {
+      const settled =
+        a.status === "submitted" ||
+        a.status === "under_review" ||
+        a.status === "decision_pending" ||
+        a.status === "cancelled" ||
+        a.status === "rejected";
+      if (settled) {
+        done.push(a);
+        continue;
+      }
+      const proximity = getDeadlineProximity(a);
+      if (
+        proximity &&
+        proximity.daysToCritical != null &&
+        proximity.daysToCritical <= 7 &&
+        !proximity.expired
+      ) {
+        urgent.push(a);
+      } else {
+        open.push(a);
+      }
+    }
+    urgent.sort((a, b) => {
+      const ka = deadlineSortKey(a);
+      const kb = deadlineSortKey(b);
+      return ka - kb;
+    });
+    const newestFirst = (
+      a: (typeof all)[number],
+      b: (typeof all)[number],
+    ) => {
+      const ta = new Date(a.createdAt ?? a.updatedAt ?? 0).getTime();
+      const tb = new Date(b.createdAt ?? b.updatedAt ?? 0).getTime();
+      return tb - ta;
+    };
+    open.sort(newestFirst);
+    done.sort(newestFirst);
+    return [...urgent, ...open, ...done];
+  }, [appeals, hidden]);
+
+  // Backlog warning data — surfaced as a banner above the list when
+  // any unsettled ticket has < 7 days remaining. Computed off the
+  // urgent bucket so we don't re-walk the list.
+  const backlogUrgent = useMemo<AppealRecord[]>(() => {
+    if (!appeals) return [];
     return appeals
       .filter((a) => !hidden.has(a.id))
-      .slice()
-      .sort((a, b) => {
-        const ta = new Date(a.createdAt ?? a.updatedAt ?? 0).getTime();
-        const tb = new Date(b.createdAt ?? b.updatedAt ?? 0).getTime();
-        return tb - ta;
+      .filter((a) => {
+        const settled =
+          a.status === "submitted" ||
+          a.status === "under_review" ||
+          a.status === "decision_pending" ||
+          a.status === "cancelled" ||
+          a.status === "rejected";
+        if (settled) return false;
+        const p = getDeadlineProximity(a);
+        return (
+          p?.daysToCritical != null &&
+          p.daysToCritical <= 7 &&
+          !p.expired
+        );
       });
   }, [appeals, hidden]);
+
+  const backlogMinDays = useMemo(() => {
+    let min: number | null = null;
+    for (const a of backlogUrgent) {
+      const p = getDeadlineProximity(a);
+      const d = p?.daysToCritical;
+      if (d == null) continue;
+      if (min == null || d < min) min = d;
+    }
+    return min;
+  }, [backlogUrgent]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return visible;
@@ -395,10 +486,10 @@ export default function TicketsPage() {
          *  two icon buttons let the user shoot a new PCN photo OR pick
          *  one from the library, replacing the legacy single "Scan"
          *  pill that hid the gallery option entirely. */}
-        <section className="rounded-2xl bg-snappeal-bg/50 border border-dashed border-snappeal-border p-5 flex items-center justify-between gap-3">
+        <section className="rounded-2xl bg-parkingrabbit-bg/50 border border-dashed border-parkingrabbit-border p-5 flex items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-snappeal-navy">Got a new ticket?</p>
-            <p className="text-[12px] text-snappeal-muted mt-0.5">
+            <p className="text-sm font-bold text-parkingrabbit-navy">Got a new ticket?</p>
+            <p className="text-[12px] text-parkingrabbit-muted mt-0.5">
               Scan it now — we&apos;ll save it to your account.
             </p>
           </div>
@@ -411,7 +502,7 @@ export default function TicketsPage() {
                 scanCameraRef.current?.click();
               }}
               disabled={scanUploading}
-              className="size-11 rounded-2xl bg-snappeal-navy text-white flex items-center justify-center hover:bg-snappeal-navy/90 transition disabled:opacity-60 shadow-sm active:scale-95"
+              className="size-11 rounded-2xl bg-parkingrabbit-navy text-white flex items-center justify-center hover:bg-parkingrabbit-navy/90 transition disabled:opacity-60 shadow-sm active:scale-95"
             >
               {scanUploading ? (
                 <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
@@ -427,35 +518,35 @@ export default function TicketsPage() {
                 scanGalleryRef.current?.click();
               }}
               disabled={scanUploading}
-              className="size-11 rounded-2xl bg-snappeal-navy text-white flex items-center justify-center hover:bg-snappeal-navy/90 transition disabled:opacity-60 shadow-sm active:scale-95"
+              className="size-11 rounded-2xl bg-parkingrabbit-navy text-white flex items-center justify-center hover:bg-parkingrabbit-navy/90 transition disabled:opacity-60 shadow-sm active:scale-95"
             >
               <Images className="size-5" strokeWidth={2.25} />
             </button>
           </div>
         </section>
         {viewer && !viewer.isSignedIn && appeals && appeals.length > 0 && (
-          <section className="rounded-2xl bg-snappeal-primary-50 border border-snappeal-primary-100 p-4 flex items-start gap-3">
-            <span className="size-9 rounded-xl bg-white text-snappeal-primary flex items-center justify-center shrink-0">
+          <section className="rounded-2xl bg-parkingrabbit-primary-50 border border-parkingrabbit-primary-100 p-4 flex items-start gap-3">
+            <span className="size-9 rounded-xl bg-white text-parkingrabbit-primary flex items-center justify-center shrink-0">
               <ShieldCheck className="size-4" strokeWidth={2.25} />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-snappeal-navy">
+              <p className="text-sm font-bold text-parkingrabbit-navy">
                 Sign in to keep your tickets
               </p>
-              <p className="text-[11.5px] text-snappeal-muted mt-0.5 leading-snug">
+              <p className="text-[11.5px] text-parkingrabbit-muted mt-0.5 leading-snug">
                 You&apos;re viewing as a guest. Your tickets are saved for this
                 browser; signing in syncs them across your devices.
               </p>
               <div className="flex gap-2 mt-2.5">
                 <Link
                   href="/sign-in"
-                  className="rounded-full bg-snappeal-primary !text-white text-[11.5px] font-semibold px-3.5 py-1.5 hover:bg-snappeal-primary-600 transition"
+                  className="rounded-full bg-parkingrabbit-primary !text-white text-[11.5px] font-semibold px-3.5 py-1.5 hover:bg-parkingrabbit-primary-600 transition"
                 >
                   <span className="text-white">Sign in</span>
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="rounded-full bg-white border border-snappeal-border text-snappeal-navy text-[11.5px] font-semibold px-3.5 py-1.5 hover:border-snappeal-primary transition"
+                  className="rounded-full bg-white border border-parkingrabbit-border text-parkingrabbit-navy text-[11.5px] font-semibold px-3.5 py-1.5 hover:border-parkingrabbit-primary transition"
                 >
                   Create an account
                 </Link>
@@ -464,7 +555,11 @@ export default function TicketsPage() {
           </section>
         )}
 
-        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 no-scrollbar">
+        {/* Filter row — horizontally scrollable; tighter pill padding +
+         *  a right-edge mask so users can read the affordance that
+         *  "Resolved" continues off the right edge without a visible
+         *  scrollbar. */}
+        <div className="parkingrabbit-filter-row flex gap-1.5 overflow-x-auto -mx-1 px-1 no-scrollbar">
           {FILTERS.map((f) => {
             const active = filter === f.id;
             const count =
@@ -480,17 +575,17 @@ export default function TicketsPage() {
                 key={f.id}
                 type="button"
                 onClick={() => setFilter(f.id)}
-                className={`px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition inline-flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-full text-[11.5px] font-semibold whitespace-nowrap transition inline-flex items-center gap-1.5 shrink-0 ${
                   active
-                    ? "bg-snappeal-primary text-white"
-                    : "bg-white border border-snappeal-border text-snappeal-muted hover:text-snappeal-navy"
+                    ? "bg-parkingrabbit-primary text-white"
+                    : "bg-white border border-parkingrabbit-border text-parkingrabbit-muted hover:text-parkingrabbit-navy"
                 }`}
               >
                 {f.label}
                 {appeals && count > 0 && (
                   <span
-                    className={`text-[10px] font-bold rounded-full px-1.5 py-px min-w-[18px] text-center ${
-                      active ? "bg-white/20 text-white" : "bg-snappeal-bg text-snappeal-navy"
+                    className={`text-[10px] font-bold rounded-full px-1.5 py-px min-w-[16px] text-center ${
+                      active ? "bg-white/25 text-white" : "bg-parkingrabbit-bg text-parkingrabbit-navy"
                     }`}
                   >
                     {count}
@@ -502,7 +597,7 @@ export default function TicketsPage() {
         </div>
 
         {appeals == null && !error && (
-          <div className="rounded-2xl border border-snappeal-border bg-white p-8 flex items-center justify-center gap-2 text-sm text-snappeal-muted">
+          <div className="rounded-2xl border border-parkingrabbit-border bg-white p-8 flex items-center justify-center gap-2 text-sm text-parkingrabbit-muted">
             <Loader2 className="size-4 animate-spin" />
             Loading your tickets…
           </div>
@@ -515,21 +610,64 @@ export default function TicketsPage() {
         )}
 
         {appeals && filtered.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-snappeal-border bg-white p-10 text-center">
-            <FileText className="size-8 mx-auto text-snappeal-muted" />
-            <p className="mt-3 text-sm text-snappeal-muted">
+          <div className="rounded-2xl border border-dashed border-parkingrabbit-border bg-white p-10 text-center">
+            <FileText className="size-8 mx-auto text-parkingrabbit-muted" />
+            <p className="mt-3 text-sm text-parkingrabbit-muted">
               {appeals.length === 0 ? "No tickets yet." : "No tickets match that filter."}
             </p>
             {appeals.length === 0 && (
               <Link
                 href="/app/capture"
-                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-snappeal-primary !text-white text-sm font-semibold px-4 py-2"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-parkingrabbit-primary !text-white text-sm font-semibold px-4 py-2"
               >
                 <Plus className="size-4 text-white" strokeWidth={2.5} />
                 <span className="text-white">Add your first ticket</span>
               </Link>
             )}
           </div>
+        )}
+
+        {/* Backlog warning banner — shown when ANY unsettled ticket
+         *  has ≤7 days remaining. Soonest-deadline copy in the
+         *  headline; tapping scrolls the busiest card into view.
+         *  Always renders ABOVE the list so a backlog can't hide
+         *  behind older items. */}
+        {appeals && backlogUrgent.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const first = backlogUrgent[0];
+              if (first) setExpandedId(first.id);
+            }}
+            className="w-full rounded-2xl bg-red-50 border border-red-200 px-4 py-3 flex items-center gap-3 text-left hover:border-red-300 transition"
+          >
+            <span className="size-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-4" strokeWidth={2} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13.5px] font-bold text-red-900 leading-tight">
+                {backlogUrgent.length === 1
+                  ? "1 ticket needs action"
+                  : `${backlogUrgent.length} tickets need action`}
+                {backlogMinDays != null && (
+                  <>
+                    {" "}
+                    <span className="text-red-700">
+                      —{" "}
+                      {backlogMinDays === 0
+                        ? "by end of day"
+                        : backlogMinDays === 1
+                          ? "within 1 day"
+                          : `within ${backlogMinDays} days`}
+                    </span>
+                  </>
+                )}
+              </p>
+              <p className="text-[11.5px] text-red-900/80 mt-0.5 leading-snug">
+                Sorted by soonest deadline first. Tap to review.
+              </p>
+            </div>
+          </button>
         )}
 
         {appeals && filtered.length > 0 && (
@@ -555,36 +693,36 @@ export default function TicketsPage() {
 
         <Link
           href="/app/tips"
-          className="rounded-3xl bg-snappeal-success-soft border border-snappeal-success/25 p-4 flex items-center gap-3 hover:bg-green-100/70 transition"
+          className="rounded-3xl bg-parkingrabbit-success-soft border border-parkingrabbit-success/25 p-4 flex items-center gap-3 hover:bg-green-100/70 transition"
         >
-          <span className="size-10 rounded-full bg-white border border-snappeal-success/30 text-snappeal-success flex items-center justify-center flex-shrink-0">
+          <span className="size-10 rounded-full bg-white border border-parkingrabbit-success/30 text-parkingrabbit-success flex items-center justify-center flex-shrink-0">
             <ShieldCheck className="size-5" strokeWidth={2} />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-snappeal-success">Deadline tip</p>
-            <p className="text-[11px] text-snappeal-navy/80 mt-0.5 leading-snug">
+            <p className="text-[13px] font-bold text-parkingrabbit-success">Deadline tip</p>
+            <p className="text-[11px] text-parkingrabbit-navy/80 mt-0.5 leading-snug">
               Act early to keep discounts and appeal options open.
             </p>
           </div>
-          <span className="inline-flex items-center justify-center rounded-full bg-white border border-snappeal-success/40 text-snappeal-success text-[11px] font-semibold px-3 py-1.5 min-w-[112px] whitespace-nowrap">
+          <span className="inline-flex items-center justify-center rounded-full bg-white border border-parkingrabbit-success/40 text-parkingrabbit-success text-[11px] font-semibold px-3 py-1.5 min-w-[112px] whitespace-nowrap">
             View tips
           </span>
         </Link>
 
         <Link
           href="/app/profile/help"
-          className="rounded-2xl bg-snappeal-primary-50 border border-snappeal-primary-100 p-4 flex items-center gap-3"
+          className="rounded-2xl bg-parkingrabbit-primary-50 border border-parkingrabbit-primary-100 p-4 flex items-center gap-3"
         >
-          <span className="size-9 rounded-full bg-white text-snappeal-primary flex items-center justify-center flex-shrink-0">
+          <span className="size-9 rounded-full bg-white text-parkingrabbit-primary flex items-center justify-center flex-shrink-0">
             <FileText className="size-[1.125rem]" />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-snappeal-navy">Need help?</p>
-            <p className="text-[11px] text-snappeal-muted">
+            <p className="text-sm font-semibold text-parkingrabbit-navy">Need help?</p>
+            <p className="text-[11px] text-parkingrabbit-muted">
               See guidance on paying, challenging, and deadlines.
             </p>
           </div>
-          <span className="inline-flex items-center justify-center rounded-full bg-white border border-snappeal-primary-100 text-snappeal-primary text-[11px] font-semibold px-3 py-1.5 min-w-[112px] whitespace-nowrap">
+          <span className="inline-flex items-center justify-center rounded-full bg-white border border-parkingrabbit-primary-100 text-parkingrabbit-primary text-[11px] font-semibold px-3 py-1.5 min-w-[112px] whitespace-nowrap">
             Contact us
           </span>
         </Link>

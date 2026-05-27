@@ -10,7 +10,7 @@ import { CreditCard, Loader2, Lock, ShieldCheck } from "lucide-react";
  * short delay, then hands a fake `pi_test_*` id back to the parent so the
  * downstream /api/generate flow can run unmodified.
  *
- * `SNAPPEAL_SKIP_PAYMENT_CHECK=1` lets /api/generate accept the placeholder
+ * `PARKINGRABBIT_SKIP_PAYMENT_CHECK=1` lets /api/generate accept the placeholder
  * id without verifying it against the Stripe API.
  */
 type Method = "apple" | "google" | "card";
@@ -58,7 +58,7 @@ export function FakePaymentButtons({
         onClick={() => fire("card")}
       />
 
-      <p className="text-[11px] text-snappeal-muted text-center flex items-center justify-center gap-1.5 mt-1">
+      <p className="text-[11px] text-parkingrabbit-muted text-center flex items-center justify-center gap-1.5 mt-1">
         <Lock className="size-3" />
         Real Stripe will replace this once test keys are wired.
       </p>
@@ -81,8 +81,8 @@ function PayButton({
     kind === "apple"
       ? "bg-black text-white hover:bg-black/90"
       : kind === "google"
-        ? "bg-white text-snappeal-navy border border-snappeal-border hover:border-snappeal-primary"
-        : "bg-snappeal-primary text-white hover:bg-snappeal-primary-600";
+        ? "bg-white text-parkingrabbit-navy border border-parkingrabbit-border hover:border-parkingrabbit-primary"
+        : "bg-parkingrabbit-primary text-white hover:bg-parkingrabbit-primary-600";
 
   const label =
     kind === "apple" ? "Pay" : kind === "google" ? "Pay" : "Pay with card";
@@ -103,7 +103,7 @@ function PayButton({
         <>
           <Glyph kind={kind} />
           <span className="font-semibold">{label}</span>
-          <span className={`text-sm font-bold ${kind === "google" ? "text-snappeal-navy" : "text-white"}`}>
+          <span className={`text-sm font-bold ${kind === "google" ? "text-parkingrabbit-navy" : "text-white"}`}>
             £2.99
           </span>
         </>

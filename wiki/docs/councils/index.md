@@ -1,11 +1,18 @@
 # London authorities
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The full list of authorities that issue PCNs in London. Each entry below names the issuer, links to the per-borough page on this wiki where filled, and links externally to the council's own appeal portal.
 
 !!! warning "Verification status"
     Entries marked **✅ verified** were checked against the council's own website. Entries marked **🟡 not yet verified** have a best-effort link but should be re-checked before being used in production submissions.
 
     **Canonical state** lives in the `councils` Postgres table (`last_verified_at` + `automationStatus` columns) — view + edit via `/admin/councils`. The per-council MCP agent prompt + field hints live in `council_automation` — edit + dry-run via `/admin/councils/[slug]/automation`. The wiki entries here are a static reference, not the source of truth.
+
+!!! info "Automation status as of v0.3.10"
+    **Lambeth** has the most-advanced automation: a deterministic Playwright recipe (Phase 9, ~10–20 s @ $0 vs ~60–120 s @ ~$0.30 for Claude MCP) PLUS a P11 grounds-translation registry entry (canonical-slug → portal-radio-label mapping verified against four portal screenshots). **Westminster** has Claude MCP automation (lookup + submission) but no recipe and no grounds-registry entry — next to onboard. Camden, Kensington & Chelsea, Islington, TfL, and City of London have wiki reference pages and DB rows but their `lookup_agent_prompt` / `agent_prompt` columns are null and no grounds-registry entry exists — those councils run as `manual` until a per-council prompt is authored and the automation flag flipped at `/admin/councils/[slug]/automation`. The other 27 boroughs are tracked in the DB but undocumented on the wiki.
+
+    Onboarding a new council requires THREE artifacts: (1) `council_automation.agent_prompt` (the Claude MCP recipe), (2) optionally a deterministic Playwright recipe at `lib/server/submission/recipes/<slug>.ts` (~$0 lookup path — see [architecture/deterministic-recipes.md](../architecture/deterministic-recipes.md)), (3) a `CouncilGroundsMapping` at `lib/server/submission/grounds/<slug>.ts` (see [architecture/grounds-registry.md](../architecture/grounds-registry.md)). The grounds-registry entry needs four portal screenshots showing each ground option the council exposes.
 
 ## 32 London Boroughs
 

@@ -1,5 +1,7 @@
 # Values
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 How we work, in five sentences.
 
 ### 1. Plain English over legal English

@@ -122,6 +122,70 @@ export async function uploadPortalPhotos(opts: {
   return urls;
 }
 
+/**
+ * v0.3.7 — DOM-first photo acquisition.
+ *
+ * The lookup MCP agent now harvests warden-photo URLs directly from the
+ * council portal's `<img src>` attributes (via one `browser_evaluate`)
+ * instead of taking a Chromium screenshot per photo. Each URL is emitted
+ * as a `[photoUrl]<absolute-url>` bracket-tag during the agent run; this
+ * helper fetches the bytes server-side and re-hosts them on Blob so the
+ * customer-facing `portalLookup.photoUrls` still points at OUR CDN
+ * (council URLs may be session-scoped, gated, or rate-limited).
+ *
+ * Why fetch server-side rather than inside the browser context: the
+ * Westminster appeals portal is publicly addressable for the image URLs
+ * themselves — no cookies required for the bytes. If a future council
+ * needs cookied fetches, fall back to a `[photoData]` data-URL emission
+ * path from inside `browser_evaluate` (see the plan's "out of scope").
+ *
+ * Failures on a single URL are logged but never abort the lookup —
+ * a partial photo set is still useful to the customer.
+ */
+export async function uploadPortalPhotosFromUrls(opts: {
+  appealId: string;
+  urls: string[];
+}): Promise<string[]> {
+  const out: string[] = [];
+  let idx = 0;
+  for (const url of opts.urls) {
+    idx += 1;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.error(
+          `[blob] portal photo fetch ${res.status} ${res.statusText}: ${url}`,
+        );
+        continue;
+      }
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const contentType =
+        res.headers.get("content-type") ?? "image/jpeg";
+      // Pick a filename extension from the content-type so the upload
+      // pipeline (which infers MIME from the filename's extname) writes
+      // bytes that subsequent fetches read back with the right MIME.
+      const ext = contentType.includes("png")
+        ? "png"
+        : contentType.includes("webp")
+          ? "webp"
+          : contentType.includes("gif")
+            ? "gif"
+            : "jpg";
+      const uploaded = await uploadAppealPhoto({
+        appealId: opts.appealId,
+        kind: "portal",
+        source: { buffer, filename: `warden-${idx}.${ext}` },
+        contentType,
+        caption: url,
+      });
+      out.push(uploaded.blobUrl);
+    } catch (err) {
+      console.error("[blob] failed to fetch portal photo:", url, err);
+    }
+  }
+  return out;
+}
+
 async function writeDevBlob(opts: {
   objectKey: string;
   source: UploadInput["source"];

@@ -52,7 +52,7 @@ export async function uploadPcn(photoDataUrl: string): Promise<UploadPcnResult> 
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-snappeal-session": sessionId,
+      "x-parkingrabbit-session": sessionId,
     },
     body: JSON.stringify({ sessionId }),
   });
@@ -68,7 +68,7 @@ export async function uploadPcn(photoDataUrl: string): Promise<UploadPcnResult> 
     method: "PATCH",
     headers: {
       "content-type": "application/json",
-      "x-snappeal-session": sessionId,
+      "x-parkingrabbit-session": sessionId,
     },
     body: JSON.stringify({ pcnImageUrl: photoDataUrl }),
   });
@@ -105,11 +105,23 @@ export async function uploadPcn(photoDataUrl: string): Promise<UploadPcnResult> 
         const json = (await res.json()) as {
           confidence?: Record<string, number>;
           coach?: PhotoCoachResult | null;
+          /** Server-side post-OCR dedup may have folded this upload
+           *  into an older draft for the same (pcnRef, vehicleReg).
+           *  When set, the duplicate row has been deleted and this id
+           *  is the surviving target — re-point the session pointer
+           *  so any follow-up PATCH from this device hits the right
+           *  row. The reconciliation poll on /app/tickets picks up
+           *  the merge naturally on its next tick. */
+          mergedInto?: string | null;
         };
+        const survivingAppealId = json.mergedInto ?? updated.id;
+        if (json.mergedInto && json.mergedInto !== updated.id) {
+          setCurrentAppealId(json.mergedInto);
+        }
         // Fold confidence + photo coach into the handoff so the card
         // can render the "2 greens" confidence pills on the inputs.
         setOcrHandoff({
-          appealId: updated.id,
+          appealId: survivingAppealId,
           confidence: json.confidence ?? {},
           photoCoach: json.coach ?? null,
         });

@@ -18,9 +18,9 @@
  * the first job that would eventually fire a notification.
  */
 
-const STORAGE_KEY = "snappeal.notifications";
-const PERM_CACHED_KEY = "snappeal.notifications.permission";
-const SUBSCRIBE_EVENT = "snappeal:notifications:changed";
+const STORAGE_KEY = "parkingrabbit.notifications";
+const PERM_CACHED_KEY = "parkingrabbit.notifications.permission";
+const SUBSCRIBE_EVENT = "parkingrabbit:notifications:changed";
 
 export type NotificationKind = "validation" | "draft" | "submit";
 

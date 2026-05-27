@@ -66,7 +66,7 @@ export function NotificationWatcher() {
           `/api/appeals?sessionId=${encodeURIComponent(sessionId)}`,
           {
             cache: "no-store",
-            headers: { "x-snappeal-session": sessionId },
+            headers: { "x-parkingrabbit-session": sessionId },
           },
         );
         if (appealsRes.ok && alive) {

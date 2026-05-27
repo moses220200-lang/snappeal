@@ -31,7 +31,7 @@ export function Confetti({ trigger }: { trigger: string | null }) {
   useEffect(() => {
     if (!trigger) return;
     if (typeof window === "undefined") return;
-    const key = `snappeal.confetti.${trigger}`;
+    const key = `parkingrabbit.confetti.${trigger}`;
     if (window.sessionStorage.getItem(key)) return;
     window.sessionStorage.setItem(key, "1");
     const computed: Particle[] = Array.from({ length: COUNT }, (_, i) => ({
@@ -57,16 +57,16 @@ export function Confetti({ trigger }: { trigger: string | null }) {
       {particles.map((p) => (
         <span
           key={p.i}
-          className="snappeal-confetti absolute top-[-10px] block"
+          className="parkingrabbit-confetti absolute top-[-10px] block"
           style={{
             left: `${p.left}%`,
             width: p.size,
             height: p.size * 0.6,
             backgroundColor: p.color,
             borderRadius: 2,
-            animation: `snappeal-confetti-fall ${p.duration}ms cubic-bezier(0.16, 1, 0.3, 1) ${p.delay}ms forwards`,
-            ["--snappeal-confetti-drift" as string]: `${p.drift}px`,
-            ["--snappeal-confetti-rotate" as string]: `${p.rotation}deg`,
+            animation: `parkingrabbit-confetti-fall ${p.duration}ms cubic-bezier(0.16, 1, 0.3, 1) ${p.delay}ms forwards`,
+            ["--parkingrabbit-confetti-drift" as string]: `${p.drift}px`,
+            ["--parkingrabbit-confetti-rotate" as string]: `${p.rotation}deg`,
           }}
         />
       ))}

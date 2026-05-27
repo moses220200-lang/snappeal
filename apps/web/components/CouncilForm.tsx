@@ -10,6 +10,7 @@ interface CouncilRow {
   name: string;
   type: string;
   appealPortalUrl: string;
+  paymentPortalUrl: string | null;
   appealEmail: string | null;
   postalAddress: string | null;
   submissionMethods: string[];
@@ -31,6 +32,7 @@ const EMPTY: CouncilRow = {
   name: "",
   type: "borough",
   appealPortalUrl: "",
+  paymentPortalUrl: null,
   appealEmail: "",
   postalAddress: "",
   submissionMethods: ["portal", "email"],
@@ -87,13 +89,13 @@ export function CouncilForm({ mode, initial }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <Link href="/admin/councils" className="text-xs text-snappeal-primary inline-flex items-center gap-1">
+        <Link href="/admin/councils" className="text-xs text-parkingrabbit-primary inline-flex items-center gap-1">
           <ChevronLeft className="size-3.5" /> All councils
         </Link>
-        <h1 className="mt-2 text-3xl font-bold text-snappeal-navy">
+        <h1 className="mt-2 text-3xl font-bold text-parkingrabbit-navy">
           {mode === "create" ? "Add council" : draft.name || draft.slug}
         </h1>
-        <p className="text-sm text-snappeal-muted mt-1">
+        <p className="text-sm text-parkingrabbit-muted mt-1">
           {mode === "create"
             ? "New London authority. Slug must be kebab-case (e.g. hackney)."
             : "Update the council's KB row. Changes take effect on the next appeal."}
@@ -152,11 +154,25 @@ export function CouncilForm({ mode, initial }: Props) {
 
         <Card title="Channels">
           <Grid>
-            <Field label="Appeal portal URL">
+            <Field
+              label="Appeal portal URL"
+              hint="The challenge / representation page the MCP agent navigates to"
+            >
               <input
                 value={draft.appealPortalUrl}
                 onChange={(e) => setField("appealPortalUrl", e.target.value)}
                 placeholder="https://appeals.hackney.gov.uk/"
+                className="input-base"
+              />
+            </Field>
+            <Field
+              label="Payment portal URL (optional)"
+              hint="Customer-facing Pay-yourself link. Leave blank to reuse the appeal URL."
+            >
+              <input
+                value={draft.paymentPortalUrl ?? ""}
+                onChange={(e) => setField("paymentPortalUrl", e.target.value || null)}
+                placeholder="https://hackneyparking.paypcn.com/"
                 className="input-base"
               />
             </Field>
@@ -195,8 +211,8 @@ export function CouncilForm({ mode, initial }: Props) {
                       }
                       className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition ${
                         on
-                          ? "bg-snappeal-primary text-white"
-                          : "bg-white border border-snappeal-border text-snappeal-navy"
+                          ? "bg-parkingrabbit-primary text-white"
+                          : "bg-white border border-parkingrabbit-border text-parkingrabbit-navy"
                       }`}
                     >
                       {m}
@@ -254,7 +270,7 @@ export function CouncilForm({ mode, initial }: Props) {
                   type="color"
                   value={draft.logoBg ?? "#ffffff"}
                   onChange={(e) => setField("logoBg", e.target.value)}
-                  className="h-9 w-12 rounded-md border border-snappeal-border bg-white cursor-pointer"
+                  className="h-9 w-12 rounded-md border border-parkingrabbit-border bg-white cursor-pointer"
                 />
                 <input
                   type="text"
@@ -267,7 +283,7 @@ export function CouncilForm({ mode, initial }: Props) {
             </Field>
             <Field label="Preview">
               <div
-                className="size-14 rounded-lg border border-snappeal-border flex items-center justify-center overflow-hidden"
+                className="size-14 rounded-lg border border-parkingrabbit-border flex items-center justify-center overflow-hidden"
                 style={{ background: draft.logoBg || "#ffffff" }}
               >
                 {draft.logoUrl ? (
@@ -278,7 +294,7 @@ export function CouncilForm({ mode, initial }: Props) {
                     className="max-w-full max-h-full object-contain"
                   />
                 ) : (
-                  <span className="text-[10px] text-snappeal-muted">no logo</span>
+                  <span className="text-[10px] text-parkingrabbit-muted">no logo</span>
                 )}
               </div>
             </Field>
@@ -301,16 +317,16 @@ export function CouncilForm({ mode, initial }: Props) {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-2xl bg-snappeal-action text-white font-semibold px-5 py-3 shadow-lg shadow-snappeal-action/40 hover:bg-snappeal-action-600 transition disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-2xl bg-parkingrabbit-action text-white font-semibold px-5 py-3 shadow-lg shadow-parkingrabbit-action/40 hover:bg-parkingrabbit-action-600 transition disabled:opacity-60"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             {mode === "create" ? "Create council" : "Save changes"}
           </button>
-          <Link href="/admin/councils" className="text-xs text-snappeal-muted hover:text-snappeal-navy">
+          <Link href="/admin/councils" className="text-xs text-parkingrabbit-muted hover:text-parkingrabbit-navy">
             Cancel
           </Link>
           {mode === "edit" && (
-            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-snappeal-muted">
+            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-parkingrabbit-muted">
               <Trash2 className="size-3.5" /> Hard-delete via SQL only — councils are referenced by appeals.
             </span>
           )}
@@ -322,16 +338,16 @@ export function CouncilForm({ mode, initial }: Props) {
         :global(.input-base) {
           width: 100%;
           background: rgba(250, 250, 250, 0.6);
-          border: 1px solid var(--color-snappeal-border);
+          border: 1px solid var(--color-parkingrabbit-border);
           border-radius: 0.75rem;
           padding: 0.5rem 0.75rem;
           font-size: 0.875rem;
-          color: var(--color-snappeal-navy);
+          color: var(--color-parkingrabbit-navy);
           outline: none;
           transition: border-color 0.15s ease;
         }
         :global(.input-base:focus) {
-          border-color: var(--color-snappeal-primary);
+          border-color: var(--color-parkingrabbit-primary);
         }
         :global(.input-base:disabled) {
           opacity: 0.6;
@@ -344,8 +360,8 @@ export function CouncilForm({ mode, initial }: Props) {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border p-5 flex flex-col gap-3">
-      <p className="text-sm font-bold text-snappeal-navy">{title}</p>
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex flex-col gap-3">
+      <p className="text-sm font-bold text-parkingrabbit-navy">{title}</p>
       {children}
     </section>
   );
@@ -368,9 +384,9 @@ function Field({
 }) {
   return (
     <label className={`flex flex-col gap-1.5 ${full ? "md:col-span-2" : ""}`}>
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-snappeal-muted">{label}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-parkingrabbit-muted">{label}</span>
       {children}
-      {hint && <span className="text-[10px] text-snappeal-muted">{hint}</span>}
+      {hint && <span className="text-[10px] text-parkingrabbit-muted">{hint}</span>}
     </label>
   );
 }

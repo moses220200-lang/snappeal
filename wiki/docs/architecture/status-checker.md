@@ -1,26 +1,21 @@
 # Ticket-status checker
 
-A `TicketStatusSnapshot` is the canonical record of where a PCN sits with the issuer. The status-checker subsystem resolves the right **issuer connector**, reads the issuer's portal, and returns a typed snapshot that every UI surface consumes.
+Last refreshed **2026-05-27 (v0.3.10)**.
 
-This doc covers:
-
-1. The canonical status taxonomy.
-2. The connector interface + how the registry resolves them.
-3. The mock connector (and why it's deliberately not authoritative).
-4. The rollout roadmap — which issuers ship in which order, and why.
-5. The operational constraints anyone touching connectors needs to know.
+A `TicketStatusSnapshot` is the canonical record of where a PCN sits with the issuer. The status-checker subsystem resolves the right **source** — `fromPortalLookup` (preferred, post-verdict), `fromOcr` (fallback, pre-verdict), or `mock` (last resort) — and returns a typed snapshot that every UI surface consumes.
 
 ## Why this layer exists
 
-There is **no central UK database** of parking-ticket status. Every council, every TfL operation, every private parking company, every rail operator, every airport operator runs their own portal with their own auth, anti-bot, and verdict vocabulary. Some have JSON APIs. Most don't. Several use CAPTCHA. A handful use Cloudflare anti-bot.
+There is **no central UK database** of parking-ticket status. Every council, every TfL operation, every private parking company, every rail operator, every airport operator runs their own portal with its own auth, anti-bot, and verdict vocabulary. Some have JSON APIs. Most don't. Several use CAPTCHA. A handful use Cloudflare anti-bot.
 
 Promising "AI checks the status of any UK parking ticket" is therefore a lie. What we can promise is "AI checks the status of any ticket from a supported issuer, and we ship more supported issuers every month."
 
 The architecture is built around that honesty:
 
 - The `TicketStatusSnapshot` shape is universal (works for any issuer).
-- The `IssuerConnector` interface is the integration unit (one per issuer).
-- The `registry` maps `issuerKey → IssuerConnector`. Unmapped or not-ready issuers fall back to the mock connector, which is clearly labelled in the UI as **"Preview — connector not live yet"** so the customer never sees a fake authoritative verdict.
+- The **post-verdict source of truth** is `appeal.portalLookup` — written by the lookup worker (deterministic recipe or Claude MCP, see [`submission-engine.md`](submission-engine.md)).
+- The **pre-verdict fallback** is the OCR-derived snapshot (`fromOcr`) for automated councils that haven't run the lookup yet, OR for non-automated councils where the OCR is the only signal we have.
+- The mock connector is the final fallback — used in dev + when no councilSlug is identified at all.
 
 ## The taxonomy
 
@@ -36,122 +31,49 @@ Two enums in `apps/web/lib/server/connectors/types.ts`, intentionally orthogonal
 | `cancelled` | Issuer has cancelled the PCN. | Positive (green). |
 | `charge_certificate_issued` | London escalation: penalty +50%, appeal window narrowed. | Danger (red). |
 | `closed` | Terminal state (Order for Recovery / enforcement / closed). | Neutral. |
-| `unknown` | Connector ran fine but the verdict didn't fit the enum. | Neutral. |
+| `unknown` | Source ran fine but the verdict didn't fit the enum. | Neutral. |
 
-**`TicketStage`** — fine-grained lifecycle stage. `lib/deriveCardState.ts` branches off this (via `statusSnapshot.stage`) inside the smart `<TicketCard>` to render the right CTA mix — specifically the three `needs_decision` flavors (`recommendation` / `escalated` / `expired`). See [appeal-state-machine.md](appeal-state-machine.md) for the full card-state model.
+**`TicketStage`** — fine-grained lifecycle stage. `lib/deriveCardState.ts` branches off this (via `statusSnapshot.stage`) inside the smart `<TicketCard>` to render the right CTA mix — specifically the three `needs_decision` flavors (`recommendation` / `escalated` / `expired`). See [`appeal-state-machine.md`](appeal-state-machine.md).
 
-| Stage | Drives                                                                                       |
+| Stage | Drives |
 |---|---|
-| `scanned`                     | Just OCR'd, no portal lookup yet.                                                          |
-| `validated`                   | Portal lookup confirmed the ticket exists.                                                |
-| `status_check_pending`        | Connector hasn't returned a verdict yet (or no connector wired up for this issuer).        |
-| `discount_active`             | Discount window still open — pay or appeal at the early-bird half-price.                   |
-| `appeal_open`                 | Statutory 28-day appeal window still open.                                                |
-| `appeal_expired`              | 28-day window has elapsed; standard appeal path is closed.                                |
-| `appeal_submitted`            | Customer has lodged an appeal with the council; awaiting decision.                         |
-| `under_review`                | Council actively reviewing.                                                                |
-| `charge_certificate_issued`   | Penalty +50%; appeal route closed; "Pay yourself" or future witness-statement workflow.    |
-| `order_for_recovery`          | Order filed at Northampton CCBC; court fee added.                                          |
-| `enforcement`                 | Passed to bailiffs.                                                                        |
-| `paid` / `cancelled` / `closed` | Terminal; recommendation card hidden, friendly settled/cancelled/closed copy.            |
-| `unknown`                     | Connector couldn't determine.                                                              |
+| `status_check_pending` | Lookup hasn't returned yet — the card stays in `validating`. **v0.3.10 bridge fix**: the status-snapshot fetch deps include `portalLookup?.status` so this stage clears the instant the verdict lands. |
+| `discount_active` | Discount window still open. |
+| `appeal_open` | Statutory 28-day appeal window still open. |
+| `appeal_expired` | 28-day window has elapsed. |
+| `appeal_submitted` | Customer has lodged an appeal; awaiting decision. |
+| `under_review` | Council actively reviewing. |
+| `charge_certificate_issued` | Penalty +50%; appeal route closed. |
+| `order_for_recovery` | Order filed at Northampton TEC; court fee added. |
+| `enforcement` | Passed to bailiffs. |
+| `paid` / `cancelled` / `closed` | Terminal. |
+| `unknown` | Couldn't determine. |
 
-The two enums are kept separate so the UI can express "status = unpaid, stage = charge_certificate_issued" cleanly without inventing a combined enum.
+**Derived decision fields** the snapshot also carries:
 
-**Derived decision fields** the connector also returns:
-
-- `canAppeal: boolean` — drives whether the Appeal-with-Rabbit primary CTA shows on the recommendation card. False for any expired / escalated / terminal stage.
-- `canPay: boolean` — drives the Pay-yourself CTA. False for terminal-paid/cancelled and edge cases like under-appeal where payment is paused.
+- `canAppeal: boolean` — drives whether the Appeal-with-Rabbit primary CTA shows.
+- `canPay: boolean` — drives the Pay-yourself CTA.
 - `daysLeftToAppeal: number | null` — countdown surfaced on the Appeal CTA when the appeal window is open.
-- `currentDuePence`, `discountedDuePence`, `discountUntil`, `payByDate`, `paidAt` — amount + deadline data.
-- `paymentUrl: string | null` — per-PCN deep link when the connector knows one; falls back to `council.appealPortalUrl`.
+- `currentDuePence`, `discountedDuePence`, `discountUntil`, `payByDate`, `paidAt` — amount + deadline data. All dates are ISO 8601 (normalised at `persistPortalLookup`'s write boundary — see [`date-handling.md`](date-handling.md)).
+- `paymentUrl: string | null` — per-PCN deep link when known; falls back to `council.paymentPortalUrl` (separate from `council.appealPortalUrl` — Lambeth uses a different host for payments).
 
-UI labels + tones are read from the `STATUS_LABEL`, `STAGE_LABEL`, and `STATUS_TONE` maps in `types.ts` so every surface stays consistent.
+UI labels + tones are read from `STATUS_LABEL`, `STAGE_LABEL`, and `STATUS_TONE` maps in `types.ts`.
 
-## The connector interface
+## Source resolution (v0.3.9 dispatch)
 
-```ts
-interface IssuerConnector {
-  readonly id: ConnectorId;
-  readonly displayName: string;
-  readonly portalDescription: string;
-  readonly ready: boolean;
-  check(input: { pcnRef: string; vehicleReg: string }): Promise<TicketStatusSnapshot>;
-}
+`/api/appeals/[id]/status` resolves the snapshot in this order:
+
+1. **`snapshotFromPortalLookup(appeal)`** — if `appeal.portalLookup` is non-null AND `status` is `verified` or `invalid` (settled, trustworthy), build a snapshot from `portalLookup.metadata` + `portalLookup.verdict`. This is the post-validate-first source of truth.
+2. **Automated council, no portal_lookup yet** — return a validating stub `{stage: 'status_check_pending'}` so the card stays in `validating`. The lookup is in flight (or about to be — `useAutoValidate` is the backstop for old tickets).
+3. **`snapshotFromOcr(appeal)`** — for non-automated councils where no lookup is going to happen, the OCR ticket fields are the only signal. Returns `source: "mock"` (honest about not being verified) + computes stage from `issuedAt` + 28-day appeal window.
+4. **Mock fallback** — used when no councilSlug is identified at all. Deterministic rotation by `hash(pcnRef:vehicleReg) mod 7`. UI surfaces a **"Preview — connector not live yet"** pill.
+
 ```
-
-The `TicketStatusSnapshot` shape connectors return (v0.2.12):
-
-```ts
-{
-  status: TicketStatus;                  // coarse: unpaid / paid / under_appeal / cancelled / charge_certificate_issued / closed / unknown
-  stage: TicketStage;                    // fine: discount_active / appeal_open / appeal_expired / charge_certificate_issued / order_for_recovery / enforcement / paid / cancelled / closed / ...
-  canAppeal: boolean;                    // drives Appeal-with-Rabbit primary CTA
-  canPay: boolean;                       // drives Pay-yourself CTA
-  daysLeftToAppeal?: number | null;      // countdown copy on the Appeal CTA
-  currentDuePence?: number;              // pence; what the portal shows as owed right now
-  discountedDuePence?: number;           // pence; early-bird half-price if discount_active
-  discountUntil?: string | null;         // ISO date
-  payByDate?: string | null;             // ISO date
-  paidAt?: string | null;                // ISO date
-  paymentUrl?: string | null;            // per-PCN deep link if the issuer exposes one
-  detail?: string;                       // human-readable subtitle
-  rawVerdict?: string;                   // diagnostics + audit
-  fetchedAt: string;
-  source: ConnectorId;                   // 'mock' surfaces a "Preview" pill in the UI
-}
+appeal.portalLookup verified/invalid  →  snapshotFromPortalLookup        (source: portal_lookup)
+automated council, no portal_lookup    →  validating stub                  (source: portal_lookup, awaiting)
+non-automated council                  →  snapshotFromOcr                  (source: mock, OCR-derived)
+no council, no signal                   →  mock connector                   (source: mock, rotating)
 ```
-
-Example outputs (from the mock connector — real connectors map their issuer's native vocabulary into this shape):
-
-```json
-{
-  "status": "unpaid",
-  "stage": "discount_active",
-  "detail": "Discount available — pay or appeal within the discount window.",
-  "currentDuePence": 13000,
-  "discountedDuePence": 6500,
-  "discountUntil": "2026-06-01T...",
-  "payByDate": "2026-06-15T...",
-  "daysLeftToAppeal": 23,
-  "canAppeal": true,
-  "canPay": true,
-  "source": "mock"
-}
-
-{
-  "status": "charge_certificate_issued",
-  "stage": "charge_certificate_issued",
-  "detail": "Penalty escalated — the amount has increased by 50%.",
-  "currentDuePence": 19500,
-  "canAppeal": false,
-  "canPay": true,
-  "source": "mock"
-}
-```
-
-**Idempotent.** Re-checking the same PCN must not have side-effects on the issuer (no logging in if a logged-out check works; no submitting forms).
-
-**Per-issuer rate limit.** Connectors share a registry-enforced rate limit so an issuer can't see our IP pool slamming their portal.
-
-**Throws `ConnectorError`, never lies.** A connector that can't read the portal MUST throw with a typed code (`PORTAL_UNREACHABLE`, `PORTAL_BLOCKED`, `INVALID_INPUT`, `RATE_LIMITED`, `NOT_IMPLEMENTED`). It MUST NOT return a fake `unpaid` snapshot to look healthy.
-
-**Tests don't touch the network.** Connectors take their HTTP / Playwright client by dependency injection so unit tests can stub the portal.
-
-## The registry
-
-`apps/web/lib/server/connectors/registry.ts`. Resolution order:
-
-1. Exact match on the issuer key (`westminster`, `camden`, `tfl-congestion`, `parkingeye`, …). The key for council PCNs is the council slug; for private parking it's a stable issuer id.
-2. Fallback to the mock connector if the key doesn't resolve OR the connector isn't `ready: true`.
-
-Callers don't need null-checks — the registry always returns a connector. They inspect the returned snapshot's `source` field to know whether the result is authoritative (`source === "westminster"`) or synthetic (`source === "mock"`).
-
-## The mock connector
-
-`apps/web/lib/server/connectors/mock.ts`. Deterministic — returns a rotating sample status based on `hash(${pcnRef}:${vehicleReg}) mod 7`. Used in dev + as the registry fallback for any issuer whose real connector hasn't shipped.
-
-The UI badge component (`TicketStatusBadge`) renders a `"Preview — connector not live yet"` pill whenever `snapshot.source === "mock"`. This is non-negotiable — the customer must never see a fake authoritative verdict.
 
 ## API surface
 
@@ -159,113 +81,109 @@ The UI badge component (`TicketStatusBadge`) renders a `"Preview — connector n
 GET /api/appeals/[id]/status
 ```
 
-Ownership-gated. Resolves the connector via the appeal's `councilSlug` (extension point: private-parking heuristic on the PCN ref pattern in v0.3). Returns `{ snapshot: TicketStatusSnapshot }`.
+Ownership-gated. Returns `{ snapshot: TicketStatusSnapshot }`.
 
 Errors:
 
 - `404` — appeal not found.
 - `403` — not the owner.
 - `400` — appeal is missing PCN ref / vehicle reg.
-- `502` — connector returned `ConnectorError`. The error code is in the body so the UI can render the right fallback.
+- `502` — connector threw `ConnectorError`.
 - `503` — database not configured.
 
-Future:
+The smart card's `useEffect` to fetch this snapshot has deps `[appeal.id, ticket.pcnRef, ticket.vehicleReg, portalLookup?.status, portalLookup?.fetchedAt]` (v0.3.10) so it re-fetches the moment the worker writes the verdict — the previous version's stale snapshot trapped the card in `validating` until manual refresh.
 
-- **Snapshot caching.** Add `appeals.status_snapshot jsonb` with a short TTL so repeated reads don't hammer the portal.
-- **Async connectors.** When a connector needs Playwright MCP it should enqueue a `status_check` job kind (sibling to `pcn_lookup`) rather than blocking the API request. SSE the result.
-- **Webhooks.** Issuers that can push updates (very few — TfL has nothing, Westminster has nothing, ParkingEye has nothing) get a `/api/inbound/status/[issuer]` route.
+## Why the registry indirection
 
-## Rollout roadmap
+`apps/web/lib/server/connectors/registry.ts` exists for future direct-connector implementations (when a council exposes a JSON API and we don't need the lookup-MCP pipeline). The status endpoint today dispatches via the source-resolution logic above; the registry is the extension point for "this issuer has a real read-only API we can hit synchronously".
 
-Shipping connectors is bottlenecked on portal recon + Playwright MCP recipe authoring. Order is by volume × ease.
+The mock connector (`apps/web/lib/server/connectors/mock.ts`) is the deterministic fallback. The UI's `<TicketStatusBadge>` renders a `"Preview"` pill whenever `snapshot.source === "mock"`.
 
-### Wave 1 (launch + first 3 months)
+## Future direction
 
-| Issuer | Type | Why first | Status |
-|---|---|---|---|
-| Westminster | London borough | Already has full submission automation; lookup connector already lives in `lib/server/submission/lookup.ts`. Status connector reuses the same MCP scaffolding. | Lookup live; status connector queued. |
-| TfL Bus Lane | TfL operation | Highest enforcement volume in London; portal is JSON-API-friendly. | Queued. |
-| Camden | London borough | Volume + we have the appeal portal recon already. | Queued. |
+The status-checker's long-term home is **probably one job kind per issuer** (`status_check`) that the worker drains the same way `pcn_lookup` does today — but a `status_check` is materially different from a `pcn_lookup`. Lookup = "what does the portal say about this PCN", run once per appeal. Status = "what does the portal NOW say about this PCN", run on demand by the customer / admin / scheduled cron. Until that need is real (probably when we ship Care Plan and want to push customers an update if their PCN cancels mid-month), the current implementation is good enough.
 
-### Wave 2 (months 3–6)
+## Operational constraints — read this before adding a real connector
 
-| Issuer | Type | Notes |
-|---|---|---|
-| TfL Congestion Charge | TfL operation | Separate portal from Bus Lane. Same auth model. |
-| Kensington & Chelsea | London borough | Royal borough — different portal vendor than Westminster. |
-| Islington | London borough | Queued by request volume. |
-| Lambeth | London borough | ditto. |
-
-### Wave 3 (months 6–12)
-
-| Issuer | Type | Notes |
-|---|---|---|
-| ParkingEye | Private parking | Largest private-PPC operator. **CAPTCHA-gated** — lookup needs human-in-the-loop or licensed anti-captcha provider. |
-| Euro Car Parks | Private parking | Account-required after the appeal window — needs stored-credentials vault. |
-| APCOA | Private parking | Mix of council-contracted + private. Two different portal flows. |
-| NCP | Private parking | Account-required. |
-| Horizon | Private parking | Smaller volume but commonly cited in supermarket complaints. |
-
-### Wave 4+ (year 2)
-
-- National Rail (operator-by-operator).
-- Heathrow / Gatwick / Stansted airport parking.
-- Out-of-London authorities (Manchester, Birmingham, Bristol, Edinburgh, Glasgow).
-
-## Operational constraints — read this before adding a connector
-
-These notes live in `lib/server/connectors/types.ts` next to the interface. Do not remove them when refactoring; they encode war stories.
+These notes live in `lib/server/connectors/types.ts` next to the interface.
 
 ### CAPTCHA / anti-bot
 
-Many council portals (Westminster's notably) gate the lookup behind reCAPTCHA v2 or hCaptcha. Solving programmatically is a TOS violation. The two acceptable paths:
+Many council portals (Westminster's notably) gate the lookup behind reCAPTCHA v2 or hCaptcha. Solving programmatically is a TOS violation. Two acceptable paths:
 
-- **Human-in-the-loop.** When the connector hits a CAPTCHA, kick the lookup back to the customer with a "please confirm you're a human" handoff. They click through; we resume. Operationally expensive but compliant.
-- **Licensed anti-captcha provider.** Per-issuer agreement that explicitly permits machine-solving for ParkingRabbit's traffic. Possible for some councils; impossible for most private operators.
+- **Human-in-the-loop.** Hand the lookup back to the customer with a "please confirm you're a human" handoff. Operationally expensive but compliant.
+- **Licensed anti-captcha provider.** Per-issuer agreement permitting machine-solving for ParkingRabbit's traffic.
 
 Never bypass without explicit per-issuer authorisation.
 
 ### Rate limits
 
-Hammering a portal will get the ParkingRabbit IP pool banned. Every connector call must go through a shared per-issuer rate-limit queue. The registry is the right place to enforce this; the limit per issuer should default to one request per second and be tunable per-connector.
+Hammering a portal will get the ParkingRabbit IP pool banned. Connectors must go through a shared per-issuer rate-limit queue. Default one request per second, tunable per-connector.
 
 ### Session tokens
 
-Some portals (TfL Congestion Charge in particular) issue short-lived session cookies that expire mid-walk. Connectors must:
-
-- Detect session expiry from the portal's response (usually a 302 to the login page).
-- Re-acquire the session idempotently.
-- Surface the retry in the audit log.
+Some portals (TfL Congestion Charge) issue short-lived session cookies that expire mid-walk. Connectors must detect session expiry from the portal's response, re-acquire the session idempotently, and surface the retry in the audit log.
 
 ### JS-app portals
 
-Reading raw HTML is not enough — many portals ship a React/Angular SPA. The status only resolves after the SPA has hydrated and made its own XHR calls. Connectors that try to scrape the initial HTML response will get partial data.
-
-The rule: if the portal renders anything to the user via JS, the connector must drive Playwright MCP. There is no "fast path" via fetch.
+Reading raw HTML is not enough — many portals ship a React/Angular SPA. The status only resolves after hydration. Connectors that try to scrape the initial HTML response will get partial data. **The rule**: if the portal renders anything via JS, the connector must drive Playwright MCP (or use a deterministic Playwright recipe — see [`deterministic-recipes.md`](deterministic-recipes.md)).
 
 ### Auth-required portals
 
-A handful of private parking companies hide status behind a mandatory account. ParkingEye does this once the appeal window has closed; NCP does it from the start.
+A handful of private parking companies hide status behind a mandatory account (ParkingEye post-appeal-window, NCP from the start). Until we have a stored-credentials vault (encrypted at rest, per-user keys, audit logs, breach-disclosure plan), those connectors stay `ready: false` and the registry falls back to the mock.
 
-Until we have a stored-credentials vault (encrypted at rest, per-user keys, audit logs, breach-disclosure plan), those connectors stay `ready: false` and the registry falls back to the mock. Customers see the Preview pill.
+## Rollout roadmap
+
+Shipping connectors is bottlenecked on portal recon + Playwright recipe authoring. Order by volume × ease.
+
+### Wave 1 (launch + first 3 months)
+
+| Issuer | Status |
+|---|---|
+| Lambeth | ✅ Submission + lookup prompts + **deterministic recipe** + **grounds-registry entry** all live. |
+| Westminster | 🟡 Submission + lookup prompts live (Claude MCP). No recipe or grounds-registry entry yet. |
+| Camden | ⏳ Knowledge brief; no prompts/recipe yet. |
+| TfL Bus Lane | ⏳ Knowledge brief; no prompts/recipe yet. |
+
+### Wave 2 (months 3–6)
+
+Royal Borough of Kensington & Chelsea · Islington · TfL Congestion Charge (separate from Bus Lane).
+
+### Wave 3 (months 6–12)
+
+Private-parking operators: ParkingEye (CAPTCHA-gated), Euro Car Parks (account-required), APCOA, NCP (account-required), Horizon. Each needs the credentials vault + per-issuer anti-captcha agreement before shipping.
+
+### Wave 4+ (year 2)
+
+National Rail, Heathrow / Gatwick / Stansted, out-of-London councils.
 
 ## Code anchors
 
 - `apps/web/lib/server/connectors/types.ts` — interface, taxonomy, error class, UI label maps.
 - `apps/web/lib/server/connectors/registry.ts` — resolution + listing.
 - `apps/web/lib/server/connectors/mock.ts` — deterministic placeholder.
-- `apps/web/components/TicketStatusBadge.tsx` — single-source-of-truth UI badge with mock-pill awareness.
+- `apps/web/lib/server/connectors/fromPortalLookup.ts` — post-verdict source of truth.
+- `apps/web/lib/server/connectors/fromOcr.ts` — pre-verdict OCR fallback.
+- `apps/web/components/TicketStatusBadge.tsx` — single-source-of-truth UI badge.
 - `apps/web/app/api/appeals/[id]/status/route.ts` — public API surface.
-- `apps/web/app/app/tickets/page.tsx` — fetches the snapshot on mount per expanded card, threads it into `deriveCardState`, renders the badge inline. (`/app/tickets/[id]` is a server-side redirect to `/app/tickets?expand=<id>`.)
+- `apps/web/components/TicketCard.tsx` — the status-snapshot fetch + deps fix.
 
 ## How to add a new connector
 
 1. **Recon the portal.** Manually run through a real PCN lookup. Note auth, anti-bot, session, verdict vocabulary.
-2. **Build the recipe.** Most new connectors will be Claude + Playwright MCP — extend `lib/server/submission/prompts/` with an `<issuer>_status.ts` prompt similar to `westminster.ts` (submission) and the lookup prompt.
-3. **Implement `IssuerConnector`** in `lib/server/connectors/<issuer>.ts`. Wire the MCP run, map verdict strings into the `TicketStatus` enum, throw `ConnectorError` on portal failure.
-4. **Register** in `registry.ts`.
-5. **Dry-run** from `/admin/connectors` (planned admin surface — exists today as part of `/admin/councils/<slug>/automation`).
-6. **Flip `ready: true`** only when the dry-run is green against five real PCNs.
-7. **Document** in this file's roadmap section + the council page in `wiki/docs/councils/<slug>.md`.
+2. **Decide path**: deterministic Playwright recipe (faster, $0) or Claude MCP (more drift-tolerant, ~$0.30). See [`deterministic-recipes.md`](deterministic-recipes.md).
+3. **Author the lookup prompt or recipe**. Recipe goes in `lib/server/submission/recipes/<slug>.ts`; Claude prompt in `lib/server/submission/prompts/<slug>_lookup.ts`.
+4. **Author the submission prompt** when the council is ready to be automated_beta. Plus a `grounds/<slug>.ts` entry — see [`grounds-registry.md`](grounds-registry.md).
+5. **Dry-run** via `/admin/councils/[slug]/automation`.
+6. **Flip `automation_status`** to `automated_beta` when the dry-run is green against five real PCNs.
+7. **Document** in the per-council wiki page (`wiki/docs/councils/<slug>.md`).
 
-The mock will keep the UI happy until step 6.
+The mock + OCR fallback keeps the UI honest until step 6.
+
+## Cross-refs
+
+- The submission engine that writes the authoritative snapshot: [`submission-engine.md`](submission-engine.md).
+- Deterministic recipes (Lambeth shipped, more planned): [`deterministic-recipes.md`](deterministic-recipes.md).
+- Per-council grounds-translation registry: [`grounds-registry.md`](grounds-registry.md).
+- The state machine that consumes the snapshot: [`appeal-state-machine.md`](appeal-state-machine.md).
+- Date normalisation that all snapshot dates pass through: [`date-handling.md`](date-handling.md).

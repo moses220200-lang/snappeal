@@ -150,7 +150,7 @@ export function VoiceNoteButton({
             type="button"
             onClick={start}
             disabled={transcribing}
-            className="self-start inline-flex items-center gap-2 rounded-full text-xs font-bold px-4 py-2 transition disabled:opacity-60 bg-snappeal-primary-100 text-snappeal-primary-700 hover:bg-snappeal-primary-50"
+            className="self-start inline-flex items-center gap-2 rounded-full text-xs font-bold px-4 py-2 transition disabled:opacity-60 bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700 hover:bg-parkingrabbit-primary-50"
           >
             {transcribing ? (
               <>
@@ -171,7 +171,7 @@ export function VoiceNoteButton({
             <button
               type="button"
               onClick={stop}
-              className="self-start inline-flex items-center gap-2 rounded-full text-xs font-bold px-4 py-2 transition bg-snappeal-action text-white"
+              className="self-start inline-flex items-center gap-2 rounded-full text-xs font-bold px-4 py-2 transition bg-parkingrabbit-action text-white"
             >
               <Square className="size-3.5 fill-current" />
               Stop
@@ -180,7 +180,7 @@ export function VoiceNoteButton({
               type="button"
               onClick={paused ? resume : pause}
               aria-label={paused ? "Resume recording" : "Pause recording"}
-              className="self-start inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 transition bg-white border border-snappeal-border text-snappeal-navy hover:border-snappeal-primary"
+              className="self-start inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 transition bg-white border border-parkingrabbit-border text-parkingrabbit-navy hover:border-parkingrabbit-primary"
             >
               {paused ? (
                 <>
@@ -197,7 +197,7 @@ export function VoiceNoteButton({
             <span
               className={`inline-flex items-center gap-1.5 rounded-full text-[11px] font-semibold px-3 py-1.5 ${
                 paused
-                  ? "bg-snappeal-bg text-snappeal-muted"
+                  ? "bg-parkingrabbit-bg text-parkingrabbit-muted"
                   : "bg-red-50 text-red-700"
               }`}
             >

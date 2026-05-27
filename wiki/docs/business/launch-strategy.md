@@ -1,8 +1,10 @@
 # Launch strategy
 
-**One-sentence positioning.** ParkingRabbit scans your PCN, tells you what stage it's at, and offers two real next steps — appeal it with our paid AI workflow, or settle directly with the council. The free side is the scanner + status check + memory. The paid side is the appeal.
+Last refreshed **2026-05-27 (v0.3.10)**.
 
-**Why this shape (v0.2.12).** We removed the earlier "email the council for free" idea. Free email-the-council appeals devalue the paid product — the paid AI workflow IS the product. The commitment hook is the scan; the upsell is the appeal. Pay-on-behalf is a future product (Rabbit Pay, +£1.99) gated on regulatory work.
+**One-sentence positioning.** ParkingRabbit scans your PCN, tells you what stage it's at, and offers two real next steps — appeal it with our paid AI workflow, or settle directly with the council. The free side is the scanner + validate-with-council check + memory. The paid side is the appeal.
+
+**Why this shape.** The earlier "email the council for free" idea was retired in v0.2.12 — free email-the-council appeals devalue the paid product. The paid AI workflow IS the product. The commitment hook is the scan; the upsell is the £2.99 appeal. Pay-on-behalf is a future product (Apple/Google Pay surface, "Coming soon") gated on regulatory work — see [`payment-strategy.md`](payment-strategy.md).
 
 ## The funnel
 

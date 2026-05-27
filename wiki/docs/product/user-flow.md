@@ -1,140 +1,143 @@
 # User flow
 
-Launch shape (v0.3.3): **Tap BottomNav Scan FAB → `/app/scan` (three buttons: Camera / Upload picture / Input manually) → pick a path → `uploadPcn()` → land on `/app/tickets` with the new card auto-expanded → `<ScanningOverlay>` animates over the image preview while OCR reads it → smart card carries every lifecycle state inline via `<TicketLifecycleTimeline>`**. There is no separate "Add a ticket" page and no per-ticket detail page — `/app/tickets/[id]` is a redirect to `/app/tickets?expand=<id>`. Every state (processing, validating, gathering evidence with the **three-step `<StepBlock>` ladder**, drafting, ready, submitting, submitted, plus the 5 v0.3.3 failure states) renders on the single `<TicketCard>` on `/app/tickets`. Live agent thoughts stream over SSE with v0.3.1's 4 KB-padded Cloudflare-safe delivery (no more 8–20 s clumping); the MCP browser is prewarmed at worker boot so the first submission of a fresh deploy starts in the same ~5 s as the hundredth. v0.3.2 added a background notification system (`<NotificationWatcher>` mounted in `app/app/layout.tsx`, polls `/api/appeals` every 5 s in foreground / 30 s when the tab is hidden) so the user gets a native browser notification + an in-app badge when validation completes, the draft lands, or the submission settles — without keeping the page in front of them.
+Last refreshed **2026-05-27 (v0.3.10)**.
+
+**Launch shape (v0.3.10)**: Scan → Confirm (Agree, validate-first) → Pay or Appeal. The Agree tap is what fires the council lookup — no Claude tokens are spent before that. Picking Appeal kicks off the Build-appeal quiz while the lookup either continues or has already settled. Drafting waits for both, then the £2.99 Submit lands. The whole flow lives on ONE smart card on `/app/tickets`. No detail page, no separate paywall page, no full-page blockers.
+
+## End-to-end happy path
 
 ```mermaid
 flowchart TD
-    Start([User receives PCN]) --> Home[Home — three tiles: Scan PCN / Challenge / Pay]
-    Home -->|tap Scan PCN| Tickets[/app/tickets?scan=1 — picker auto-opens]
-    Tickets -->|pick photo| Processing[Card mounts in 'Processing' — image + 3-row pipeline checklist]
-    Processing -->|OCR settles| Review[Pending review — image + 3 editable fields + I agree]
-    Review -->|tap I agree| Validating[Validating — live agent caption streams on the card]
-    Validating -->|verdict open| Recommend[needs_decision — Appeal / Pay yourself / Rabbit Pay Coming Soon]
-    Recommend -->|tap Appeal with Rabbit| Grounds[Gathering evidence — inline 75-card grounds picker]
-    Grounds -->|pick ≥1 reason| Dictation[DictationPanel — textarea + voice + guidance chips]
-    Dictation -->|tap Start drafting + signed in| Review[Step 3 — Review and start drafting]
-    Review --> Draft[Drafting — passive 'we'll notify you']
-    Dictation -.->|tap Start drafting + guest| SignUpGate[/sign-up?next=...&resumeDraft=1]
-    SignUpGate -.->|after sign-up| Dictation
-    Draft -->|letter ready| LetterReady[Ready to submit — strength badge + £2.99 CTA]
-    LetterReady -->|score < 50| WeakWarn[Red weak-appeal banner above CTA]
-    WeakWarn --> Submit[PaymentSheet £2.99]
-    LetterReady --> Submit
-    Submit -->|/api/submit → submit_appeal job| Filed[Submitting → Submitted — green confirmation]
-    Filed --> Done([Council reply lands in inbox])
-
-    Recommend -.->|stage = appeal_expired| Expired[Amber 'Appeal period expired' card + Pay yourself primary]
-    Recommend -.->|stage ∈ Charge Cert / Order for Recovery / Enforcement| Escalated[Red escalation card + Pay yourself only]
-    Recommend -.->|stage = paid/cancelled/closed| Terminal[Terminal card — no CTAs]
-
-    style Processing fill:#eff6ff,color:#0a1f3a,stroke:#007aff,stroke-width:2px
-    style Filed fill:#16a34a,color:#ffffff
-    style Expired fill:#fef3c7,color:#92400e
-    style Escalated fill:#fee2e2,color:#991b1b
-    style Terminal fill:#f4f4f5,color:#52525b
-    style SignUpGate fill:#fef3c7,color:#92400e,stroke-dasharray:4 2
+    A["/app/scan<br/>Camera / Upload / Input manually"] --> B["Upload → /app/tickets?expand=id<br/>Card mounts in processing"]
+    B --> C["OCR pre-pass<br/>~2s<br/>writes councilSlug → reel lands"]
+    C --> D["Full OCR<br/>~10-15s<br/>writes PCN ref + reg + amount + date"]
+    D --> E["pending_review<br/>editable fields + Amount/Date inputs if OCR returned empty<br/>Agree & continue button"]
+    E -- "Agree" --> F["needs_decision<br/>Pay £2.99 / Pay yourself / Apple-Google Pay (Coming soon)<br/>Edit details link"]
+    F -- "Pay tile" --> P[("Council payment URL<br/>(external)")]
+    F -- "Appeal tile" --> G["gathering_evidence<br/>What happened? composer + Common reasons<br/>CouncilCheckChip narrates lookup"]
+    G -.->|"parallel"| L["pcn_lookup job<br/>(Playwright MCP)"]
+    L -->|"verdict open"| G
+    L -->|"verdict paid/closed/not_found"| N["appeal_not_possible<br/>explainer + override link"]
+    G -- "Build my appeal" --> H["drafting<br/>Council confirms block + Drafting status"]
+    H -->|"draft fails"| R["DraftingFailedRow<br/>error + Try again"]
+    R -- "Try again" --> H
+    H -->|"letterBody persists"| I["letter_ready<br/>letter preview + £2.99 Submit"]
+    I -- "Submit + Stripe" --> J["submitting<br/>(submission MCP fills portal)"]
+    J --> K["submitted"]
 ```
 
-Every state above renders on the **same smart `<TicketCard>` on `/app/tickets`**. There are no intermediate routes — `/app/validating/[jobId]`, `/app/submitting/[id]`, `/app/capture`, and **`/app/tickets/[id]`** (removed in v0.3.0; now a redirect to `/app/tickets?expand=<id>`) were deleted across v0.2.13–v0.3.0. On mobile UAs hitting `/`, `apps/web/proxy.ts` rewrites the URL to `/app` so users land directly on the Home screen without seeing the marketing landing.
+## Step-by-step
 
-## Step 1 — Add a ticket (via `/app/scan`)
+### 1. Scan
 
-**Screen prompt:** *"Scan PCN — take a photo, upload, or type the details."*
+`/app/scan` is the dedicated scan landing page. Three buttons:
+- **Camera** — fires the hidden `<input type="file" capture="environment">` to launch the OS camera.
+- **Upload picture** — fires the library picker.
+- **Input manually** — `/app/manual-entry` no-photo path.
 
-- **BottomNav Scan FAB → `/app/scan`** (v0.3.3). The centre camera FAB is a plain `<Link href="/app/scan" aria-label="Scan a new ticket">`. The v0.3.2 inline-file-picker pattern (FAB owned a hidden `<input type="file">` + opened it inside the same gesture) is retired — tapping a camera icon and getting a system sheet with no context was opaque. Now every Scan tap lands on the same explicit page.
-- **`/app/scan` page layout** (`app/app/scan/page.tsx`):
-  - **AppHeader** at the top (no back button — top-level destination).
-  - **Title + subtitle**: "Scan PCN" + "Take a photo of your parking ticket or choose another method."
-  - **Animated scanner preview frame** — `aspect-[4/5]` dark glass card with the `snappeal-hero-scan` keyframe sweep + four corner brackets + radial ambient glow + subtle grid overlay + centre Camera icon + "Position the PCN in the frame" copy. Visual only — actual capture fires when the user taps a button below.
-  - **Three explicit buttons** in priority order:
-    1. **Camera** (primary, blue) — fires the hidden `<input type="file" capture="environment">` to launch the OS camera.
-    2. **Upload picture** (secondary white card) — fires the hidden `<input type="file">` (no `capture`) for library picks.
-    3. **Input manually** (secondary white card) — `<Link href="/app/manual-entry">` for the no-photo path.
-  - **Inline error pill** below the buttons surfaces a red `text-[12px]` line if the upload throws.
-- **Camera + Upload flow** (`lib/client/uploadPcn.ts`): `readFileAsDataUrl(file)` → `POST /api/appeals` (creates a fresh appeal owned by the current session — guests are first-class) → `PATCH /api/appeals/[new-id]` with `pcnImageUrl` → `POST /api/extract` (fire-and-forget) → `router.push("/app/tickets?expand=<appealId>")`. The user lands on the smart card immediately; OCR runs in the background and the `<ScanningOverlay>` animates over the image preview inside the card body until OCR settles.
-- **`<ScanningOverlay>` animated veil** (v0.3.3). Replaces v0.3.2's full-page `<UploadingOverlay>`. `absolute inset-0` to the image preview (not `fixed` to the viewport): soft blue veil + vertical sweep scan-line with glow shadow + four white corner brackets + centre-bottom navy pill `<span>Scanning PCN…</span>` with a pulsing primary dot. No full-page chrome, no caption ticker — a tasteful "we're reading this right now" signal that doesn't blackbox the page.
-- **`/app/tickets` upload-entry path** (legacy). The list page still reads the `?scan=1` query on mount and auto-triggers a file input for backwards compatibility with the v0.2.18 entry; `history.replaceState` strips the param so a refresh doesn't re-trigger. New users hit `/app/scan` instead.
-- **No more separate capture page.** `/app/capture` is a 5-line server-side redirect to `/app/tickets?scan=1` for back-compat links.
+Camera + Upload both feed `uploadPcn(dataUrl)`. On success the user routes to `/app/tickets?expand=<appealId>`. The list page auto-expands the new card.
 
-## How state renders — `<TicketLifecycleTimeline>` (v0.3.3)
+### 2. OCR (two passes, v0.3.10 combined extract+coach)
 
-Every state inside the smart card is drawn by `<TicketLifecycleTimeline>` (`components/TicketLifecycleTimeline.tsx`) — a single vertical journey from upload → resolution that replaces v0.3.2's `<TicketJourney>` 3-step stepper (now dead code on disk).
+`/api/extract` runs TWO sequential Claude calls inside one request:
 
-Per-step contract:
+1. **`identifyCouncil()`** — ~2 s. Returns only `{issuer, councilSlug}`. The endpoint PATCHes the partial ticket onto the appeal row mid-request.
+2. **`extractTicket()`** — ~10–15 s. Returns `{ ticket, confidence, coach, modelUsed, costUsd }` — full ticket fields + the inline photo-coach `{quality, advice}` block in a single Claude vision call. v0.3.10 consolidated the previously-separate `coachPhoto()` call here to halve per-upload Claude cost (~$0.13 → ~$0.075). The `coach` block is wrapped in `.catch({...}).default({...})` so a malformed coach key never fails OCR. PATCHes the complete ticket on top.
 
-- **Rail dot**: green check (done), pulsing primary dot with halo (active), hollow outline (upcoming), amber `<AlertTriangle>` (failed — new in v0.3.3). All `size-5` (was `size-6` in `<TicketJourney>`).
-- **Connector line below the dot**: green when this step is done, amber when failed, muted primary at 40% alpha when active, muted grey when upcoming.
-- **Title** + optional `supporting` line + optional `detail` ReactNode (richer single-line content) + optional `busy` spinner on the active step.
-- **`children: ReactNode`** (new in v0.3.3) — mounted directly under the title when the step is active. Used to render the uploaded image preview (with `<ScanningOverlay>` inside during OCR), the inline Pick-your-grounds quiz, the Pay / appeal choice tiles, the streaming letter preview, status / error messages.
-- **`tint: "warn" | "danger"`** (new in v0.3.3) — wraps `children` in a soft `amber-50` / `red-50` rounded panel for deadline rows + failure rows. Unset → no card background (avoids the "card inside a card" look when the children are themselves a card).
-- **`childrenFullBleed: boolean`** (new in v0.3.3) — when true, `children` escape the rail+gap indent (`-ml-9`) so action tiles render edge-to-edge inside the card (matching the footer's width). Used by the Pay / appeal choice surface.
+The smart card's poll picks up the partial mid-request. The `IssuerLogoReel`'s `scanning` prop flips false the moment `appeal.councilSlug` is set, so the reel locks on the right council early. Card kind stays `processing` until both passes complete.
 
-The numbered step badges from `<TicketJourney>` are gone — position in the list is the position, and the numbers were redundant once `children` made each row big.
+After the second PATCH, `mergeDuplicateDraftIfAny` runs in a transaction: a second upload of the same `(pcnRef, vehicleReg)` collapses onto the older draft, with explicit FK sweeps across `jobs` (no FK), `payments` (no cascade), and `notification_dispatches` (SET NULL). Bad-quality photos surface an amber "Photo looks rough — try X" pill inside the pending-review body.
 
-## Failure states (v0.3.3)
+### 3. Pending review (the Agree gate, v0.3.6+)
 
-5 new `CardKind`s surface recoverable error states on the same `<TicketLifecycleTimeline>` (typically as `failed`-status steps with `tint: "warn"`):
+Card transitions to `pending_review`. The body renders:
 
-| CardKind | Trigger | Recovery surface |
-|---|---|---|
-| `image_issue` | OCR ran but the photo doesn't look like a PCN | Retake / Upload a different photo |
-| `image_unclear` | OCR ran but the read was low-confidence | Per-field uncertainty + Retake / Edit manually |
-| `info_needed` | OCR succeeded but a required field is missing | Inline editable rows for the missing fields |
-| `extraction_failed` | OCR errored or timed out | Retry / Enter manually |
-| `council_lookup_failed` | `pcn_lookup` portal check errored or timed out | Retry / Continue without validation |
+- **Editable rows** for PCN ref + Vehicle reg (always shown). Council picker on the header tile.
+- **Conditional Amount input** (£-prefixed, in pounds) — only when OCR returned `amountPence === 0`. Disabled until filled.
+- **Conditional Issue Date input** (native `<input type="date">`) — only when OCR returned `issuedAt === ""`. Disabled until filled.
+- **Photo coach amber pill** (only when `coach.quality !== "good"`).
+- **Agree & continue** button — disabled until PCN ref + reg + council + (conditional Amount + Date) are all filled.
 
-All five are recoverable in-card — the user never has to navigate away to fix a problem.
+Tapping Agree PATCHes `step=ticket_confirmed`. Pure UX gate — no AI work, no lookup, no cost. Card flips to `needs_decision`.
 
-## Step 2 — Smart ticket card (state-machine surface)
+### 4. Pay or Appeal (validate-first, single trigger, v0.3.10)
 
-!!! info "v0.3.1 update — three-step gathering ladder"
-    The `gathering_evidence` body is now a numbered **`<StepBlock>` ladder**: **1 · Pick your grounds** (opens `<GroundsQuizSheet>`), **2 · Add details** (`<DictationPanel>` — unlocks after step 1), **3 · Review & start drafting** (unlocks after step 2 has either typed notes or at least one ground picked). Each completed step gets a green check. The smart card carries every lifecycle state — scanning, processing, pending_review, validating, needs_decision, gathering_evidence, drafting, letter_ready, submitting, submitted, terminal — via `lib/deriveCardState.ts`.
+The lookup ran (or is running) from the Agree tap in step 3 — `agreeTicket` is the single trigger; `useAutoValidate` is the backstop. Both helpers send `x-parkingrabbit-session` so guest customers' lookup POSTs don't 403. `enqueueLookupIfAutomated` has two layers of idempotency (queued/running siblings + already-settled non-error verdicts) to fix the "lookup fires twice" bug. When the worker writes the verdict, the card's status-snapshot `useEffect` (deps now include `portalLookup?.status`) bridges `validating` → `needs_decision` with no manual refresh.
 
-The customer's primary surface. The state machine derives from three things: the portal-lookup state, the issuer-connector status snapshot's `stage`, and the appeal record's `preferredMethod`/`letterBody`/`status`. `lib/deriveCardState.ts` is the single pure function; the smart card on `/app/tickets` reads it.
+`needs_decision` renders `<PayAppealTiles>` (three tiles via `<ReviewRecommendation>`):
 
-| Stage / state | What renders |
-|---|---|
-| `portal_lookup.status === "pending"` | Passive **"Validating with the council"** banner. Optional "Watch live →" link if admin has enabled the MCP live view. |
-| No status snapshot yet | Passive **"Checking your ticket"** banner. |
-| `stage` ∈ `{discount_active, appeal_open}` | `<ReviewRecommendation>` — Appeal with Rabbit (PAID, primary) + Pay yourself (FREE, secondary) + Rabbit Pay (+£1.99, Coming soon). Deadline countdown on the Appeal CTA. |
-| `stage` = `appeal_expired` | Same card with the Appeal action hidden and an amber **"Appeal period expired"** banner. Pay yourself promotes to primary. |
-| `stage` ∈ `{charge_certificate_issued, order_for_recovery, enforcement}` | Red **escalation card** with the stage title + current amount due (+ council fee where known) + Pay yourself only. Rabbit Pay stays disabled. |
-| `stage` ∈ `{appeal_submitted, under_review}` | Calm **"Council reviewing your appeal"** card; no actions. |
-| `stage` ∈ `{paid, cancelled, closed}` | Terminal card — green for paid/cancelled, neutral for closed. Hide all CTAs. |
-| Method picked, no letter yet | Passive **"Drafting your appeal letter"** banner. |
-| Letter ready, method = portal | "Submit appeal for £2.99" CTA → `<PaymentSheet>` → existing MCP submission flow. |
-| `appeal.status` is submitting/submitted/etc. | Green **"Filed with the council"** confirmation; optional "Watch live →" link to the live MCP submission view. |
+1. **Appeal £2.99** (primary). Tap → `startAppeal()` PATCHes `preferredMethod=portal` and flips the card to `gathering_evidence`. No lookup POST here — the lookup already fired in step 3.
+2. **Pay yourself** (free). External `<a href>` to the council's payment URL, opens in a new tab. No draft. Zero AI cost.
+3. **Apple/Google Pay** ("Coming soon"). Inert placeholder.
 
-**Recommendation card actions (when stage allows appeal):**
+Plus an "Edit details" link that PATCHes `step` back to the default so the user can pop back to the confirm view.
 
-| Action | CTA | Copy | What happens |
-|---|---|---|---|
-| **Appeal with Rabbit** *(PAID)* | "Start appeal →" | "Rabbit reviews your PCN, drafts the appeal, prepares your evidence, and helps you submit it." | Stamps `preferred_method=portal`, kicks off drafting in the background, surfaces the notification permission sheet. Customer waits on the ticket page for the letter-ready notification. |
-| **Pay yourself** *(FREE)* | "Open payment page →" | "Open the official {council} payment page and settle directly." | Opens `statusSnapshot.paymentUrl ?? council.appealPortalUrl` in a new tab. We never touch funds. |
-| **Pay instantly with Rabbit (+£1.99)** | — | "Rabbit will pay the ticket for you instantly after confirmation." | **Disabled** `<div aria-disabled>` with dashed border + "Coming soon" pill. No onClick handler. See [`business/payment-strategy.md`](../business/payment-strategy.md). |
+### 5. Build appeal (the conversation surface)
 
-**Acceptance criteria:**
-- The Appeal with Rabbit CTA is hidden when the connector returns `canAppeal: false`.
-- The Pay yourself CTA falls back to a disabled "Pick your council first" state when the council slug is unknown.
-- Pay instantly with Rabbit is always disabled at launch.
-- Terminal stages (paid/cancelled/closed) hide every CTA — no encouragement to do anything further.
-- Mock-connector snapshots surface a "Preview · connector not live yet" pill so the customer never sees a fake authoritative verdict.
+`gathering_evidence` body:
 
-## Background notifications (v0.3.2)
+- **`<CouncilCheckChip>`** at the top — narrates the lookup state. While `pending` it streams the live MCP agent thought (e.g. *"Now clicking through each enforcement photograph"*). Once the lookup verifies it becomes a green pill (or a green CARD listing each field the council overrode, with old → new diffs).
+- **"What happened?" composer** — one large textarea, mic + photo-attach buttons. Dictation appends to the textarea.
+- **Common reasons** pills (12 reasons, clamped to 3 visible rows by default with "Show all" expand). Each pill maps to one or more `CanonicalGroundId`s in the 75-card grounds catalog.
+- **"Build my appeal"** CTA — enabled when at least one reason is picked OR the composer has text.
 
-ParkingRabbit's background flows (portal-lookup validation, AI drafting, MCP submission) take **30 s – 5 min** of wall-clock. v0.3.2 makes that wait survivable without parking on the page:
+Tapping Build my appeal PATCHes `step=evidence_gathered` (`EVIDENCE_DONE_STEP`) + grounds + notes in one atomic write. Card flips to `drafting`.
 
-- **`<NotificationWatcher>`** is mounted once at the top of `app/app/layout.tsx` and polls `/api/appeals?sessionId=...` every **5 s when the tab is visible / 30 s when hidden**. It fingerprints each appeal as `{ portalStatus, hasLetter, step, appealStatus }` and emits a notification on three deltas: portal-lookup status leaving `pending`, `letterBody` becoming non-null (or `step` becoming `generation_failed`), and `appeal.status` leaving `submitting`. The very first poll seeds the known-state map silently — no backlog dump on reload. Re-ticks immediately when the tab regains focus.
-- **`<NotificationPermissionSheet>`** is the bottom-sheet that asks for native-Notification permission. It's **context-sensitive** — fired at the moment the user kicks off validation / drafting / submission, not on app launch (the higher-grant-rate pattern). Three benefit bullets, "Allow notifications" / "Not now". "Not now" persists in sessionStorage so the prompt re-asks once per session rather than silently suppressing forever.
-- **Native browser notifications** fire via `new Notification("ParkingRabbit", { body, icon: "/icon.png", tag: appealId })`. The `tag: appealId` overwrites earlier per-appeal alerts so the user doesn't get a stack on a single ticket's transitions. `onclick` focuses the tab and routes to `/app/tickets/<id>` (which redirects to the smart card).
-- **In-app notification store** (`lib/client/notifications.ts`) backs the bottom-nav Tickets-tab counter badge. Three `NotificationKind`s — `validation` / `draft` / `submit` — aggregated by `TICKETS_BUCKET`. Store is localStorage-backed, capped at 50 most-recent, idempotent on `id`. Visiting `/app/tickets` calls `clearKinds(TICKETS_BUCKET)`.
+### 6. Drafting (with the council-confirms block)
 
-The notification system is pure client-side polling — no Web Push provider is required at launch. Web Push (`public/sw.js` + `/api/push/subscribe`) remains scaffolded for a future cross-session push channel; today the polling delivers the same UX while the user is still in a session.
+`drafting` body stacks TWO surfaces:
 
-## What's free vs paid
+- **`<CouncilConfirmedDetails>`** — structured listing of every populated field from `portalLookup.metadata` (PCN Ref, Vehicle Reg, Contravention Code, Location, Issued At, Amount, Discount Until, Full Charge From). Lets the user read exactly what the AI is drafting against. Hidden until lookup is verified.
+- **Status row** — three micro-states:
+  - **Waiting on lookup** — when `step === EVIDENCE_DONE_STEP` but `portalLookup.status === "pending"`. Copy: *"Rabbit is finishing the council check before drafting your appeal — usually a few more seconds."*
+  - **Drafting** — Claude is streaming. The route chunks the letter at 80 chars / 30 ms for the typing animation.
+  - **Failed** — `DraftingFailedRow` shows the captured error message (`processing.draft.error`) + a **Try again** button. The Retry handler PATCHes `step=EVIDENCE_DONE_STEP` to re-fire the draft kickoff effect.
 
-| Free at launch | Paid (£2.99 per appeal) | Future |
-|---|---|---|
-| Scan, OCR, status check, deadline tracking, Pay-yourself deep-link, ticket memory, background notifications | AI appeal analysis + drafting + evidence pack + guided submission + auto-submit + appeal tracking | Rabbit Pay (+£1.99), fleet dashboard, employer reimbursement, recurring tickets, automated connectors, advanced dispute workflows |
+The draft kickoff is gated by a separate `useEffect` in `TicketCard.tsx`: fires `/api/generate-stream` only when BOTH `step === EVIDENCE_DONE_STEP` AND `lookup-settled` AND `verdict-not-bad`. Server-side, the route has an in-flight guard via `processing.draft.status === "running"` to prevent double-firing from a back-nav / refresh / route swap during the drafting window.
 
-Free email submission was briefly tried in v0.2.11 and removed in v0.2.12 — the paid AI appeal IS the product; email-to-the-council survives only as an internal portal-fallback inside `runSubmission` for non-automated councils.
+### 7. Letter ready
+
+`letter_ready` body shows the full rendered letter + strength badge + £2.99 Submit CTA (`<PaidSubmitCta>`).
+
+Strength badges:
+- **≥ 80** → green "Strong appeal" pill.
+- **50–79** → amber "Solid appeal" pill.
+- **< 50** → red `<aside>` above the Submit button with the AI's rationale + up to 3 evidence-improvement asks. CTA label flips to "Submit anyway for £2.99". User can attach more evidence and `rescoreWithEvidence` re-runs `scoreAppealStrength()` in place (no letter redraft).
+
+### 8. Submit
+
+Tap £2.99 → `<PaymentSheet>` mounts (Stripe `<PaymentElement>` with Apple Pay / Google Pay / Card detection, or `<FakePaymentButtons>` when `NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT=1`). On success the PaymentIntent id is forwarded to `/api/submit`, which enqueues a `submit_appeal` job. The card flips to `submitting`.
+
+The submission MCP fills the council's Make-Representation form (or sends an email for non-automated councils), captures a confirmation screenshot, writes a `submissions` row, and flips `appeal.status` to `submitted`. Live agent screenshots stream via SSE through `<MCPLiveStrip>` — only visible during `submit_appeal` (the `pcn_lookup` audit screenshots persist server-side but never render in the customer UI).
+
+### 9. Submitted
+
+`submitted` body shows a green confirmation, the council reference, and a "We'll notify you when the council replies" message. Inbound mail handling parses council replies and bumps the appeal to `under_review` / `decision_pending` / `cancelled` / `rejected`.
+
+## Failure states
+
+Any of these can replace the happy-path body without leaving the smart card:
+
+- **`appeal_not_possible`** — lookup verdict is paid/closed/not_found. Body shows the verdict + a Pay-yourself link + "I disagree — let me appeal anyway" override.
+- **`council_lookup_failed`** — `portal.status === "error"` (CAPTCHA, portal down, timeout). Body offers Retry / Continue anyway / Edit details.
+- **`extraction_failed` / `image_issue` / `image_unclear` / `info_needed`** — four OCR-failure CardKinds with recovery actions (retake photo / edit fields manually).
+- **`drafting + step=generation_failed`** — Claude CLI errored. Body's `<DraftingFailedRow>` surfaces the captured error message + a Retry button.
+
+## Background notifications
+
+`<NotificationWatcher>` (mounted in `app/app/layout.tsx`) polls `/api/appeals` every 5 s in the foreground / 30 s when the tab is hidden. Three notification kinds — `validation`, `draft`, `submit` — fire native browser notifications + bump the in-app bell's unread counter when the appeal row flips state. Permission prompt fires at the moment of value (e.g. right after Appeal tap), not on app launch.
+
+## Where this lives in code
+
+- `apps/web/app/app/scan/page.tsx` — the scan landing page.
+- `apps/web/app/app/tickets/page.tsx` — the list + smart card host.
+- `apps/web/components/TicketCard.tsx` — handler logic + state-derive consumer (modularised in v0.3.10 into `components/ticket/{StatusPill,DeleteTicketButton,Field,FailureActions,SubmissionStatusBits}.tsx`).
+- `apps/web/components/TicketCardBody.tsx` — per-state body rendering.
+- `apps/web/app/app/manual-entry/page.tsx` — single-page manual entry; `?appealId=<id>` prefills from OCR partial reads.
+- `apps/web/components/PayAppealTiles.tsx` + `apps/web/components/ReviewRecommendation.tsx` — the tile surface.
+- `apps/web/components/TicketLifecycleTimeline.tsx` — the rail.
+- `apps/web/lib/deriveCardState.ts` — the state machine.
+- `apps/web/lib/client/uploadPcn.ts` — the upload helper.
+- `apps/web/app/api/extract/route.ts` — OCR endpoint.
+- `apps/web/app/api/generate-stream/route.ts` — drafting SSE.
+- `apps/web/app/api/submit/route.ts` — paid submission entry.

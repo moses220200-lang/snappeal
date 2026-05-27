@@ -17,6 +17,8 @@ import type { ReactNode } from "react";
 import { MapPin } from "lucide-react";
 import { formatGBP, formatShortDate } from "@/lib/format";
 import { IssuerLogoReel, type ReelCouncil } from "@/components/IssuerLogoReel";
+import { DeadlineBadge } from "@/components/DeadlineBadge";
+import type { DeadlineProximity } from "@/lib/deriveDeadlineProximity";
 
 interface Props {
   council: { name: string; logoUrl?: string | null; logoBg?: string | null } | null;
@@ -43,6 +45,10 @@ interface Props {
   scanning?: boolean;
   /** Candidate councils for the reel to cycle through while scanning. */
   reelCouncils?: ReelCouncil[];
+  /** Deadline proximity from `getDeadlineProximity()`. Renders a red /
+   *  amber ribbon next to the status pill when ≤7 days remain.
+   *  Hidden when no signal exists or when the ticket is settled. */
+  deadlineProximity?: DeadlineProximity | null;
 }
 
 export function TicketCardHeader({
@@ -58,6 +64,7 @@ export function TicketCardHeader({
   onCouncilClick,
   scanning = false,
   reelCouncils,
+  deadlineProximity,
 }: Props) {
   return (
     <header className="px-5 pt-4 pb-3 flex items-start gap-4">
@@ -77,7 +84,7 @@ export function TicketCardHeader({
           pool={reelCouncils ?? []}
           onCouncilClick={onCouncilClick}
         />
-        <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-snappeal-muted">
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-parkingrabbit-muted">
           Issuer
         </span>
       </div>
@@ -87,32 +94,41 @@ export function TicketCardHeader({
          *  sits inline with the £ amount so the price and the
          *  when-it-was-issued read together at a glance. */}
         <div className="flex items-baseline gap-2 flex-wrap">
-          <p className="text-[26px] sm:text-[30px] font-extrabold text-snappeal-navy leading-none tracking-tight">
+          <p className="text-[26px] sm:text-[30px] font-extrabold text-parkingrabbit-navy leading-none tracking-tight">
             {amountPence != null ? formatGBP(amountPence) : "£—"}
           </p>
           {issuedAt && (
-            <p className="text-[11.5px] text-snappeal-muted leading-tight whitespace-nowrap">
+            <p className="text-[11.5px] text-parkingrabbit-muted leading-tight whitespace-nowrap">
               Issued {formatShortDate(issuedAt)}
             </p>
           )}
         </div>
         {amountNote && (
-          <p className="mt-1 text-[11px] font-semibold text-amber-700 leading-snug snappeal-amount-note">
+          <p className="mt-1 text-[11px] font-semibold text-amber-700 leading-snug parkingrabbit-amount-note">
             {amountNote}
           </p>
         )}
-        {pill && <div className="mt-2">{pill}</div>}
-        <p className="text-[12px] font-semibold text-snappeal-muted mt-2 leading-tight">
+        {/* Status pill + (when ≤7 days) deadline pill side-by-side.
+         *  The deadline pill only renders when proximity is supplied
+         *  AND the daysToCritical is in the warning band — keeps
+         *  calm tickets calm. */}
+        {(pill || deadlineProximity) && (
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            {pill}
+            {deadlineProximity && <DeadlineBadge proximity={deadlineProximity} />}
+          </div>
+        )}
+        <p className="text-[12px] font-semibold text-parkingrabbit-muted mt-2 leading-tight">
           {pcnRef ?? "Reading PCN…"}
           {vehicleReg && (
             <>
-              <span className="text-snappeal-border mx-1.5">·</span>
+              <span className="text-parkingrabbit-border mx-1.5">·</span>
               {vehicleReg}
             </>
           )}
         </p>
         {location && (
-          <p className="text-[11.5px] text-snappeal-muted mt-1 leading-snug flex items-start gap-1">
+          <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug flex items-start gap-1">
             <MapPin
               className="size-3 mt-0.5 shrink-0"
               strokeWidth={1.75}

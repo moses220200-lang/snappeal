@@ -1,5 +1,7 @@
 # Competitive landscape
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The UK PCN-appeal space has three layers: **free DIY**, **paid letter-shops**, and **AI-driven motoring services**. As of **2026-05-20**, the AI tier has gotten noticeably more crowded since the original draft of this doc — at least seven new entrants have launched.
 
 ## At a glance
@@ -63,7 +65,7 @@ We also undercut on price by 40-67%.
 The closest functional competitor. They claim 70% win rate and check **47 defect types**. We need to ship our own visible defect-checker (currently Claude finds defects implicitly inside the letter — see roadmap #1) to match the perceived rigour. Their advantage today: explicit checklist UX. Our advantages: price, submission automation, reply parsing.
 
 ### vs We Pay Your PCN (£18 / £50yr)
-They submit on the user's behalf — closest scope match. We are **6× cheaper per appeal** and **mobile-native**. Their model is human-mediated; ours is AI-mediated with human-edit-in-place. Their per-year £50 is still 25× our annual cost at our **Care Plan** subscription rate (£9.99/mo unlimited) for a heavy user. Acquisition candidate if markets converge.
+They submit on the user's behalf — closest scope match. We are **6× cheaper per appeal** and **mobile-native**. Their model is human-mediated; ours is AI-mediated with human-edit-in-place. Their per-year £50 is 25× our planned **Care Plan** rate (£9.99/mo unlimited — currently waitlist; Stripe Subscription scaffolded, webhook wiring pending). Acquisition candidate if markets converge.
 
 ### vs DoNotPay
 The interesting one. DoNotPay's UK exit-by-attrition (FTC settlement Jan 2025 + brand damage) vacated the "AI legal for consumers" position. The mistake to avoid: they tried to be horizontal — claims, parking, refunds, breach-of-contract letters under one chatbot. The FTC found they couldn't deliver "like a lawyer" across that surface. **Our defence is to stay narrow.** ParkingRabbit is one product (London PCN appeals), one outcome (cancelled / refunded), one price (£2.99 / Free / £9.99). We do not bolt on "appeal your council tax" or "draft a divorce filing". Vertical depth is our moat.
@@ -76,7 +78,7 @@ Economically priced out — solicitor minimum engagement exceeds the £160 PCN v
 1. **AI letter generation is table-stakes.** Five new entrants in 12 months. "We use AI to write your appeal" is no longer differentiating.
 2. **POPLA / private parking is the bigger TAM** — Parking Ticket Appeals (.app) leads with **operator vulnerability research on 100+ private operators**. We deferred POPLA in v0.1; the market is moving without us.
 3. **Win-rate claims are inflating** (Parking Mate's 70%, GL Appeal's 42% POPLA). We need data to publish our own honest number.
-4. **Subscription is unclaimed.** Every competitor charges per-appeal. Our **Care Plan £9.99/mo unlimited** has no peer.
+4. **Subscription is unclaimed.** Every competitor charges per-appeal. Our **Care Plan £9.99/mo unlimited** (currently waitlist, not yet billable) has no peer once shipped.
 5. **Mobile is unclaimed.** Most competitors are still web-only forms. ParkingRabbit is the only true PWA + camera-native product in this list.
 
 ## Where we are vulnerable

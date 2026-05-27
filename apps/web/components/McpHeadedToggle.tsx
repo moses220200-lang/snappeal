@@ -10,7 +10,7 @@ import { Eye, EyeOff, Loader2, ShieldAlert, ShieldOff } from "lucide-react";
  * portal in real time. Useful for debugging why a customer submission gets
  * stuck.
  *
- * The setting is process-scope and reverts to the SNAPPEAL_MCP_HEADED env
+ * The setting is process-scope and reverts to the PARKINGRABBIT_MCP_HEADED env
  * default on dev-server restart — by design.
  */
 export function McpHeadedToggle() {
@@ -101,7 +101,7 @@ export function McpHeadedToggle() {
         className={`rounded-2xl border p-5 flex items-center gap-4 ${
           stopAtReview === false
             ? "bg-red-50 border-red-300"
-            : "bg-white border-snappeal-border"
+            : "bg-white border-parkingrabbit-border"
         }`}
       >
         <span
@@ -118,10 +118,10 @@ export function McpHeadedToggle() {
           )}
         </span>
         <div className="flex-1">
-          <p className="text-sm font-bold text-snappeal-navy">
+          <p className="text-sm font-bold text-parkingrabbit-navy">
             Safety mode — stop at review
           </p>
-          <p className="text-[12px] text-snappeal-muted mt-0.5">
+          <p className="text-[12px] text-parkingrabbit-muted mt-0.5">
             {stopAtReview === null
               ? "loading…"
               : stopAtReview
@@ -151,17 +151,17 @@ export function McpHeadedToggle() {
       </div>
 
       {/* MCP browser visibility — Headless ↔ Headed. */}
-      <div className="rounded-2xl bg-white border border-snappeal-border p-5 flex items-center gap-4">
+      <div className="rounded-2xl bg-white border border-parkingrabbit-border p-5 flex items-center gap-4">
         <span
           className={`size-10 rounded-full flex items-center justify-center shrink-0 ${
-            headed ? "bg-amber-100 text-amber-700" : "bg-snappeal-bg text-snappeal-muted"
+            headed ? "bg-amber-100 text-amber-700" : "bg-parkingrabbit-bg text-parkingrabbit-muted"
           }`}
         >
           {headed ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
         </span>
         <div className="flex-1">
-          <p className="text-sm font-bold text-snappeal-navy">MCP browser visibility</p>
-          <p className="text-[12px] text-snappeal-muted mt-0.5">
+          <p className="text-sm font-bold text-parkingrabbit-navy">MCP browser visibility</p>
+          <p className="text-[12px] text-parkingrabbit-muted mt-0.5">
             {headed === null
               ? "loading…"
               : headed
@@ -175,7 +175,7 @@ export function McpHeadedToggle() {
           disabled={headed === null || busy !== null}
           aria-pressed={headed ?? false}
           className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full transition disabled:opacity-50 ${
-            headed ? "bg-amber-500" : "bg-snappeal-border"
+            headed ? "bg-amber-500" : "bg-parkingrabbit-border"
           }`}
         >
           <span

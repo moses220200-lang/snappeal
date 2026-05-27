@@ -20,14 +20,14 @@ export const test = base.extend({
   page: async ({ page }, use) => {
     await page.addInitScript(() => {
       try {
-        sessionStorage.setItem("snappeal.splashShown", "1");
+        sessionStorage.setItem("parkingrabbit.splashShown", "1");
         // Set dismissedAt to "now" — banner sleeps for 7 days
         localStorage.setItem(
-          "snappeal.installBanner.dismissedAt",
+          "parkingrabbit.installBanner.dismissedAt",
           String(Date.now()),
         );
         // First-launch wizard pre-completed so it doesn't intercept clicks.
-        localStorage.setItem("snappeal.wizardDone", "1");
+        localStorage.setItem("parkingrabbit.wizardDone", "1");
       } catch {
         /* ignore — quota or privacy mode */
       }

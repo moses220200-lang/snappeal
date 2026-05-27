@@ -1,5 +1,7 @@
 # Mission
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 > **To make appealing a London parking ticket as easy as paying it.**
 
 A Penalty Charge Notice is supposed to be an instrument of fair traffic enforcement. In practice, paying is easy and contesting is hard. The discount window is short, the language is bureaucratic, the contravention codes are opaque, the grounds for appeal are buried in the Traffic Management Act 2004, and every borough has its own portal and rules.

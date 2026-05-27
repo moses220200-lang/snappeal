@@ -82,10 +82,10 @@ export default function ScanPage() {
       <div className="px-5 pt-2 pb-32 flex flex-col gap-5">
         {/* Header copy */}
         <div>
-          <h1 className="text-[24px] font-extrabold text-snappeal-navy leading-tight">
+          <h1 className="text-[24px] font-extrabold text-parkingrabbit-navy leading-tight">
             Scan PCN
           </h1>
-          <p className="text-[13px] text-snappeal-muted mt-1 leading-snug">
+          <p className="text-[13px] text-parkingrabbit-muted mt-1 leading-snug">
             Take a photo of your parking ticket or choose another method.
           </p>
         </div>
@@ -93,7 +93,7 @@ export default function ScanPage() {
         {/* Scanner preview area — dark glass card with corner brackets
          *  and an animated scan line. Visual only; the actual scan
          *  fires when the user taps one of the buttons below. */}
-        <div className="relative w-full aspect-[4/5] rounded-[28px] overflow-hidden bg-snappeal-navy shadow-[0_24px_64px_-16px_rgba(0,32,80,0.45)]">
+        <div className="relative w-full aspect-[4/5] rounded-[28px] overflow-hidden bg-parkingrabbit-navy shadow-[0_24px_64px_-16px_rgba(0,32,80,0.45)]">
           {/* Ambient glow */}
           <div
             aria-hidden
@@ -121,8 +121,8 @@ export default function ScanPage() {
           <FrameCorner className="bottom-6 left-6" rotation={270} />
 
           {/* Animated scan line */}
-          <div className="absolute inset-0 snappeal-hero-scan pointer-events-none">
-            <div className="absolute inset-x-10 top-0 h-[3px] bg-gradient-to-r from-transparent via-snappeal-primary to-transparent shadow-[0_0_24px_4px_rgba(0,122,255,0.55)]" />
+          <div className="absolute inset-0 parkingrabbit-hero-scan pointer-events-none">
+            <div className="absolute inset-x-10 top-0 h-[3px] bg-gradient-to-r from-transparent via-parkingrabbit-primary to-transparent shadow-[0_0_24px_4px_rgba(0,122,255,0.55)]" />
           </div>
 
           {/* Centre copy */}
@@ -150,7 +150,7 @@ export default function ScanPage() {
               cameraInputRef.current?.click();
             }}
             disabled={!!busy}
-            className="rounded-2xl bg-snappeal-primary text-white px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:bg-snappeal-primary-600 disabled:opacity-60 shadow-lg shadow-snappeal-primary/30"
+            className="rounded-2xl bg-parkingrabbit-primary text-white px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:bg-parkingrabbit-primary-600 disabled:opacity-60 shadow-lg shadow-parkingrabbit-primary/30"
           >
             <span className="size-12 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
               {busy === "camera" ? (
@@ -176,9 +176,9 @@ export default function ScanPage() {
               galleryInputRef.current?.click();
             }}
             disabled={!!busy}
-            className="rounded-2xl bg-white border border-snappeal-border text-snappeal-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-snappeal-primary/60 disabled:opacity-60"
+            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-parkingrabbit-primary/60 disabled:opacity-60"
           >
-            <span className="size-12 rounded-xl bg-snappeal-bg text-snappeal-navy flex items-center justify-center shrink-0">
+            <span className="size-12 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center shrink-0">
               {busy === "gallery" ? (
                 <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
               ) : (
@@ -189,30 +189,30 @@ export default function ScanPage() {
               <p className="text-[15px] font-bold leading-tight">
                 Upload picture
               </p>
-              <p className="text-[12px] text-snappeal-muted mt-0.5 leading-snug">
+              <p className="text-[12px] text-parkingrabbit-muted mt-0.5 leading-snug">
                 Choose an existing photo from your library
               </p>
             </div>
-            <ChevronRight className="size-4 text-snappeal-muted shrink-0" />
+            <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
           </button>
 
           {/* 3. Input manually */}
           <Link
             href="/app/manual-entry"
-            className="rounded-2xl bg-white border border-snappeal-border text-snappeal-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-snappeal-primary/60"
+            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-parkingrabbit-primary/60"
           >
-            <span className="size-12 rounded-xl bg-snappeal-bg text-snappeal-navy flex items-center justify-center shrink-0">
+            <span className="size-12 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center shrink-0">
               <Keyboard className="size-5" strokeWidth={2.25} />
             </span>
             <div className="flex-1 min-w-0 text-left">
               <p className="text-[15px] font-bold leading-tight">
                 Input manually
               </p>
-              <p className="text-[12px] text-snappeal-muted mt-0.5 leading-snug">
+              <p className="text-[12px] text-parkingrabbit-muted mt-0.5 leading-snug">
                 Type in PCN ref, registration, amount and date
               </p>
             </div>
-            <ChevronRight className="size-4 text-snappeal-muted shrink-0" />
+            <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
           </Link>
         </div>
 
@@ -239,8 +239,8 @@ function FrameCorner({
       style={{ transform: `rotate(${rotation}deg)` }}
       aria-hidden
     >
-      <span className="absolute left-0 top-0 h-[3px] w-8 bg-snappeal-primary rounded-full shadow-[0_0_8px_rgba(0,122,255,0.5)]" />
-      <span className="absolute left-0 top-0 w-[3px] h-8 bg-snappeal-primary rounded-full shadow-[0_0_8px_rgba(0,122,255,0.5)]" />
+      <span className="absolute left-0 top-0 h-[3px] w-8 bg-parkingrabbit-primary rounded-full shadow-[0_0_8px_rgba(0,122,255,0.5)]" />
+      <span className="absolute left-0 top-0 w-[3px] h-8 bg-parkingrabbit-primary rounded-full shadow-[0_0_8px_rgba(0,122,255,0.5)]" />
     </span>
   );
 }

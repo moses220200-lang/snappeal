@@ -73,23 +73,23 @@ export function EvidenceCarousel({
   };
 
   return (
-    <section className="rounded-2xl bg-white border border-snappeal-border p-4">
+    <section className="rounded-2xl bg-white border border-parkingrabbit-border p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-start gap-3">
-          <span className="size-9 rounded-full bg-snappeal-primary-100 text-snappeal-primary flex items-center justify-center flex-shrink-0">
+          <span className="size-9 rounded-full bg-parkingrabbit-primary-100 text-parkingrabbit-primary flex items-center justify-center flex-shrink-0">
             <ShieldCheck className="size-[1.125rem]" />
           </span>
           <div>
-            <p className="text-sm font-bold text-snappeal-navy">
+            <p className="text-sm font-bold text-parkingrabbit-navy">
               Add your own evidence
             </p>
-            <p className="text-xs text-snappeal-muted mt-0.5">
+            <p className="text-xs text-parkingrabbit-muted mt-0.5">
               Photos of the scene, signs, blocked notices — anything that
               supports your side.
             </p>
           </div>
         </div>
-        <span className="text-[10px] text-snappeal-muted whitespace-nowrap">
+        <span className="text-[10px] text-parkingrabbit-muted whitespace-nowrap">
           {evidence.length} / {MAX_EVIDENCE}
         </span>
       </div>
@@ -97,7 +97,7 @@ export function EvidenceCarousel({
         {evidence.map((src, i) => (
           <div
             key={i}
-            className="relative aspect-square rounded-xl overflow-hidden bg-snappeal-bg border border-snappeal-border"
+            className="relative aspect-square rounded-xl overflow-hidden bg-parkingrabbit-bg border border-parkingrabbit-border"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -119,7 +119,7 @@ export function EvidenceCarousel({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="aspect-square rounded-xl border-2 border-dashed border-snappeal-border bg-snappeal-bg/40 flex flex-col items-center justify-center gap-1 text-snappeal-muted hover:text-snappeal-primary hover:border-snappeal-primary transition"
+            className="aspect-square rounded-xl border-2 border-dashed border-parkingrabbit-border bg-parkingrabbit-bg/40 flex flex-col items-center justify-center gap-1 text-parkingrabbit-muted hover:text-parkingrabbit-primary hover:border-parkingrabbit-primary transition"
           >
             <Plus className="size-5" />
             <span className="text-[10px] font-semibold">Add</span>
@@ -127,7 +127,7 @@ export function EvidenceCarousel({
         )}
       </div>
       {evidence.length === 0 && (
-        <p className="mt-3 text-[11px] text-snappeal-muted leading-relaxed">
+        <p className="mt-3 text-[11px] text-parkingrabbit-muted leading-relaxed">
           Tip: a wide shot showing the bay markings + a close-up of the missing
           or obscured sign is the strongest single piece of evidence.
         </p>

@@ -23,14 +23,14 @@ export function Timeline({ steps }: { steps: Step[] }) {
           <span className="flex-shrink-0 relative pt-0.5">
             {s.state === "completed" && (
               <CheckCircle2
-                className="size-5 text-snappeal-success"
+                className="size-5 text-parkingrabbit-success"
                 strokeWidth={2.5}
                 fill="currentColor"
                 stroke="white"
               />
             )}
             {s.state === "in_progress" && (
-              <span className="block size-5 rounded-full bg-snappeal-primary ring-4 ring-snappeal-primary-100 relative">
+              <span className="block size-5 rounded-full bg-parkingrabbit-primary ring-4 ring-parkingrabbit-primary-100 relative">
                 <span className="absolute inset-0 m-auto size-2 rounded-full bg-white" />
               </span>
             )}
@@ -41,9 +41,9 @@ export function Timeline({ steps }: { steps: Step[] }) {
               <span
                 className={`absolute left-1/2 -translate-x-1/2 top-6 w-0.5 h-5 ${
                   s.state === "completed"
-                    ? "bg-snappeal-success"
+                    ? "bg-parkingrabbit-success"
                     : s.state === "in_progress"
-                      ? "bg-snappeal-primary"
+                      ? "bg-parkingrabbit-primary"
                       : "bg-slate-200"
                 }`}
               />
@@ -53,13 +53,13 @@ export function Timeline({ steps }: { steps: Step[] }) {
             <p
               className={`text-sm font-semibold ${
                 s.state === "in_progress"
-                  ? "text-snappeal-primary"
-                  : "text-snappeal-navy"
+                  ? "text-parkingrabbit-primary"
+                  : "text-parkingrabbit-navy"
               }`}
             >
               {s.label}
             </p>
-            <p className="text-xs text-snappeal-muted">
+            <p className="text-xs text-parkingrabbit-muted">
               {s.state === "completed"
                 ? `Completed · ${formatDate(s.at)}`
                 : s.state === "in_progress"

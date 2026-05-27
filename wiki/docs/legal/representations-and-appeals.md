@@ -1,5 +1,7 @@
 # Representations & appeals — the stages
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 The PCN appeal process in London has four stages. Most appeals are won at stage 1 or stage 2. Stage 3 is the formal statutory appeal. Stage 4 is a refusal-to-pay route used only by enforcement-charge disputes.
 
 ```mermaid

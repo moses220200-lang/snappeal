@@ -1,6 +1,8 @@
 # Pricing
 
-> **2026-05-21 (v0.2.0) — ParkingRabbit pivot.** The previous three-tier model (Buy Time / Full Appeal / Care Plan) has been retired. The product is now a parking-ticket management app (pay, challenge, track), surfaced as three actions on `/app` home. The "MCP agent" name no longer appears in customer copy; user-facing language is **"AI Auto-Submit Agent"**.
+Last refreshed **2026-05-27 (v0.3.10)**.
+
+> The product is a parking-ticket management app (pay, challenge, track), surfaced as three Pay/Appeal tiles on the smart card: **Appeal £2.99** (live), **Pay yourself** (free deep-link to council payment portal), **Apple/Google Pay** (Coming soon — pay-on-your-behalf, regulatory-gated). User-facing language for the AI driving the filing is **"AI Auto-Submit Agent"**. **Care Plan** is a £9.99/mo waitlist surface at `/app/profile/care-plan`; Stripe Subscription scaffolded but not yet billable.
 
 ## Headline
 
@@ -66,8 +68,8 @@ We deliberately do **not** offer outcome-linked refunds, even partial ones. We t
 
 ## What we will not do
 
-- **No subscriptions.** A subscription is the wrong shape for an event-driven product. Most users will appeal 1–3 PCNs ever.
-- **No premium tier.** The £2.99 product is the whole product. We will not split "basic letter" from "premium-with-tribunal-prep". The full appeal stages are one product.
+- **No per-appeal premium tier.** The £2.99 product is the whole appeal product. We will not split "basic letter" from "premium-with-tribunal-prep". The full appeal stages are one product.
+- **Care Plan — waitlist only.** A £9.99/mo unlimited-appeals subscription is scaffolded in the schema (`subscriptions` + `care_plan_waitlist` tables) and surfaced as a "Coming soon" upsell on `/app/profile/care-plan`. Stripe Subscription product + webhook wiring are pending; **not yet billable**. Treat the £9.99/mo as a directional commitment, not a live SKU. The earlier doc claim of "no subscriptions ever" was wrong — we kept the upsell when the wizard-tier picker was retired in v0.2.0.
 - **No upsell to legal services.** When an appeal goes to tribunal in person, that's outside our scope. We point the user to the London Tribunals self-representation guidance[^5]. We do not charge for the referral.
 - **No "PCN credits" / packs.** Bundling pre-purchased appeals to inflate ARR would mis-signal what the user actually wants.
 

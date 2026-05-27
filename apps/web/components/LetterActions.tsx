@@ -52,16 +52,16 @@ export function LetterActions({ letterBody, letterSubject }: Props) {
       <button
         type="button"
         onClick={handleCopy}
-        className="rounded-xl bg-white border border-snappeal-border py-3 flex flex-col items-center gap-1 text-xs font-medium text-snappeal-navy hover:border-snappeal-primary transition"
+        className="rounded-xl bg-white border border-parkingrabbit-border py-3 flex flex-col items-center gap-1 text-xs font-medium text-parkingrabbit-navy hover:border-parkingrabbit-primary transition"
       >
         {copied ? (
           <>
-            <Check className="size-4 text-snappeal-success" strokeWidth={3} />
+            <Check className="size-4 text-parkingrabbit-success" strokeWidth={3} />
             Copied
           </>
         ) : (
           <>
-            <Copy className="size-4 text-snappeal-primary" />
+            <Copy className="size-4 text-parkingrabbit-primary" />
             Copy
           </>
         )}
@@ -69,9 +69,9 @@ export function LetterActions({ letterBody, letterSubject }: Props) {
       <button
         type="button"
         onClick={handleShare}
-        className="rounded-xl bg-white border border-snappeal-border py-3 flex flex-col items-center gap-1 text-xs font-medium text-snappeal-navy hover:border-snappeal-primary transition"
+        className="rounded-xl bg-white border border-parkingrabbit-border py-3 flex flex-col items-center gap-1 text-xs font-medium text-parkingrabbit-navy hover:border-parkingrabbit-primary transition"
       >
-        <Share2 className="size-4 text-snappeal-primary" />
+        <Share2 className="size-4 text-parkingrabbit-primary" />
         Share
       </button>
     </section>

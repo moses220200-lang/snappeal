@@ -7,9 +7,9 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-snappeal-bg">
+    <div className="min-h-screen bg-parkingrabbit-bg">
       <NotificationWatcher />
-      <div className="mx-auto max-w-md min-h-screen bg-snappeal-bg snappeal-content-bottom">
+      <div className="mx-auto max-w-md min-h-screen bg-parkingrabbit-bg parkingrabbit-content-bottom">
         {children}
       </div>
       <BottomNav />

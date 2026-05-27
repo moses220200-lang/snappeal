@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     );
   }
   if (expected) {
-    const supplied = request.headers.get("x-snappeal-webhook-secret");
+    const supplied = request.headers.get("x-parkingrabbit-webhook-secret");
     if (supplied !== expected) {
       return NextResponse.json(jsonError("UNAUTHORIZED", "bad webhook secret"), {
         status: 401,

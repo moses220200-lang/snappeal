@@ -146,8 +146,15 @@ export interface TicketStatusSnapshot {
  *  this to look up + log per-connector telemetry. */
 export type ConnectorId =
   | "mock"
+  // Not a connector in the classical sense — flags a snapshot derived from
+  // the Playwright MCP lookup blob written onto `appeals.portal_lookup`
+  // by the lookup agent. The UI treats `portal_lookup` as authoritative
+  // (the agent literally read the council's own page) instead of falling
+  // back to the synthetic mock rotation.
+  | "portal_lookup"
   // councils
   | "westminster"
+  | "lambeth"
   | "camden"
   | "tfl-congestion"
   | "tfl-bus-lane"

@@ -13,6 +13,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WESTMINSTER_AGENT_PROMPT, WESTMINSTER_FIELD_HINTS } from "./prompts/westminster";
 import { WESTMINSTER_LOOKUP_PROMPT } from "./prompts/westminster_lookup";
+import { LAMBETH_AGENT_PROMPT, LAMBETH_FIELD_HINTS } from "./prompts/lambeth";
+import { LAMBETH_LOOKUP_PROMPT } from "./prompts/lambeth_lookup";
 
 const DEFAULTS: Record<
   string,
@@ -22,6 +24,11 @@ const DEFAULTS: Record<
     prompt: WESTMINSTER_AGENT_PROMPT,
     lookupPrompt: WESTMINSTER_LOOKUP_PROMPT,
     hints: WESTMINSTER_FIELD_HINTS,
+  },
+  lambeth: {
+    prompt: LAMBETH_AGENT_PROMPT,
+    lookupPrompt: LAMBETH_LOOKUP_PROMPT,
+    hints: LAMBETH_FIELD_HINTS,
   },
 };
 
@@ -154,20 +161,46 @@ export async function dryRunAutomation(input: DryRunInput): Promise<DryRunResult
   // directive so we get a screenshot of the review without disturbing the
   // council. Without an appealId we use synthetic values so the agent can
   // still validate the portal flow.
-  let appealPayload: Record<string, unknown> = {
-    issuer: "Westminster City Council",
-    pcnRef: "WC00000000",
-    vehicleReg: "AA00 AAA",
-    contraventionCode: "12",
-    amountPence: 13000,
-    location: "Test Lane, W1U 1AA",
-    issuedAt: "2026-05-12T09:14:00+01:00",
-    grounds: ["signage-unclear"],
-    replyEmail: "dry-run@appeals.parkingrabbit.com",
-    letterSubject: "Representation against PCN WC00000000",
-    letterBody: "This is a ParkingRabbit dry-run. No appeal is being submitted.",
-    fixture: true,
+  //
+  // Per-council fixtures: a generic Westminster shape doesn't survive
+  // Lambeth's Imperial portal (it rejects "WC00000000" as not-found, so the
+  // dry-run aborts before reaching the wizard). Each council in this map
+  // ships a known-good live PCN ref + reg the admin team has verified.
+  // When a slug isn't listed, we fall back to the Westminster fixture.
+  const DRY_RUN_FIXTURES: Record<string, Record<string, unknown>> = {
+    westminster: {
+      issuer: "Westminster City Council",
+      pcnRef: "WC00000000",
+      vehicleReg: "AA00 AAA",
+      contraventionCode: "12",
+      amountPence: 13000,
+      location: "Test Lane, W1U 1AA",
+      issuedAt: "2026-05-12T09:14:00+01:00",
+      grounds: ["signage-unclear"],
+      replyEmail: "dry-run@appeals.parkingrabbit.com",
+      letterSubject: "Representation against PCN WC00000000",
+      letterBody: "This is a ParkingRabbit dry-run. No appeal is being submitted.",
+      fixture: true,
+    },
+    lambeth: {
+      issuer: "London Borough of Lambeth",
+      pcnRef: "LJ39952021",
+      // Lambeth's Imperial form rejects spaces in VRM — the prompt strips
+      // them too, but we store the human-readable form here.
+      vehicleReg: "PN65 LBU",
+      contraventionCode: "12",
+      amountPence: 6500,
+      location: "Acre Lane, SW2",
+      issuedAt: "2026-05-12T09:14:00+01:00",
+      grounds: ["signage-unclear"],
+      replyEmail: "dry-run@appeals.parkingrabbit.com",
+      letterSubject: "Representation against PCN LJ39952021",
+      letterBody: "This is a ParkingRabbit dry-run. No appeal is being submitted.",
+      fixture: true,
+    },
   };
+  let appealPayload: Record<string, unknown> =
+    DRY_RUN_FIXTURES[input.councilSlug] ?? DRY_RUN_FIXTURES.westminster;
   if (input.appealId) {
     const appealRow = await db
       .select()
@@ -197,7 +230,7 @@ export async function dryRunAutomation(input: DryRunInput): Promise<DryRunResult
     appealPayload = { ...appealPayload, ...input.ticketOverride, fixture: false };
   }
 
-  const workDir = await mkdtemp(join(tmpdir(), "snappeal-dryrun-"));
+  const workDir = await mkdtemp(join(tmpdir(), "parkingrabbit-dryrun-"));
   const prompt = `${automation.agentPrompt}
 
 ==== DRY RUN MODE ====

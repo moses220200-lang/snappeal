@@ -1,5 +1,7 @@
 # Product
 
+Last refreshed **2026-05-27 (v0.3.10)**.
+
 What ParkingRabbit does, how the user moves through it, what we built and what we deliberately did not.
 
 - [Overview](overview.md) — the modern one-card, one-page product in 5 taps.

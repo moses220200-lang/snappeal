@@ -1,797 +1,220 @@
 # Context handoff
 
-**Read this first if you're picking up ParkingRabbit cold.** Last refreshed **2026-05-25 (v0.3.4 — Build-appeal step rebuilt as a dictation-first conversational flow (one large "What happened?" composer used identically in typing + dictation, "+ EVIDENCE" attach + mic, "Common reasons" pills clamped to 3 rows); weak-appeal card now offers "Add more evidence" (auto re-scores in place via new `POST /api/appeals/[id]/rescore` + `scoreAppealStrength()`, NO letter redraft) + "Submit anyway"; council LOOKUP advances the user to Pay/appeal the instant the verdict is confirmed (`onVerdictConfirmed` persists mid-job; agent keeps capturing warden photos in the background) and the agent screenshot slideshow is hidden from the customer (reserved for `submit_appeal`); displayed PCN amount is single-source-of-truth via `lib/ticketDisplay.ts` (OCR-only pre-verification — fixes the header/form £ mismatch); OCR amount prompt hardened (full-charge target + 50%-of-reduced self-check) and the confirm form's Amount/Issue-date inputs removed; animated issuer-logo reel on the ticket tile while scanning; `Caddyfile` reverse-proxy fixed to :3001. Full notes in the v0.3.4 entry below. No new Drizzle migration. ──── Prior v0.3.3: Scan flow restructured around a dedicated `/app/scan` landing page (Camera / Upload picture / Input manually trio) reached by tapping the BottomNav centre FAB, which is now a plain `<Link href="/app/scan">` (the v0.3.2 inline file-picker on the FAB is retired); `<UploadingOverlay>` is dead code — replaced by the much smaller `<ScanningOverlay>`, an animated scan-line + corner-brackets veil mounted ON the uploaded PCN image preview during OCR (no longer a full-page blocker); `<TicketJourney>` is dead code — replaced by `<TicketLifecycleTimeline>`, a richer single-timeline surface that hosts inline expanded children per step (image preview, Pick-your-grounds quiz, Pay/appeal choice tiles, letter preview), supports a `tint: "warn" | "danger"` prop for deadline + failure rows, a `childrenFullBleed` escape-the-rail-indent flag for edge-to-edge action tiles, and a new `failed` `LifecycleStepStatus` (amber warning triangle); 5 new failure `CardKind`s added to `lib/deriveCardState.ts` — `image_issue` / `image_unclear` / `info_needed` / `extraction_failed` / `council_lookup_failed` (all recoverable: user retakes the photo, edits fields manually, retries the council check, or moves forward anyway). No new Drizzle migration — schema unchanged from v0.3.1.)**.
-
-> **2026-05-25 (latest — v0.3.4: Build-appeal dictation-first redesign · weak-appeal add-evidence re-score · lookup advances on council confirm · amount single-source-of-truth · OCR amount hardening · issuer-logo reel · Caddy fix)** — UX + trust pass. Three feature commits on top of v0.3.3 (`5097a5f`, `e1fc3d7`, `6e330f1`).
->
-> **Build-appeal step rebuilt** (`components/TicketCardBody.tsx` → `GatheringEvidenceCard`). Replaces the ranked grounds-card list with a calm, ChatGPT-style flow. Removed: the "Choose your best appeal reason" / "Rabbit ranks the strongest options" copy, the search field, the filter chips, and the `RecommendedGround[]` / `RecommendedCard` / `FilterChip` / `SubStepCard` machinery. Section order is now **What happened? → Common reasons**.
-> - **One large composer card, identical in typing + dictation modes.** Tall rounded textarea (`min-h 210`, blue focus glow), placeholder "Why is this ticket unfair?", a circular **"+ EVIDENCE"** button bottom-left (opens the photo/doc picker; attachments render as removable thumbnails under the composer) and a **mic** button bottom-right (grey idle → blue while recording). Self-contained `MediaRecorder` → `/api/transcribe`, appends to the notes. No "Type/Dictate instead" links — only the mic's colour changes between modes.
-> - **`COMMON_REASONS`** — 12 plain-English reasons (My car broke down, Already paid, Machine failed, …) each mapped to canonical `grounds-catalog` IDs so the drafter still receives the same `grounds` shape. Rendered as `flex-wrap` pills **clamped to exactly 3 rows** (a `ResizeObserver` measures the real pill height so the clip lands on a row boundary) with a **"Show all reasons"** toggle. Selecting a pill (blue highlight, never green) expands an inline explainer + helpful-evidence checklist.
-> - The separate bottom "Add evidence" tiles section is **removed** — evidence is attached via "+ EVIDENCE". The `DictationCard` / `Waveform` / `EvidenceTile` helpers and their dead icon/CSS are gone.
->
-> **Weak-appeal: "Add more evidence" re-scores in place — NO redraft.** When `strengthScore < 50`, the `letter_ready` card (`PaidSubmitCta`) now offers **"Add more evidence"** + **"Submit anyway"** — the old "Redraft with your N photo(s)" buttons are gone (redrafting with the only attached photo was pointless). Adding photos re-evaluates strength against the **existing** letter and updates the score automatically; once it crosses 50 the warning clears and the £2.99 CTA appears.
-> - **`POST /api/appeals/[id]/rescore`** (new route) — ownership-gated; runs `scoreAppealStrength()`, persists via `updateAppealStrength()`, returns the refreshed appeal. Never touches `letterBody`.
-> - **`scoreAppealStrength()`** (`lib/server/ai.ts`) — focused AI call scoring the existing letter + grounds + notes + evidence photos, judging the photos critically (a wide scene scores lower than a close-up of the issue). **`updateAppealStrength()`** (`lib/server/appeals.ts`) patches only `strengthScore` / `strengthRationale` / `strengthImprovements`.
-> - `TicketCard.tsx` `rescoreWithEvidence(photos)` is threaded through `buildLifecycleSteps` as `onRescoreWithEvidence`; `PaidSubmitCta` auto-calls it on each `EvidenceCarousel` change (one in-flight at a time).
->
-> **Council LOOKUP advances the user the instant the verdict lands; agent slideshow hidden.** The read-only `pcn_lookup` no longer makes the customer watch a screenshot slideshow or wait for the whole job to finish.
-> - `lib/server/submission/lookup.ts` + `jobs/worker.ts`: a new `onVerdictConfirmed` callback fires on the **first `[verdict]` line** → the worker persists the verified/invalid snapshot **mid-job** (photos still empty). The agent keeps capturing warden photos in the background; the end-of-job `persistPortalLookup` overwrites with the full snapshot (incl. photos) — `persistPortalLookup` replaces the snapshot so the double-persist is safe. The fallback lookup prompt now emits `[verdict]` early too (Westminster's already did, at step 7 before the photo steps).
-> - `TicketCard.tsx`: the appeal-row poll now also runs during `validating`, so the card advances to **Pay/appeal** the moment `portalLookup.status` leaves `"pending"` (closing the live SSE; the worker job continues server-side). The MCP live slideshow (`mcpPanel` / `<MCPLiveStrip>`) is now gated to **`submit_appeal` only** — the lookup shows a calm "Checking council" status + the confirmed-data stream, no carousel.
->
-> **Displayed PCN amount = single source of truth (trust fix).** New `lib/ticketDisplay.ts` `resolveDisplayTicket()` is the one place that decides what a card displays: **before council verification every field (incl. the £ amount) comes ONLY from the OCR ticket** — never the eagerly-fetched status-checker balance. This fixes the bug where the header showed a different amount (mock £210/£130) than the confirm form (OCR £160). After `portalLookup.status === "verified"` the council figure takes over and, when it differs from the scan, the header explains it rather than swapping silently. `assertAmountConsistency()` is a dev-only invariant; **`npm run test:display`** (`scripts/test-display-amount.ts`, 6 cases) guards it.
->
-> **OCR amount hardening** (`lib/server/ai.ts` extract + draft prompts). Read the **full** "Penalty Charge" figure (not the reduced/early-payment one), call out easily-confused digit pairs (6↔8, 0↔8, 5↔6, 1↔7), and **self-check via the 50% rule** (reduced × 2 = full; £80 reduced ⇒ £160, never £180). The confirm-details form no longer shows editable **Amount / Issue-date** inputs — the council record is authoritative once verified, so surfacing an occasionally-misread amount there just invited mistrust.
->
-> **Issuer-logo reel** (`components/IssuerLogoReel.tsx`). While a freshly uploaded PCN is read, the issuer tile runs a slot-machine of council logos, decelerates with motion blur, and locks onto the detected council (bounce + glow), then hands back to the static tile. Reduced-motion aware; reacts to the async `/api/councils` list so cells upgrade from name-initials to real logos as they load. Lock-in keyframes added to `globals.css`.
->
-> **Infra:** `Caddyfile` reverse-proxy target fixed `:3000 → :3001` to match `next dev --port 3001` (the named Cloudflare tunnel fronting the central Caddy was 502'ing on the stale port).
->
-> **`tsc --noEmit` + `eslint` clean** on all changed files (one *pre-existing* `react-hooks/immutability` error on `TicketCard.tsx`'s `window.location.href` sign-up redirect is untouched). No schema change, no new deps. **Not yet exercised live:** the `/rescore` AI scoring and the lookup early-advance need a real Claude / Playwright-MCP run — verified here by tsc/eslint, by tracing the flow, and by the `/rescore` endpoint returning a real evidence-aware score against a drafted letter in dev (0 photos → 22/100).
-
-> **2026-05-25 (earlier — v0.3.3: dedicated /app/scan page + ScanningOverlay replaces UploadingOverlay + TicketLifecycleTimeline replaces TicketJourney + 5 failure CardKinds)** — Scan-flow rewire + failure-state surfacing.
->
-> **New `/app/scan` page** (`app/app/scan/page.tsx`). The BottomNav centre FAB no longer auto-opens a file picker (that v0.3.2 pattern was opaque — users tapped a camera icon and got a system sheet with no context). Tapping the FAB now navigates to `/app/scan`, a dedicated landing page with:
-> - **Animated scanner preview frame** at the top — dark glass card with the `snappeal-hero-scan` keyframe sweep + corner brackets + radial-gradient ambient glow + subtle grid overlay + centre Camera icon + "Position the PCN in the frame" copy. Visual only — actual capture fires when the user taps one of the buttons below.
-> - **Three explicit buttons** in priority order:
->   1. **Camera** (primary, blue) — fires the hidden `<input type="file" capture="environment">` to launch the OS camera.
->   2. **Upload picture** (secondary, white card) — fires the hidden `<input type="file">` (no `capture` attr) for library picks.
->   3. **Input manually** (secondary, white card) — `<Link href="/app/manual-entry">` for the no-photo path.
-> Camera + Upload both feed the existing `uploadPcn(dataUrl)` pipeline and `router.push("/app/tickets?expand=<appealId>")` on success; an inline red error pill surfaces on failure. The page is rendered with `<AppHeader />` (no back button — it's a top-level destination, not a step).
->
-> **`<BottomNav>` simplified.** The FAB is now a plain `<Link href="/app/scan" aria-label="Scan a new ticket">` with the Camera icon — no `useRef`, no hidden inputs, no `useState(uploading)`, no `<UploadingOverlay>` mount. The route push gives every Scan tap the same predictable landing regardless of permission state. Tabs unchanged: Home · Tickets (with `unreadCountForKinds(TICKETS_BUCKET)` badge) · [Scan FAB] · Support · Profile.
->
-> **`<ScanningOverlay>` replaces `<UploadingOverlay>`.** `components/ScanningOverlay.tsx` is a minimal `absolute inset-0` overlay (not `fixed`) designed to mount **inside** the uploaded PCN image preview while OCR runs. Components:
-> - Soft blue veil (`bg-snappeal-primary/10`).
-> - Vertical sweep scan-line using the existing `snappeal-hero-scan` keyframe — a gradient line `from-transparent via-snappeal-primary to-transparent` with a glow shadow.
-> - Four white corner brackets at the image edges.
-> - Centre-bottom navy pill `<span>Scanning PCN...</span>` (label is propable) with a pulsing primary dot.
-> No `MIN_VISIBLE_MS` latching, no three-phase caption ticker, no full-page chrome — just a tasteful "we're reading this right now" signal that doesn't blackbox the page. **`components/UploadingOverlay.tsx` is dead code** — still on disk, no longer imported anywhere; safe to delete in a follow-up cleanup.
->
-> **`<TicketLifecycleTimeline>` replaces `<TicketJourney>`.** `components/TicketLifecycleTimeline.tsx` is a single vertical journey from upload → resolution rendered inside the smart card. Replaces the legacy trio of progress surfaces (`<TicketJourney>` 3-step + `ProcessingCard` inline rows + the bottom-of-card Progress Timeline). Visual contract:
-> - **Same rail-dot logic** as `TicketJourney` — green check (done), pulsing primary dot with halo (active), hollow outline (upcoming) — but **dots are now `size-5` not `size-6`** and **the numbered badges (1–N) are gone**. The position in the list is the position; numbering it was redundant once `children` made each row big.
-> - **New `failed: LifecycleStepStatus`** — amber circle with a white `AlertTriangle` icon. Connector below a failed row is amber (`bg-amber-300`). Title goes amber-900, supporting text amber-900/85.
-> - **New `children: ReactNode` prop** on every step — mounted directly under the title when the step is active (or done if the consumer wants a sticky panel). Used for: the uploaded image preview (with `<ScanningOverlay>` mounted inside during OCR), the inline Pick-your-grounds quiz, the Pay / appeal choice tiles, the streaming letter preview, status / error messages.
-> - **New `tint: "warn" | "danger"` prop** — wraps `children` in a soft `amber-50` / `red-50` rounded panel for deadline rows + failure rows. When `tint` is unset, no card background — the children render their own surface (avoids the "card inside a card" look).
-> - **New `childrenFullBleed: boolean` prop** — when true, `children` escape the rail+gap indent (`-ml-9`) so action tiles render edge-to-edge within the card (matching the footer's width). Used by the Pay / appeal choice surface so the tiles aren't cramped under the rail.
-> - **`detail: ReactNode` prop** — supplements / replaces `supporting` for richer single-line content (e.g., a coloured due-by line).
-> `components/TicketJourney.tsx` is dead code — still on disk, no longer imported; safe to delete in a follow-up cleanup.
->
-> **5 new failure `CardKind`s** in `lib/deriveCardState.ts`. The enum is now **16 kinds** (was 11):
->
-> | New CardKind | When it fires | What the card does |
-> |---|---|---|
-> | **`image_issue`** | OCR ran but the photo doesn't look like a PCN | Surfaces a "looks like this isn't a PCN" card; primary CTA: retake / upload a different photo |
-> | **`image_unclear`** | OCR ran but the read was low-confidence | "We couldn't read this clearly" + per-field uncertainty + retake / edit manually |
-> | **`info_needed`** | Some required fields are missing after OCR | Inline editable rows for the missing fields + "Continue when ready" |
-> | **`extraction_failed`** | OCR errored or timed out | "Couldn't read the PCN" + Retry / Enter manually |
-> | **`council_lookup_failed`** | `pcn_lookup` portal check errored or timed out | "Couldn't reach the council right now" + Retry / Continue without validation |
->
-> All five are **recoverable** — the user retakes the photo, edits fields manually, retries the council check, or moves forward anyway. They surface in the smart card via the same `<TicketLifecycleTimeline>` (mostly as `failed`-status steps with `tint: "warn"` + inline retry children).
->
-> **Unchanged from v0.3.2** (verified, no edits today): `<NotificationWatcher>` cadence (5 s fg / 30 s bg) + 3 `NotificationKind`s + `TICKETS_BUCKET`; `<NotificationPermissionSheet>` context-sensitive opt-in; `/app/support` mailto + chat-thread placeholder; `GET /api/appeals/[id]/submit-progress` shape; `/api/generate-stream` SSE wire format; `<MCPLiveStrip>` / `<LetterPreview>` / `<ReviewRecommendation>` behaviour; all admin pages.
->
-> **`tsc --noEmit && eslint . && next build` all exit 0.** No schema change. No new deps.
-
-> **2026-05-24 (earlier — v0.3.2: background notifications + TicketJourney stepper + UploadingOverlay + /app/support + persisted submit-progress)** — UI + integration pass on top of v0.3.1.
->
-> **Background notification system.** `<NotificationWatcher>` (mounted once at the top of `app/app/layout.tsx`) polls `/api/appeals?sessionId=...` every **5 s in the foreground / 30 s when `document.visibilityState === "hidden"`**. It fingerprints each appeal as `{ portalStatus, hasLetter, step, appealStatus }` and emits a notification on three deltas: `portalLookup.status` transitioning out of `pending`, `letterBody` becoming non-null (or `step === "generation_failed"`), and `appeal.status` transitioning out of `submitting`. The very first poll seeds the known-state map silently — no backlog dump on reload. Re-ticks immediately when the tab regains focus.
->
-> **Client-side notification store** (`lib/client/notifications.ts`). `addNotification()` is idempotent on `id` (so a re-render can't duplicate), backed by `localStorage["snappeal.notifications"]` capped at the 50 most-recent. Three `NotificationKind`s — `validation` / `draft` / `submit` — aggregated by the exported `TICKETS_BUCKET = ["validation", "draft", "submit"]` which drives the bottom-nav Tickets-tab badge counter. Visiting `/app/tickets` calls `clearKinds(TICKETS_BUCKET)`. Native browser notifications fire via `new Notification("ParkingRabbit", {...})` with `tag: appealId` (overwrites earlier per-appeal alerts to avoid noise); `onclick` focuses the tab and routes to `/app/tickets/<id>` (which redirects to the smart card).
->
-> **`<NotificationPermissionSheet>` context-sensitive opt-in.** Asked at the **moment of value** (right after the user kicks off validation / drafting / submission), not on app launch. Bottom-sheet UI with three benefit bullets, "Allow notifications" / "Not now". Gated by `nativePermission() === "default"` so it never double-asks. "Not now" persists in **sessionStorage** (not localStorage — the prior pattern silently suppressed forever; this re-asks once per session for load-bearing notifications). Migrates the old localStorage dismissal flag on first sight.
->
-> **`<TicketJourney>` vertical stepper.** New `components/TicketJourney.tsx` replaces the legacy `<TicketStatusBadge>` + passive inline status-row pair as the smart card's primary state surface. Rail dot per step: green check (done), pulsing primary dot with halo (active), hollow outline (upcoming). Connector line below each dot is green iff that step is done. Content column carries a numbered badge (1–N) + title + optional supporting + optional `detail` ReactNode + optional `busy` spinner on the active step. Single unified surface — the card no longer has both a status pill and a separate status row competing for attention.
->
-> **`<UploadingOverlay>` transitional full-viewport overlay.** New `components/UploadingOverlay.tsx` covers the 1–4 s file-pick → ticket-card-rendering gap. Mounted in **two places**: the Scan FAB inside `<BottomNav>` (where it holds open while `waitForOcr(appealId)` runs before redirecting) and on `/app/tickets` itself. `MIN_VISIBLE_MS = 1200` latches visibility so a fast upload (< 200 ms on wifi) doesn't flash invisibly. Three-phase caption ticker — "Saving your photo" → "Reading the PCN" → "Setting up your ticket" — advancing every 1.2 s. backdrop-blur over a translucent navy wash so the page is faintly visible underneath; glass card with spring-loaded spinner ring + indeterminate progress bar. **This is not a contradiction of the "no full-page blockers" principle** — the principle was about the deleted `<GeneratingOverlay>` covering the page during 30 s of drafting; the upload overlay covers a 1–4 s transitional window where there's literally nothing else to render yet (the card row doesn't exist until `POST /api/appeals` returns).
->
-> **`/app/support` — Support tab replaces Inbox.** New `app/app/support/page.tsx` is a chat-style scaffold: welcome card with a Sparkles icon + "Talk to a human" copy, primary `Start a conversation` button opening `mailto:support@parkingrabbit.com?subject=ParkingRabbit support`, conversation-thread placeholder (dashed border + one pinned ParkingRabbit greeting bubble) ready for a live-chat provider mount (Intercom / Crisp / etc.). Reads as a chat surface instead of a contact form so the provider drop-in is non-structural.
->
-> **`<BottomNav>` restructure.** Four tabs + 1 centre FAB: **Home · Tickets (with counter badge) · [Scan FAB] · Support · Profile**. The Inbox tab is gone. The Tickets badge reads `unreadCountForKinds(TICKETS_BUCKET)` and shows `9+` for counts > 9. The Scan FAB hosts its own hidden `<input type="file">` so the file picker opens inside the same user gesture (Next.js Link to `/app/tickets?scan=1` + a destination-page `useEffect` click no longer fires — the route push breaks the gesture chain). The FAB calls `uploadPcn(dataUrl)` → `waitForOcr(appealId)` → `router.push("/app/tickets?expand=...")` and holds the `<UploadingOverlay>` open across all three.
->
-> **`GET /api/appeals/[id]/submit-progress`** — new persisted-history endpoint. Returns `{ events: JobProgressEvent[], jobId, status }` for the most-recent `submit_appeal` job belonging to the appeal. Ownership-gated through `canViewAppeal`. Returns `{ events: [], jobId: null, status: null }` when no submit job has run. Powers the inline Watch-Live gallery inside the smart card after submission completes — without this, a page reload would lose the in-memory SSE buffer and the gallery would go blank. The live SSE stream (`/api/jobs/[id]/progress`) is still the path while a job is in flight; this endpoint is the "what happened" replay.
->
-> **`waitForOcr(appealId)` helper** (in `lib/client/uploadPcn.ts`). New helper called by the Scan FAB so the `UploadingOverlay` stays up across both the photo upload AND the Claude vision OCR pass before routing — the user lands on a ticket card that already has the ticket fields populated instead of a card stuck in `processing`. The smart card's `processing` state still exists as a fallback for OCR taking longer than the overlay's reasonable window (and for any code path that uploads without `waitForOcr`).
->
-> **`AppHeader` notification bell** (TBC if wired everywhere — confirmed in `lib/client/notifications.ts` as the intended consumer of the in-app store via `listNotifications()` / `unreadCount()` / `subscribe()`).
->
-> **`tsc --noEmit && eslint . && next build` all exit 0.** No schema change. No new deps. The notification system is pure client-side polling — no Web Push provider needed.
-
-> **2026-05-23 (earlier — v0.3.1: drafting hang fix · 3-step gathering ladder · Cloudflare-grade SSE · Watch-live polish · MCP prewarm)** — Reliability + polish pass on top of v0.3.0.
->
-> **Drafting hang root-cause fix.** The "letter never lands" report wasn't a streaming bug — it was a contract bug. `GenerateRequest.pcnPhoto` is now **optional** in `lib/server/contracts.ts`; both `/api/generate` and `/api/generate-stream` fall back to `appealRow?.ticket` for `confirmedTicket` when the client doesn't re-upload the photo (which it shouldn't have to once the ticket is patched on the row). `generateDraft()` in `lib/server/ai.ts` now throws fast — clear error message — when neither a photo nor a complete ticket is in scope, instead of silently looping. Validation-stage failures call `markAppealFailed()` so the smart card's `validating` pill transitions to a visible failure state instead of spinning forever.
->
-> **Three-step `<GatheringEvidenceCard>`.** The grounds-quiz + dictation flow split into three numbered `<StepBlock>` rows: **1 · Pick your grounds** (opens `<GroundsQuizSheet>`), **2 · Add details** (dictation panel + guidance chips, unlocks after step 1), **3 · Review & start drafting** (the "Start drafting" CTA, unlocks after step 2 has either typed notes ≥ 1 char or at least one ground picked). Each completed step gets a green check; the next step unlocks the moment its predecessor's condition is met. The previous single-shot UI conflated all three concerns; the ladder makes progress + state legible at a glance.
->
-> **Quiz UX polish (`<GroundsQuizSheet>`).** Categories are now collapsible — `<details>` blocks default-closed except for the suggested-for-code-N category, which opens automatically when `appeal.ticket.contraventionCode` is known. Card grid dropped to single column across all viewports (the dual-column 2-col grid was visually cramped on iOS Safari with the lucide icons + label + body text).
->
-> **Four UI extractions** out of the monolithic `TicketCardBody.tsx`:
-> - **`<TicketCardHeader>`** — 56 px council logo + name leading row, status pill, amount-second-row layout. Same shape across every card state.
-> - **`<CouncilPickerSheet>`** — 3-col logo grid modal, used by `<CouncilSelectRow>` so the user can correct a wrong slug with a tap, not a dropdown.
-> - **`<LetterPreview>`** — typewriter-style collapsible letter render. Used by the `letter_ready` state and any future preview surface.
-> - **`lib/format.ts`** — shared currency / date formatters. Removes the half-dozen inline format helpers that had drifted between components.
->
-> **Cloudflare-grade SSE delivery** (`app/api/jobs/[id]/progress/route.ts`). Cloudflare buffers small SSE chunks until a 4 KB threshold, which made live agent thoughts arrive in clumps every 8–20 s instead of as-they-happened. Fix: **every event is padded to 4 KB** with a trailing comment payload, plus headers force the proxy out of buffering mode — `cache-control: no-store, no-transform`, `content-encoding: identity`, `x-accel-buffering: no`. Poll cadence tightened from 1 s → **150 ms**; keep-alive comments fire every **3 s**. `useAppealLiveState` projects the `status`-kind frames onto `latestStep` so the "Reading PCN details / Checking issuer portal" rows tick in real time.
->
-> **Watch-live disclosure polish.** `TicketCard` auto-expands the Watch-live disclosure when a fresh `submit_appeal` job starts via a new `autoOpenedForJobRef` — but **Hide/Show is now decoupled from the SSE subscription**. Previously, collapsing the disclosure unmounted the consumer and re-mounting reopened a fresh subscription, which on the server side meant a new MCP agent boot. Now subscription gating depends on the `showMcpLiveView` runtime flag only; `watchLiveOpen` is purely a render concern. New `showMcpLiveView` setting (`lib/server/settings.ts`, default **ON**, gated to OFF only when `NEXT_PUBLIC_SNAPPEAL_SHOW_MCP_LIVE_VIEW === "0"`) lets ops kill the live view globally without a deploy.
->
-> **MCP prewarm at worker boot** (`lib/server/submission/mcp-warm.ts` → called by `lib/server/jobs/worker.ts`). The first portal-automation or pcn-lookup job used to eat a 30–60 s `@playwright/mcp` + Chromium cold start. `prewarmMcp()` spawns the MCP server + browser once on worker boot, so customer #1 of a fresh deploy gets the same latency as customer #100.
->
-> **Copy tweak.** The list-page CTA "Open ticket" reads as "View details" to better match the inline-expansion behavior (no route push).
->
-> **No schema change.** `apps/web/drizzle/` is unchanged from v0.3.0 — same 14 migrations applied (`0000`–`0013`), same 11 tables.
->
-> **`tsc --noEmit && eslint . && next build` all exit 0.** No new deps.
-
-> **2026-05-23 (earlier — v0.3.0: deep quiz + voice dictation + knowledge base + appeal-strength score; single-surface ticket card)** — Major UX + AI upgrade in one drop. Customer-facing: a vastly deeper grounds quiz with 75 specific situations across 12 categories (vs the previous 6 hard-coded), voice dictation in the post-quiz notes step, and a calibrated appeal-strength score (0–100) that warns the user when an appeal is weak BEFORE they pay £2.99. Engine-facing: the drafter now sees a knowledge pack of past wins + per-code statutory briefs + per-council quirks, and bakes that into both the letter and the strength score.
->
-> **Card header refactor.** `<TicketCard>` now leads with the council image + name (`<CouncilBadge size="md" />`, up from `sm`) paired with the status pill; the amount price moved to the second row underneath. The council identity is the primary anchor of the card; the £ amount is supporting data.
->
-> **Detail route removed.** `/app/tickets/[id]/page.tsx` is now a server-side `redirect('/app/tickets?expand=<id>')`. Every ticket experience lives on the list page; the smart card on `/app/tickets` honours `?expand=<id>` on mount, auto-opens that card, then strips the query so a refresh doesn't re-expand a deliberately-collapsed card. All existing deep links — push notifications, payment-sheet return URLs, `/app/letter/[id]`, `/app/watch/[appealId]` — pass through unchanged.
->
-> **Upload flow polish.** `handleFile` in `/app/tickets/page.tsx` stays on the list and auto-expands the just-created card (same surface, same component, no route push needed). `ProcessingCard` now always renders all three pipeline rows ("Reading PCN details", "Checking issuer portal", "Generating recommendation") as a live checklist — pending rows show muted, running rows spin, done rows turn green. Earlier the portal + analysis rows were gated behind OCR-done and never actually rendered; now they communicate the full pipeline up front.
->
-> **`lib/grounds-catalog.ts` rewritten end-to-end.** Schema changed: `mapsTo: CanonicalGroundId` → `mapsTo: CanonicalGroundId[]` (a card can argue multiple grounds), emoji `icon: string` → lucide `icon: LucideIcon`, plus three new optional fields: `promptHook` (one-line drafter starting framing), `relevantCodes` (contravention codes that float this card to the top), and `weight: "weak" | "medium" | "strong"` (feeds the strength scorer's defence cap). 75 cards across 12 categories — signs & markings, bay suspensions, permits & exemptions, Blue Badge, active use, necessity & emergency, identity & keeper, settled/duplicate, charge & amount, CCTV, procedural errors, underlying TRO. `selectedCardsToGroundIds()` flattens + dedupes the new array shape, capped at the drafter's 6-ground contract limit. New `getCardById()` + `getCategoryForCard()` helpers for the AI wiring.
->
-> **New `<GroundsQuizSheet>` component** (`components/GroundsQuizSheet.tsx`). Fullscreen sheet replacing the old accordion (75 cards is too many to discover via accordion taps). Sticky search input (fuzzy match across `label` + `body` + `promptHook`), horizontally scrollable category chip row, scrollable card grid (2-col ≥360px, 1-col below), "Suggested for code N" pills float matching cards to the top when `appeal.ticket.contraventionCode` is known. Sticky bottom CTA showing selection count. Pure UI — parent owns persistence.
->
-> **New `<DictationPanel>` component** (`components/DictationPanel.tsx`). Mounts inside `GatheringEvidenceCard` once ≥ 1 ground is selected. Auto-growing textarea (max 8 lines, 2000 char hard cap matching the server contract), mounts `<VoiceNoteButton mode="append">` (multiple takes accumulate), and renders 4 guidance chips derived from the selected card IDs via the new `lib/guidance-chips.ts` static map. Tapping a chip appends `<prompt> — ` to the textarea and focuses the field. Controlled component — parent holds the canonical value.
->
-> **`<VoiceNoteButton>` upgraded.** Live `mm:ss` recording timer, pause/resume via `MediaRecorder.pause()` + `.resume()` (re-anchors the elapsed counter so paused time is excluded), callback signature changed from `(text) => void` to `(text, { mode: "append" | "replace" }) => void` so the dictation panel can stack multiple takes. Unmount safety net releases the mic stream.
->
-> **`<GatheringEvidenceCard>` rewritten.** The hardcoded 6-option `GROUND_OPTIONS` list is gone. Now: a "Pick your grounds" button that opens `<GroundsQuizSheet>` as a fullscreen sheet over the smart card, a chip strip of selected card labels showing what's been picked, and `<DictationPanel>` mounted below once at least one ground is selected. On "Start drafting", the card forwards `{ grounds, notes }` to `confirmEvidenceAndDraft()` in `<TicketCard>` which PATCHes both fields + the `EVIDENCE_DONE_STEP` sentinel in ONE write, then fires `/api/generate-stream`. No race between debounced notes save and the navigation transition.
->
-> **`debouncedPatch.flush()` (`lib/client/draft.ts`).** Backwards-compatible addition — `const patch = debouncedPatch(); patch({...}); await patch.flush();` synchronously cancels the pending timer and awaits the PATCH so callers can guarantee durability before transitioning. Not used in `GatheringEvidenceCard` (atomic PATCH approach removes the race entirely) but available for any other auto-save surface that needs it.
->
-> **Markdown knowledge base** at `apps/web/knowledge/`. Three folders:
-> - `precedents/*.md` — 4 anonymised real wins to start (Westminster code 12 obscured sign, Camden code 40 BB clock, TfL code 27 Red Route loading, Lambeth code 23 CCTV misread). Each carries YAML frontmatter with `groundIds`, `contraventionCodes`, `councilSlugs`, `outcome`, `stage`, `date`, `summary`, `keyArgument`.
-> - `codes/{NN}.md` — 12 contravention-code briefs (01, 02, 12, 16, 21, 22, 23, 27, 30, 40, 47, 99). Statutory basis + common defences + common council rebuttals.
-> - `councils/{slug}.md` — 6 council briefs (westminster, camden, kensington-chelsea, lambeth, islington, tfl). Postal address, evidence bar, strict-on grounds, portal quirks.
-> - `README.md` explains the contribution format.
->
-> **`lib/server/knowledge.ts`.** Lazy-singleton loader (parses all frontmatter once at module init), deterministic ranker for v1, 2500-token cap with truncation. Scoring: `+3` per ground intersection, `+2` if contravention code matches, `+1` if council matches, `+2` if outcome was cancelled, `+1` if date within 24 months — filter score ≥ 3, sort score desc + date desc, take top 6 precedents. Code briefs: primary + 1 similar (12↔16, 01↔02, 24↔27, 21↔22). Council brief: exact slug match. Renders to prompt-ready markdown with summaries + key arguments prioritised over full bodies. `import "server-only"` fence prevents client-bundle leakage. `gray-matter@^4.0.3` is the only new dep. `next.config.ts` `outputFileTracingIncludes` ensures the markdown files bundle into both generate functions — verify with `vercel build` locally before any deploy.
->
-> **AI pipeline activation.** `SYSTEM_PROMPT` in `lib/server/ai.ts` gains two new sections: step 6 ("USE THE KNOWLEDGE PACK" — mirror precedent framings in your own words, pre-empt common council rebuttals, respect council quirks like 14-day discount windows; the pack is INTERNAL context — never cite, name, or quote in the letter body), and step 7 ("SCORE THE APPEAL STRENGTH" — 0–100 calibrated to the evidence base; rationale + up to 3 improvement asks when < 50; worked example pins behaviour). New hard rules block the drafter from naming KB entries or padding the score for moral support.
->
-> **`generateDraft()` signature** gains `selectedCards`, `portalMetadata`, and `knowledgePack` as optional inputs. Prompt assembly now stitches: confirmed ticket fields → portal-verified metadata (treat as authoritative) → selected cards with their promptHooks → user's dictated note → evidence photo notice → KNOWLEDGE PACK (rendered markdown) → "respond with JSON". Server-side strength cap: if `evidencePhotos.length === 0 && notes.length < 50`, `strength.score` is capped at 45 and the rationale gets a "we capped this because no evidence was attached" prefix — defends against AI score inflation.
->
-> **Both `/api/generate-stream` and `/api/generate`** now: re-read the latest appeal row → resolve card IDs to rich `{id,label,promptHook,weight}` objects via `getCardById` → call `loadKnowledgePack({groundIds, contraventionCode, councilSlug})` (contravention code prefers portal-verified, falls back to OCR) → pass full bundle to `generateDraft`. Streaming endpoint emits a new `event: strength\ndata: { score, rationale, improvements }` SSE frame. Both routes persist the strength + a `knowledgePackUsed: { usedIds, tokens }` audit trail on the appeal row via the extended `attachDraftToAppeal()`.
->
-> **Migration `drizzle/0013_appeal_strength_and_kb.sql`** — 4 nullable columns on `appeals`: `strength_score integer`, `strength_rationale text`, `strength_improvements jsonb`, `knowledge_pack_used jsonb`. No backfill required; the smart card hides the strength surface when `strength_score IS NULL`. Schema mirrored in `lib/server/db/schema.ts` with a new `KnowledgePackAudit` interface.
->
-> **Strength badge + weak-appeal warning UI.** In the `letter_ready` state's `<PaidSubmitCta>`:
-> - **Score ≥ 80**: green pill "Strong appeal — N/100" with sparkle icon.
-> - **Score 50–79**: amber pill "Solid appeal — N/100".
-> - **Score < 50**: red `<aside>` rendered ABOVE the Pay £2.99 card with title, rationale, bullet list of evidence improvements, and the Pay button label changes to "Submit anyway for £2.99". Not a hard gate — the user can still proceed.
->
-> **Orphan cleanup.** Deleted `components/GroundsCardQuiz.tsx` + `components/InlineGroundsQuiz.tsx` (legacy accordion + 3-question mini-quiz, both unreachable since v0.2.13's smart-card consolidation).
->
-> **`tsc --noEmit` exits 0.** New deps: `gray-matter@^4.0.3` only.
-
-
-
-> **2026-05-23 (latest — v0.2.18: the "Add a ticket" page is gone; everything on `/app/tickets`)** — Final consolidation. The upload affordance moved off `/app/capture` and onto `/app/tickets` itself. Users see the smart-card surface from the moment they tap Scan PCN; the file picker opens IN-PAGE so the gesture is always preserved (the v0.2.17 `useEffect` auto-click was getting blocked by browsers after the client-side route push).
-> - **New `lib/client/uploadPcn.ts`** — canonical upload helper. `uploadPcn(dataUrl)` runs the progressive ticket-creation pipeline: PATCHes the appeal with `pcnImageUrl`, stashes the OCR handoff in sessionStorage, fires `/api/extract` fire-and-forget. Returns the new `appealId`. `readFileAsDataUrl(file)` is the input-onChange companion (8 MB cap).
-> - **`/app/tickets` is the upload entry**:
->     - Hidden `cameraInputRef` + `libraryInputRef` `<input type="file">` elements mounted on the page.
->     - Visible navy "Add a new ticket" panel above the filter chips with two icon buttons (camera + library) that programmatically `.click()` the inputs.
->     - `handleFile()` callback: `readFileAsDataUrl` → `uploadPcn` → refetch `/api/appeals` so the new card appears at the top → reset `autoExpandedRef` + set `expandedId` to the new id so the list auto-opens it.
->     - `?scan=1` query param: on mount the page reads the URL, clicks `libraryInputRef`, then `history.replaceState` strips the param so a refresh doesn't re-trigger.
-> - **`/app/capture` is a thin redirect.** The previous 1480-LoC capture page (camera live-preview, in-page OCR review, manual entry) deleted. Replaced with a 5-line server-side `redirect("/app/tickets?scan=1")` so existing notification deep-links + bookmarks land on the new flow.
-> - **Home "Scan PCN" `ActionHero`** deep-links to `/app/tickets?scan=1` (was `/app/capture`).
-> - **Bottom nav "Scan" tab** updated to `/app/tickets?scan=1` (was `/app/capture`).
-> - **Live camera capture (legacy auto-snap) paused.** The fancy `navigator.mediaDevices` edge-detection auto-capture is gone for v0.2.18. The file-input's `capture="environment"` attribute opens the system camera on mobile which covers the primary use case; auto-snap can return in a later pass if needed.
-> - **Manual entry path deferred.** With `/app/capture` gone, the "Enter PCN" typed-fields path is unreachable from the UI for now. The three editable fields on the smart card (PCN ref / vehicle reg / council picker via `<EditableFieldRow>` + `<CouncilSelectRow>`) already let a customer enter or correct fields manually AFTER any upload (even a blank stub) — so manual-only entry isn't currently a blocker. Track for a follow-up if the "I don't have a photo" case becomes common.
-> - **Step labels removed** (v0.2.17 cleanup): the BackHeader subtitle "Step 1 of 3 · Ticket details" → empty (legacy capture page is now a redirect anyway); "Step 1 of 2 · Pick your grounds" on the gathering-evidence card → "Pick your grounds".
-> - **`patchThisAppeal()` helper** (v0.2.17) — replaces the global `patchCurrentAppeal()` call inside `<TicketCard>` so PATCHes target the appeal the card is mounted with, not the session current-draft pointer. Was previously mutating the wrong row when the user opened an older ticket from the list.
-> - **Verified via Playwright MCP**: clear session → Home → tap "Scan PCN" → land on `/app/tickets?scan=1` with the new "Add a new ticket" panel + filter chips + existing cards visible → tap Upload from library → file picker opens IN-PAGE (no chrome) → pick `ticket scan.jpeg` → new appeal `ap_pa5rusbyn4f08v3b` created, list refreshes, new card appears at the top auto-expanded → smart card shows pending_review with image inline, three editable fields (PCN textbox `WE65333269`, reg textbox `LB19FWZ`, council combobox with Westminster selected), "I agree to Terms & Conditions" button. Navigating to `/app/capture` redirects to `/app/tickets` (server-side redirect). The "Add a ticket" page is fully gone.
-> - **Bug fix — guest upload 403.** `uploadPcn()` used to delegate to `patchCurrentAppeal()`, which reads the session's `currentAppealId` pointer. If the user had previously signed in, created a draft, then signed out, that pointer still held an appeal the now-guest viewer couldn't mutate — every upload 403'd. Replaced with explicit `POST /api/appeals` + `PATCH /api/appeals/[new-id]` so every photo upload always creates a fresh appeal owned by the current session. Each scanned PCN is its own ticket; nothing is ever reused. Caught by the user as "Failed to update draft appeal (403) when i select image" and verified fixed in a clean guest run.
-> - **Sign-in gate before drafting (v0.2.18).** `confirmEvidenceAndDraft()` in `<TicketCard>` checks `/api/auth/me` before firing `/api/generate-stream`. If the viewer is a guest, the card persists the chosen grounds to the appeal row, then `window.location.href = "/sign-up?next=/app/tickets/<id>?resumeDraft=1"`. The drafted appeal letter is a customer record worth keeping — guests can do everything up to and including the grounds quiz, but the AI draft itself requires an account. Verified end-to-end: guest tapped "Appeal with Rabbit" → grounds quiz → "Signage was unclear" → "Start drafting" → landed on `/sign-up?next=...` with grounds saved. (The `?resumeDraft=1` query is read on the detail page but right now is a no-op; the user re-taps "Start drafting" after signing in — auto-resume on mount is a follow-up.)
-> - **End-to-end guest flow on Playwright** (all on `/app/tickets`, one card):
->   1. Upload → card mounts in pending_review with image + 3 editable rows + T&Cs.
->   2. Tap T&Cs → "two greens" popup (OCR confidence still streaming) → "Use anyway" → card flips to **Validating** with live agent thought.
->   3. ~60s later → **Open** verdict, recommendation card surfaces.
->   4. Tap "Appeal with Rabbit" → **Tell us more** (grounds quiz).
->   5. Pick grounds + tap "Start drafting" → **redirected to `/sign-up`** because guest. Grounds persisted on the appeal row for resume.
->   All states render on the same card on `/app/tickets`. No intermediate routes, no full-page blockers, no 403s.
-> - **Docs synced.** `wiki/docs/product/progressive-ticket-creation.md` updated to reflect the v0.2.18 architecture (list-page entry, in-page picker, sign-in gate, end-to-end on the smart card).
-> - **`tsc --noEmit && eslint . && next build` all exit 0.** Dead `_DeadFieldRow` stub in `TicketCardBody.tsx` removed in the final cleanup pass.
->
-> **2026-05-23 (earlier — v0.2.16: full lifecycle on `/app/tickets`; smart card carries every state)** —
-> - **Capture routes to the LIST.** `/app/capture` now navigates the user to `/app/tickets` (not `/app/tickets/[id]`) after a successful upload. The list page auto-expands the newest in-flight card on arrival, so the user immediately sees the live state — image, "we'll notify you" copy, T&Cs button, and every subsequent state transition (validating → needs-decision → gathering-evidence → drafting → letter-ready → submitting → submitted) all happen on the same card on the same page.
-> - **Auto-expand on first paint.** New `isInFlight()` helper in `app/app/tickets/page.tsx`; the page expands the topmost ticket where `isInFlight(appeal) === true` on mount. Guarded by `autoExpandedRef` so the user can collapse on purpose without the page yanking it back open.
-> - **New `gathering_evidence` card state.** Between "Appeal with Rabbit" tap and the AI draft kickoff. `lib/deriveCardState.ts` exports a new `gathering_evidence` `CardKind` (and an `EVIDENCE_DONE_STEP` sentinel). The body renders `<GatheringEvidenceCard>` — a compact 6-option grounds picker (signage / permit / loading / wrong-vehicle / already-paid / mitigating) with a "Start drafting my appeal" CTA. Selecting at least one ground enables the CTA.
-> - **Two-phase appeal handler.** `startAppeal()` only PATCHes `preferredMethod="portal"` (so the card flips into `gathering_evidence`). `confirmEvidenceAndDraft()` is the new second phase — PATCHes `grounds` + `step=EVIDENCE_DONE_STEP`, then fires `/api/generate-stream`. The drafting-state poll picks up `letterBody` when it lands and flips to `letter_ready`.
-> - **`PatchBody` + `patchAppealDraft` accept `step`** so the client can stamp `EVIDENCE_DONE_STEP` directly. (Plus all the v0.2.15 fields — `processing`, `pcnImageUrl`.)
-> - **Smart card PATCHes its own appeal id.** Replaced the global `patchCurrentAppeal()` call (which mutates whatever `sessionStorage.currentAppealId` points at) with a new inline `patchThisAppeal(body)` helper inside `<TicketCard>` that hits `/api/appeals/{appeal.id}`. Without this, tapping Appeal on an older ticket while a newer draft was in-flight would mutate the WRONG row. Caught + fixed during Playwright verification.
-> - **Capture page: "We'll notify you" copy is explicit.** The `<ProcessingCard>` body now reads "You'll get a notification as soon as scanning's done. Feel free to leave this page — your ticket keeps working in the background, and you can pop back any time to see progress." Mirrored by a small footer line on the gathering-evidence card.
-> - **Hide the in-page review form on capture when `pendingNav` is set** — prevents the empty form from flashing behind the notification permission sheet during the brief patch+route window. The block is kept in the tree for the back-navigation case where someone returns to capture with an in-flight draft.
-> - **Guest gate dropped (v0.2.7 rule retired).** `/api/appeals` GET no longer returns `{ appeals: [] }` for anonymous viewers — `listAppealsForViewer` already scopes strictly to `sessionId` (or `sessionId ∪ userId` when signed in), so privacy is preserved without the gate. List page replaces the "Sign in to see your tickets" wall with a compact inline "Sign in to keep your tickets" nudge that ONLY appears when the guest actually has tickets.
-> - **Verified via Playwright MCP**: full pipeline against real Westminster PCN — Capture → upload → no overlay → notification pre-prompt → land on `/app/tickets` → newest card auto-expanded in `pending_review` (image + 2 greens + T&Cs button) → tap T&Cs → `validating` (live agent thought streaming "Variant B — the landing page is the lookup form itself…") → verdict landed → `needs_decision` (recommendation card with Appeal £2.99 / Pay yourself / Rabbit Pay Coming Soon) → tap Appeal with Rabbit → `gathering_evidence` (status pill "Tell us more", 6 grounds options, Start drafting CTA) → pick 2 grounds → Start drafting → `drafting` (status pill "Drafting", "Drafting your appeal…" inline status row). End-to-end works on a single page.
-> - **`tsc --noEmit && eslint . && next build` all exit 0.**
->
-> **2026-05-23 (earlier — v0.2.15: progressive ticket creation; no static loading screens after upload)** — The full-screen "Reading your PCN" overlay is gone. After the customer uploads a photo (or scans via the camera), `/app/capture` creates the appeal row, fires OCR fire-and-forget, and routes the user to `/app/tickets/[id]` immediately. The smart card hosts every subsequent step as an inline status row that can succeed, fail, or be retried independently. The only static loader the app shows is the initial splash on cold launch.
-> - **Schema (migration `drizzle/0012_processing_status.sql`)** — two new columns on `appeals`:
->     - `processing jsonb` — per-step status object, currently `{ ocr?: { status, error?, completedAt? }, analysis?: { status, error?, completedAt? } }`. Portal lookup status lives on `portal_lookup.status` so each step's error trail stays targeted; the column reads NULL on legacy rows.
->     - `pcn_image_url text` — uploaded photo URL (data URL in dev; Vercel Blob in production once wired). Drives the photo preview at the top of the smart card across refreshes / cross-device loads.
-> - **New helper `setProcessingStep(appealId, step, status, error?)`** in `lib/server/appeals.ts` — atomic merge into the `processing` jsonb so two parallel steps can't clobber each other. Used by the OCR pipeline now; ready for the AI-analysis pipeline whenever that lands.
-> - **New `processing` card state** in `lib/deriveCardState.ts` — branches before `pending_review`. Fires when the appeal is draft, no portal lookup yet, no preferred method, no letter, and either OCR is running/failed OR the ticket fields haven't landed yet. Card pill morphs between "Processing" (info tone) and "Needs review" (warn tone, OCR failed).
-> - **`<ProcessingCard>` in `TicketCardBody`** — three inline status rows (Reading PCN details / Checking issuer portal / Generating recommendation), each with its own spinner / done check / failure icon and copy. PCN image pinned at the top. "Try again with a clearer photo" CTA renders only when OCR specifically failed.
-> - **`/api/extract` accepts `appealId`** — when present, OCR PATCHes the appeal row with the ticket fields on success and marks `processing.ocr.status = "done"`. On failure it stamps `processing.ocr.status = "failed"` with the error. The client doesn't await the call — it fires-and-forgets while routing to the ticket page.
-> - **`/api/appeals/[id]` PATCH** — `PatchBody` now accepts `pcnImageUrl`. `patchAppealDraft` accepts `processing` + `pcnImageUrl`.
-> - **`AppealRecord`** gains `processing: ProcessingStatus | null` + `pcnImageUrl: string | null`.
-> - **Capture page rewrite** (`runExtract`) — fire-and-forget pattern: 1) PATCH appeal with `pcnImageUrl`, 2) stash sessionStorage OCR handoff so the card can render confidence pills when OCR settles, 3) POST `/api/extract` WITHOUT `await`, 4) notification permission pre-prompt → push to `/app/tickets/[id]`. The full-screen `<ReadingPcnOverlay>` JSX render + the 150-LoC component definition are deleted. The in-page review form is hidden whenever `pendingNav` is set so it doesn't flash behind the notification sheet.
-> - **Polling in `<TicketCard>`** — the existing drafting poll extended to also cover the new `processing` state. 2 s cadence, max 60 polls (~2 min budget). Stops the moment `ticket.pcnRef && ticket.vehicleReg` lands OR `processing.ocr.status === "failed"`.
-> - **Documentation** — new `wiki/docs/product/progressive-ticket-creation.md` explains the model end-to-end (why we did it, what the customer sees, where the code lives, why polling vs SSE for OCR). Reference doc going forward.
-> - **`tsc --noEmit && eslint . && next build` all exit 0.**
-> - **Verified via Playwright MCP**: fresh signup → `/app/capture` → upload `ticket scan.jpeg` → no overlay → notification pre-prompt → land on `/app/tickets/<new-id>` (fresh appeal id `ap_1bz8c94k23s8uvxv`). OCR completed before the user dismissed the prompt, so by the time the card mounted it had transitioned past `processing` straight to `pending_review` (image at top, 3 green confidence pills, photo-coach hint about flattening the notice, "I agree to Terms & Conditions" CTA). The `processing` state IS implemented and will fire when OCR is slower than the user — the smart card's polling picks up the OCR result whenever it arrives.
->
-> **2026-05-23 (earlier — v0.2.14: OCR review moves onto the smart card)** — Continuation of the v0.2.13 consolidation: the OCR review surface that used to live on `/app/capture` is now a `pending_review` state inside `<TicketCard mode="detail" />`. Capture is now a pure file-picker that hands off immediately to the ticket page; the customer never sees an interstitial confirmation form, they see their ticket image at the top of the smart card with the OCR'd fields filling in around it.
-> - **New `pending_review` state in `deriveCardState`** — fires when `appeal.status === "draft"`, `appeal.ticket?.pcnRef && appeal.ticket?.vehicleReg`, and there's no `portalLookup`/`preferredMethod`/`letterBody`. Pill label "Confirm", caption "Check the details and tap to validate with the council."
-> - **`<TicketCardBody>` adds a `PendingReviewCard` surface**: PCN image preview (from sessionStorage handoff), three confidence-pilled rows (PCN ref / Vehicle reg / Issuing council, each green=High / amber=Check), optional photo-coach hint, and a single "I agree to Terms & Conditions" CTA. On submit, the card checks the "two greens" criterion (both `confidence.pcnRef` and `confidence.vehicleReg` ≥ 0.75 AND `photoCoach.quality !== "poor"`); if it passes, we POST the lookup. If it doesn't, an inline popup overlays the card with "Scan again" (route back to `/app/capture`) and "Use anyway" (push through regardless) — the user is never blocked, just informed.
-> - **OCR handoff via sessionStorage** — `lib/client/session.ts` gained `OcrHandoff` (`{appealId, confidence, photoCoach}`) with `setOcrHandoff` / `getOcrHandoff` / `clearOcrResult` helpers. `/app/capture`'s `runExtract` writes the handoff right before pushing to `/app/tickets/[id]`; the card reads it on mount and clears it once the user taps T&Cs (or on `clearCaptureFlow`).
-> - **`/app/capture` rewrite of `runExtract`** — after a successful OCR pass, if we have all three minimum fields (PCN ref + vehicle reg + a recognised council slug), we stash the handoff, trigger the notification permission pre-prompt, and push to the card. If any of those is missing we fall back to the existing in-page retake sheet, so capture never lands a customer on a card it can't unblock.
-> - **Manual entry path unchanged** — typing PCN/reg/council manually + tapping "Validate" still POSTs the lookup directly and lands on the card already in `validating` state. The `pending_review` state is only ever reached from the photo path.
-> - **Verified via Playwright MCP**: fresh signup → `/app/capture` → upload `ticket scan.jpeg` → OCR runs (no in-page review) → notification permission sheet pre-prompts → land on `/app/tickets/ap_3pw2wncnf7exo4a4` (fresh appeal ID) → smart card opens in `pending_review` state with status pill "Confirm", PCN image inline at top of body, three "High" green pills (PCN ref `WE65333269` / Vehicle `LB19FWZ` / Council `Westminster City Council`), "I agree to Terms & Conditions" button → tap → card transitions to `validating` with the agent thought streaming ("I'll navigate to the Westminster appeals portal and look up the PCN now"). End-to-end works.
-> - **`tsc --noEmit && eslint . && next build` all exit 0.**
->
-> **2026-05-23 (earlier — v0.2.13: smart ticket card is the single live surface)** — Big UX consolidation. The post-scan journey used to scatter across five surfaces (`/app/validating/[jobId]` full-page MCP view → `<VerdictReveal>` modal → `/app/tickets/[id]` → `<GeneratingOverlay>` full-screen → `<PassiveStatusBanner>` → `/app/submitting/[id]` full-page MCP view → ticket detail confirmation). All of that is now ONE smart `<TicketCard />` on `/app/tickets/[id]` that builds itself out in real time. No full-page blockers, no modal verdicts, no intermediate routes.
-> - **New primitives**:
->     - `lib/deriveCardState.ts` — single pure function `(appeal, statusSnapshot, liveProgress) → CardState`. Seven kinds: `scanning | validating | needs_decision | drafting | letter_ready | submitting | submitted | terminal` (+ `flavor: recommendation | escalated | expired` for needs_decision). No other component reads `appeal.portalLookup.status`, `appeal.letterBody`, `appeal.preferredMethod`, `statusSnapshot.stage`, etc. — they all collapse here.
->     - `hooks/useAppealLiveState.ts` — owns the SSE subscription per card. Opens `EventSource('/api/jobs/<jobId>/progress')` only when (a) `activeJobId` is set AND (b) the card is in viewport (IntersectionObserver, rootMargin 200px, 10s grace on offscreen). Closes on `done`/`error`/unmount. Translates the SSE wire into a stable `LiveProgress` object + buffered `events` + `extracted` metadata. Fires `onSettled` so the card can refetch the appeal row (SSE only carries job state; the appeal table has `letterBody`, `portalLookup`, `appeal.status`, etc.).
->     - `components/TicketCard.tsx` — the smart card. Used by both list mode (`/app/tickets`, collapsed by default with chevron toggle) and detail mode (`/app/tickets/[id]`, defaultExpanded, letter inline, Watch-live disclosure, PaymentSheet, lightbox). Header has live-morphing status pill; thin determinate progress bar on top; rotating caption line driven by the SSE `progress.thought` stream.
->     - `components/TicketCardBody.tsx` — action surface (Pay yourself / Appeal with Rabbit / Submit £2.99 / inline passive banners / terminal cards / escalation card). Strict consumer of `CardState`; no derivation here.
->     - `components/MCPLiveStrip.tsx` — ~200px slim variant of the old `<MCPLiveView>`. Mounted behind a "Watch live →" `<details>` disclosure inside the expanded card. **Default collapsed.** Stays visible after the job settles so the user can review screenshots after the fact. The disclosure label flips between "Watch live" (in flight) and "Agent activity" (settled).
-> - **Deleted (live screenshots / verdict / drafting / submission UI absorbed into the card)**:
->     - `app/app/validating/[jobId]/page.tsx`
->     - `app/app/submitting/[id]/page.tsx`
->     - `app/api/submissions/[id]/progress/route.ts` (the legacy SSE forwarder shim)
->     - `components/MCPLiveView.tsx`
->     - `components/GeneratingOverlay.tsx`
->     - `components/VerdictReveal.tsx`
->     - `components/PassiveStatusBanner.tsx`
->     - `components/TicketActionPanel.tsx`
->     - `components/ExtractedDataPanel.tsx` (orphaned with MCPLiveView gone)
-> - **Routing**: `/app/capture` line 614 used to push to `/app/validating/<jobId>` after the lookup enqueued; it now ALWAYS pushes to `/app/tickets/<appealId>` and fires the notification permission sheet pre-prompt before the push. The `showMcpLiveView` flag no longer branches the route — it now controls whether the card's "Watch live" disclosure opens by default. `/app/watch/[appealId]` is a one-line redirect to `/app/tickets/<appealId>`. `/app/evidence` remains a redirect stub.
-> - **List page (`/app/tickets`)** — replaced inline `ActiveCard`/`ResolvedCard` with `<TicketCard mode="list" />`. Added a 15-second visibility-gated reconciliation poll that hits `/api/appeals?sessionId=&since=<lastUpdatedAt>` for deltas — catches jobs that settle while the tab is in the background or the per-card SSE died. Tab wake re-ticks immediately. Filter chips (All / To Pay / Challenging / Resolved with counts), guest gate, archive (locally-hidden tickets), and help/deadline-tip footer cards are preserved unchanged.
-> - **Detail page (`/app/tickets/[id]`)** — collapsed from 931 LoC to ~110. Renders `<TicketCard mode="detail" />`. Everything the old page owned — status-snapshot fetch, council lookup, 90-poll drafting loop, PaymentSheet, validation banners, letter preview, timeline, warden-photo lightbox, override link, stage-aware action panel, NotificationPermissionSheet — lives inside the card now.
-> - **API extensions**:
->     - `AppealRecord` (in `lib/server/appeals.ts`) gains `activeJobId: string | null` and `activeJobKind: JobKind | null`, populated by `listAppealsForViewer` and `getAppealById` via a new `loadActiveJobMap()` that joins on the `jobs` table for the most-recent queued/running job per appeal. The card uses these to decide what to subscribe to.
->     - `/api/appeals?since=<ISO>` returns only appeals updated strictly after the timestamp (delta poll). Invalid input is silently ignored.
->     - `/api/jobs/[id]/progress?screenshots=0` skips screenshot frames — the card subscribes with `screenshots=0` by default and only flips to `screenshots=1` when the user opens "Watch live". Saves ~1MB/min of base64 traffic per idle card.
-> - **Drive-by fixes**:
->     - Removed pre-existing unused imports/state from `app/app/capture/page.tsx` (`Bell`, `CreditCard`, `Scale` from lucide-react; the dead `fromReview` URL-param state — the recommendation panel moved off capture in v0.2.10).
->     - Removed pre-existing unused `XCircle` import from `components/TicketStatusBadge.tsx`.
->     - Added targeted `eslint-disable react-hooks/set-state-in-effect` with rationale comments for three legitimate prop→state and per-job-reset patterns in the new hooks/components (and one pre-existing one in `NotificationPermissionSheet.tsx`).
-> - **Verified end-to-end via Playwright MCP**: real Westminster PCN photo (`C:\Users\User\Downloads\ticket scan.jpeg` — WE65333269 / LB19FWZ) — Capture → upload → OCR (PCN ref + plate + council with HIGH confidence pills) → "I agree to T&Cs" → notification permission sheet pre-prompt → land on `/app/tickets/<appealId>` (NOT `/app/validating/<jobId>`) → smart card renders with status pill "Validating" + live caption streaming from the agent ("Filling the lookup form with the exact PCN reference…") + Watch-live disclosure default-collapsed → ~60 seconds later the pill morphs inline to "Open" with the council-confirmed verdict, recommendation card surfaces inline with Appeal £2.99 / Pay yourself / Rabbit Pay (Coming soon), Council-confirmed grid (Code 81, Location Warwick Towers Princethorpe [PRT]), 10 warden photos in an inline grid, Progress timeline below — all on the same page, no modals, no routing. `/app/validating/foo` and `/app/submitting/foo` return the branded not-found page; `/app/watch/<id>` redirects to `/app/tickets/<id>`.
-> - **`tsc --noEmit && eslint . && next build` all exit 0**. Build maps the new dynamic routes (`/app/tickets/[id]`) and dropped the deleted ones — net -2 routes (`/app/validating/[jobId]`, `/app/submitting/[id]`) plus -1 API route (`/api/submissions/[id]/progress`).
->
-> **2026-05-23 (earlier — v0.2.12: paid appeal IS the product, no more free email)** — Reversed the v0.2.11 "free email submission is the hook" direction. Email-to-council as a customer-facing free path devalued the paid AI appeal workflow — the paid appeal IS the value proposition; the scan + status check is the commitment hook; payment is an outcome the customer either does themselves (free deep-link to the council portal) or routes through us (£2.99 AI workflow now, +£1.99 Rabbit Pay later). Big refactor:
-> - **Free `Email this appeal` action removed** from the recommendation card and the API. `<ReviewRecommendation>` (the inline 3-action card on `/app/tickets/[id]`) now renders **Appeal with Rabbit (paid)** + **Pay yourself (free deep-link)** + **Pay instantly with Rabbit (+£1.99) Coming soon (disabled)**. The "Send via email — FREE" CTA on state D of `<TicketActionPanel>` is gone — letter-ready always routes through the £2.99 PaymentSheet.
-> - **`/api/submit` rolled back** to the single £2.99 portal path. The v0.2.11 email branch (bypass Stripe, call `runSubmission` with `method: "email"`) is removed. Email survives internally as a *portal-fallback* inside `runSubmission` for non-automated councils — but the customer can no longer trigger it as a free choice.
-> - **Stage-aware action panel.** `<TicketActionPanel>` now branches off the issuer-connector status snapshot's new `stage` field, not just `appeal.preferredMethod`. Surfaces (in priority order): A. Validating (passive); H. Letter ready (Submit £2.99); G. Drafting (passive); B. Status check pending (passive); D. Terminal (paid/cancelled/closed — no CTAs); E. Under review with council (passive); C. **Escalation card** (Charge Certificate / Order for Recovery / Enforcement — red banner + Pay yourself only); F. Default → `<ReviewRecommendation>`. The recommendation card itself branches on `canAppeal`: open-window vs **"Appeal period expired"** amber banner.
-> - **Connector taxonomy extended** in `lib/server/connectors/types.ts`:
->     - New `TicketStage` enum: `scanned` | `validated` | `status_check_pending` | `discount_active` | `appeal_open` | `appeal_expired` | `appeal_submitted` | `under_review` | `charge_certificate_issued` | `order_for_recovery` | `enforcement` | `paid` | `cancelled` | `closed` | `unknown`.
->     - New `STAGE_LABEL` map for UI display.
->     - `TicketStatusSnapshot` now carries `stage`, `canAppeal: boolean`, `canPay: boolean`, `daysLeftToAppeal: number | null`, `paymentUrl: string | null` alongside the existing amount/date fields.
-> - **Mock connector rewrite** (`lib/server/connectors/mock.ts`) to emit a per-stage snapshot rotation — every `(pcnRef, vehicleReg)` hash maps to one of `discount_active` / `appeal_open` / `appeal_expired` / `charge_certificate_issued` / `order_for_recovery` / `paid` / `cancelled`, with realistic amounts + deadlines + `canAppeal`/`canPay` per stage. Lets the UI be exercised against every action-panel branch without a real connector. Added `setMockStageOverride()` so admin / test tooling can force a specific stage.
-> - **Recommendation-card copy** rewritten: primary action "Appeal with Rabbit" (with PAID pill + "Start appeal →" CTA + deadline countdown when known), secondary "Pay yourself" (FREE pill + "Open payment page →" CTA), tertiary disabled "Pay instantly with Rabbit (+£1.99) Coming soon". When `canAppeal === false` the Appeal action is hidden and replaced with an amber **"Appeal period expired"** banner; Pay yourself promotes to primary visually.
-> - **`<NotificationPermissionSheet>` trigger** now fires from the `startAppeal()` handler on the ticket page (was fired from multiple places in v0.2.11). One pre-prompt per session via `sessionStorage`.
-> - **Wiki docs updated**: `business/launch-strategy.md` and `business/payment-strategy.md` rewritten to drop the "free email is the monetisation hook" framing. `architecture/status-checker.md` documents the new `stage` + `canAppeal`/`canPay`/`daysLeftToAppeal`/`paymentUrl` snapshot fields.
-> - **`tsc --noEmit` clean.** No DB migration needed — `appeals.preferred_method` column stays in place from v0.2.11 (now always set to `"portal"` when stamped; NULL is treated as "no choice yet" which surfaces the recommendation card).
-> - **Verified via Playwright with the real Westminster PCN photo** (`ticket-scan.jpeg`): scan → upload → OCR (WE65333269 / LB19FWZ / Westminster) → confirm fields → tap "I agree to T&Cs" → permission sheet → land on `/app/tickets/<id>` → see calm "Validating with the council" passive banner → stage-aware action panel follows.
->
-> **2026-05-23 (earlier — v0.2.11: brief free-email experiment, reverted in v0.2.12)** — Tried the "free email is the hook" framing. Customer-facing email submission (`/api/submit` with `preferredMethod: "email"`) was added, exposed as a green "Email this appeal — FREE" CTA on the recommendation card. Reverted in v0.2.12 because it devalued the paid product. Email submission survives internally as a `runSubmission(method:"email")` portal-fallback for non-automated councils.
->
-> **2026-05-23 (earlier — v0.2.10: Scan → Review → Recommendation launch shape, ticket-status connector architecture, Rabbit Pay surfaced as Coming Soon)**
-
-> **2026-05-23 (latest — v0.2.10: new product direction + status-checker architecture)** — Reframed the launch shape around a single recommendation card: **Scan PCN → AI Review → Recommendation**, with three explicit actions (Appeal monetised, Pay yourself free deep-link, Pay instantly with Rabbit +£1.99 Coming Soon). Built the ticket-status connector architecture so the long-term autopilot story has a real spine without pretending we already support every UK issuer.
-> - **`<ReviewRecommendation>` is now the canonical post-scan surface** in `app/app/capture/page.tsx`. Renders whenever the customer has confirmed PCN ref + vehicle reg + council (OCR or manual entry), and there's no `portalLookup` in flight yet. Three actions:
->     1. **Appeal** (primary, navy gradient, monetised) → calls `startValidation()` → `/api/appeals/[id]/lookup` → MCP validation → drafting → £2.99 auto-submit.
->     2. **Pay yourself** → opens `council.appealPortalUrl` in a new tab via `target="_blank"`. We never touch funds. Falls back to a disabled "Pick your council first" state when the council slug is unknown.
->     3. **Pay instantly with Rabbit (+£1.99)** → **disabled `<div aria-disabled>` with "Coming soon" pill**. There is no onClick handler. Implementation gate documented in a TODO comment block immediately above the JSX — see `business/payment-strategy.md` for the full reasoning (FCA EMI/PSP or agency-PSP partnership, per-issuer payment connectors, idempotency, receipts, refunds, chargebacks, timing safeguards).
->   The manual-entry path no longer auto-triggers validation — both OCR and manual entry funnel through the recommendation card so the decision point is consistent.
-> - **`/api/councils` now returns `appealPortalUrl`** so the client can deep-link the Pay-yourself action. Used by `<ReviewRecommendation>` to resolve the URL by the appeal's `ticket.councilSlug`. Future: dedicated `councils.paymentUrl` column (currently we re-use the appeal portal URL since most councils route both through the same PCN portal).
-> - **New ticket-status connector architecture** lives at `apps/web/lib/server/connectors/`:
->     - `types.ts` — `TicketStatus` enum (`unpaid` | `paid` | `under_appeal` | `cancelled` | `charge_certificate_issued` | `closed` | `unknown`), `TicketStatusSnapshot`, `IssuerConnector` interface, `ConnectorError`, UI label + tone maps. Heavy doc-comments encode the operational constraints (CAPTCHA, rate limits, session tokens, JS-app portals, auth-required portals).
->     - `mock.ts` — deterministic mock connector that rotates through realistic sample statuses by hash of `(pcnRef, vehicleReg)`. Returns `source: "mock"` so the UI can render a "Preview — connector not live yet" pill.
->     - `registry.ts` — `resolveConnector(issuerKey)` always returns a connector (falls back to mock when an issuer's connector isn't `ready: true`). Inventory helper for the future `/admin/connectors` page.
-> - **`/api/appeals/[id]/status`** — new ownership-gated route that resolves the connector for an appeal and returns its `TicketStatusSnapshot`. Errors map cleanly: `400` invalid input, `403` not owner, `404` appeal missing, `502` connector-side failure (with the `ConnectorError.code` in the body so the UI can branch), `503` no database.
-> - **`<TicketStatusBadge>`** — new single-source-of-truth UI badge in `components/TicketStatusBadge.tsx`. Two variants (`pill` for the tickets-list card, `banner` for the ticket detail). Renders the verdict-keyed icon + tone + key amounts (due, discounted, paidAt). Auto-surfaces a "Preview" pill when `snapshot.source === "mock"` — the customer must never see a fake authoritative verdict.
-> - **Ticket detail wired to the status checker.** `app/app/tickets/[id]/page.tsx` fetches `/api/appeals/[id]/status` on mount + renders the badge between the ticket card and the validation/letter sections. Non-blocking; failures swallowed.
-> - **Wiki docs added** documenting the launch direction:
->     - `business/launch-strategy.md` — Why Scan → Review → Recommendation, why Appeal-led, the autopilot vision phased over 24 months.
->     - `business/payment-strategy.md` — Why Rabbit Pay is Coming Soon (regulatory + per-issuer connector + ops controls), what's blocking ship, what we deliberately don't do at launch.
->     - `architecture/status-checker.md` — Connector interface, registry resolution order, mock-vs-authoritative rules, rollout roadmap (Westminster + TfL Bus Lane + Camden in Wave 1), operational constraints, "how to add a connector" runbook.
-> - **`tsc --noEmit` clean**. New routes: +1 page (`/api/appeals/[id]/status`). New files: connectors directory (3 files), `TicketStatusBadge`, plus three wiki pages.
-> - **Admin promote** — `patrick@biras.com` promoted to admin role this session so the user can access `/admin` directly from their profile sub-page.
->
-> **2026-05-23 (earlier — v0.2.9: fewer screens, harder gates, popup-only verdicts)** — Continuation after a full DB reset (twice this session). Focus: tighten the post-validation flow, kill redundant pages, and make the closed-ticket experience watertight (popup, not a separate page; UI + server both refuse to let the user spend £2.99 on a PCN the council has already closed). Also fixed the AI live view so opening a finished job actually shows the saved screenshots + activity log instead of bouncing back to the ticket page.
-> - **`/app/paywall` deleted entirely.** The "Step 3 of 4 · Confirm — Draft your appeal — Free" page was a one-click pass-through; the same "Draft my appeal — Free" button existed on `/app/evidence` and on `/app/paywall`, and tapping the first one just rendered the second. **Drafting is now inline on `/app/evidence`** — the page hosts the `GeneratingOverlay`, the typewriter buffer (`bufferRef` + `startDrain`/`stopDrain`), and the SSE consumer for `/api/generate-stream`. The "Draft my appeal — Free" button is wrapped in `<AuthGate>` so guests still get the sign-up card. New flow: `capture → validating → evidence → tickets/[id]` (was `capture → validating → evidence → paywall → tickets/[id]`). The retry-drafting link on `/app/tickets/[id]` (generation-failed state) was updated to `/app/evidence`.
-> - **`/app/blocked/[appealId]` deleted entirely.** Previously the destination after the verdict-reveal modal when the portal said the PCN was `paid` / `closed` / `not_found`. Two problems with the old design: (a) defensive fallback "this ticket isn't blocked. Continue to add evidence." was visible to anyone landing on `/app/blocked` with a stale or mismatched verdict (e.g. job result said `closed` but persisted snapshot resolved to `unknown`); (b) the user wanted a **popup**, not a separate page. **New design**: `VerdictReveal` (`components/VerdictReveal.tsx`) gets an optional `secondaryCta` prop rendering a small "I disagree — let me appeal anyway" link under the primary CTA. On `/app/validating/[jobId]`, that link POSTs to `/api/appeals/[id]/lookup/override` and routes to `/app/evidence`. The primary CTA for invalid verdicts now says "Back to my tickets" and routes to `/app/tickets/<appealId>`. The detail page surfaces the persistent closed state via a new `ClosedTicketCard` (amber, ShieldOff icon, copy keyed by verdict, inline override action — no link to a separate page). The `appeal.portalLookup.status !== "overridden" && verdict ∈ {paid, closed, not_found}` predicate replaces the £2.99 submit CTA with the closed card.
-> - **Server-side gate on `/api/submit`.** The £2.99 path now checks `appeal.portalLookup` before enqueueing a `submit_appeal` job. If the verdict is `paid`/`closed`/`not_found` and status is not `overridden`, the route returns `409 PCN_NOT_APPEALABLE` instead of charging the card. Defence in depth — the client-side hide-the-CTA fix above is the primary guard; this is the safety net for anyone who slips through (direct API call, race condition, override-then-unflip, etc.).
-> - **`/app/watch/[appealId]` hardened.** Two bugs: (a) the route picked the latest job of any kind for the appeal (no `kind='submit_appeal'` filter despite the docstring claiming so), so a stale `generate_draft` or `pcn_lookup` job redirected the user into `/app/submitting/<wrongJobId>` where the milestone ladder didn't match and `goNext` bounced them back to `/app/tickets/<appealId>`; (b) when no jobs existed, the route did `redirect('/app/tickets/<appealId>')` directly, which the user perceived as a loop. **Fix**: add the `kind='submit_appeal'` filter, and on no-job-found render an inline "No live submission yet" view instead of redirecting.
-> - **`MCPLiveView` historical-replay fix.** Opening `/app/submitting/<jobId>` on a completed job replayed all stored events including the terminal `done` frame, which triggered the wrapper's `onDone` and routed the user back to `/app/tickets/<appealId>` instantly — they never saw the saved screenshots or activity log. **Fix**: track `liveSessionRef`, only set true when the first server-reported status is `queued` or `running`. The done-handler suppresses `onDone` when `liveSessionRef.current === false`. Live submissions still auto-route as before; historical replays now stay on the page with the last screenshot, full activity log, and milestone ladder all visible.
-> - **Mobile users see the app at `/`.** New `apps/web/proxy.ts` (the Next.js 16 successor to `middleware.ts`). Uses `userAgent(request)` from `next/server`; if `device.type === "mobile"` and the request isn't a bot, rewrite `/` → `/app` (the app home). Desktop and bots still get the marketing landing. URL stays `/` in both cases (it's a rewrite, not a redirect). Matcher is scoped to `/` so API + admin + static assets are untouched.
-> - **First-launch wizard deleted.** `components/WizardOnboarding.tsx` removed; the render in `app/app/layout.tsx` is gone. `WizardSheet.tsx` (different component, used for post-OCR coaching on `/app/capture`) is kept. Customers land directly on `/app` with the three `ActionHero` tiles.
-> - **Validate-button rename.** Both "Validate ticket with the council" buttons in `/app/capture` (post-OCR card + manual-entry form) are now **"I agree to Terms & Conditions"**. Behaviour is unchanged — they still kick off the `pcn_lookup` job. The rename reframes the legal posture of the validation step. **Open item**: the button doesn't yet link to the existing `/terms` page; the action implies consent but there's no inline link. Add a small "View Terms & Conditions" link under the button next session.
-> - **DB reset workflow exercised.** `scripts/reset-db.sql` run twice this session. Truncated all per-user tables, kept 3 admin users + 7 councils, cleared `public/submissions/*` + `public/dev-blobs/*`. Audit recipe: `docker exec -i snappeal-db psql -U snappeal -d snappeal < apps/web/scripts/reset-db.sql && rm -rf apps/web/public/submissions/* apps/web/public/dev-blobs/*`.
-> - **Build status green.** `npx tsc --noEmit` clean across all edits. Routes net: -2 (deleted `/app/paywall` + `/app/blocked/[appealId]`), +1 file (`proxy.ts`).
-> - **Verified end-to-end via curl + Playwright MCP**: desktop UA at `/` → "Appealing a PARKING TICKET Is your right." landing hero; iPhone UA at `/` → "Scan PCN" tile (app home rewrite). `/app/blocked/ap_anything` → 404. `/app/watch/ap_nonexistent` → 200 with "No live submission yet" view (no redirect).
->
-> **2026-05-22 (earlier — v0.2.8: tight MCP sessions + watertight queue + live data extraction)** — Continuation of the v0.2.7 session. The user tested the new live-view against a **real Westminster PCN** (`WE65333269` / `LB19 FWZ`) and hit three real-world failure modes that needed fixing:
-> 1. The event-bus-only SSE delivery wasn't propagating across Next.js dev's worker boundaries — the in-process emitter saw the watcher's events but the SSE handler ran in a different process. **Reverted to tight DB polling** (300ms running / 2s idle / 15s keep-alive) — that's what works reliably across dev-server worker isolation. The event-bus emit in `appendProgress` is kept as a no-op fallback for future cross-process work.
-> 2. The Claude CLI was exiting with `code null` on Windows mid-completion just as the agent finished emitting the verdict JSON. **Two-layer fix**: `runAgentic` now accumulates streamed text from `content_block_delta` events and full assistant text blocks, so `finalText` survives even when the wrapping `result` event never lands; spawn-level errors no longer throw — they get logged and the accumulated text is returned. `runPortalLookup` independently scrapes `[metadata]field=value` lines off the agent's text stream as it runs, so if final-JSON parsing fails, it still constructs a `status: 'verified', verdict: 'unknown'` snapshot from the scraped fields + walks `workDir` for `warden-*.png` files and uploads them to Blob. The user gets all the council-confirmed data even when the CLI dies mid-stream.
-> 3. Back-to-back lookups against the same council were hitting "Browser MCP session appears locked" — the previous run's Chrome instance was holding state. **Each Playwright MCP run now uses a unique `--user-data-dir` inside its workDir**, so every lookup/submission gets an isolated browser profile. `lib/server/submission/lookup.ts` + `lib/server/submission/portal.ts` both updated.
->
-> Additional v0.2.8 improvements layered on top:
-> - **Live `[metadata]field=value` extraction protocol.** New `metadata` event kind on `JobProgressEvent`; `emitToolStep` in `lib/server/submission/_progress.ts` sniffs assistant text for the protocol lines and emits structured `metadata` SSE events. The Westminster + fallback lookup prompts instruct the agent to emit a line as soon as each field is read. Client-side, `components/ExtractedDataPanel.tsx` renders the fields with fade-up animation + a count-up animation on `amountPence` (£0 → £130 over 600ms ease-out). Activity log surfaces `Read pcnRef: WC12345678` rows for auditability.
-> - **Queue position + ETA card.** `MCPLiveView` shows a navy queue card while `status === 'queued'` — position number ("Next" / "#3 in line") + ETA pill ("~1 minute ahead of you"). Server-side `queuePosition()` now counts both queued-ahead AND currently-running jobs (full slot accounting); ETA = `ceil((position+1)/concurrency) * avg_seconds` from per-kind tables. Avg: lookup 60s/3 concurrent, submit 150s/2.
-> - **Hard-gated validation.** The "continue without validation" escape hatch is GONE from `/app/validating/[jobId]`. Failure shows **Try again** which re-enqueues `/api/appeals/[id]/lookup` (the duplicate-job guard reuses the existing in-flight jobId, so double-clicking is safe). Copy: *"Validation has to succeed before we can draft your appeal."*
-> - **Simplified manual + post-OCR entry.** Both paths converge on the same three-field UI: PCN ref + vehicle reg + council logo grid. Logo grid has AUTO-VALIDATES pill on `automated_beta`/`automated_ga` councils, search input when ≥7 councils, primary-border + blue-tinted selection state. Manual entry's button is now **"Validate ticket with the council"** that directly fires the lookup (no separate Continue + Validate). `ReadingPcnOverlay` trimmed to just PCN + plate rows. Drop in `manualForm` state for amount / location / issuedAt / contraventionCode — those come from the portal now.
-> - **Ticket detail refactor.** `app/app/tickets/[id]/page.tsx:TicketCard` now reads from `appeal.portalLookup.metadata` first, falling back to `appeal.ticket`. Renders **every available field** — PCN ref, vehicle, contravention code, location, issued at, amount due, discount until, full charge from, due by, paid at — plus a green "Council-confirmed" pill when portal data is present. The previously-added `PortalSection` (validate button + warden photo gallery + lightbox) is unchanged and sits below.
-> - **Validate button on ticket detail.** `PortalSection` branches on `portal_lookup.status`: null → "Validate with the council" CTA; verified → green panel with metadata + photos; invalid → amber + verdict + re-validate; error → red + Try again; pending → resume link; skipped → "council not automated yet". Lightbox modal at page bottom for full-size warden photos.
-> - **Queue watertightness.** `queuePosition()` SQL now counts running same-kind jobs against you too — if 2 slots are full and you're queued, position reflects the real wait. Includes stale-running rows (covered by `claimNext`'s SKIP-LOCKED cutoff).
-> - **DB reset script + on-disk cleanup**. `apps/web/scripts/reset-db.sql` truncates data tables in FK-safe order, keeps `councils` + `council_automation` KB + admin-role `users`. Run after: `rm -rf apps/web/public/submissions/* apps/web/public/dev-blobs/*`. Verified clean: 0 appeals, 0 jobs, 3 admins, 7 councils.
-> - **Diagnostic logs.** SSE route logs `[sse:<jobId>] attached (cursor=N, status=…)` on connect + `[sse:<jobId>] sent N` every 25 events. Watcher logs `[watcher:<jobId>] +<filename> (t+<ms>)`. Lets you trace end-to-end timing via `tail -f .next/dev/logs/next-development.log`.
-> - **Build status green**. `npx tsc --noEmit && npx eslint . && npm run build` all exit 0.
-> - **End-to-end verified live**: triggered against real Westminster portal — agent confirmed PCN ref `WE65333269`, vehicle `LB19 FWZ`, contravention 81 ("Parked in residential bay"), location "Warwick Towers Princethorpe [PRT]", issued 2026-02-06T14:41 — all 5 metadata fields scraped, 10 warden photos uploaded to Blob, snapshot persisted as `status: verified` even though the agent's final JSON was cut off mid-stream by the Windows CLI exit.
->
-> **2026-05-22 (earlier — v0.2.7: event-bus streaming + premium MCP live view + guest gate)** — User reported "the validating / submitting pages hang — you don't see screenshots updating in real time" and wanted the whole live-MCP experience to feel premium ("slick UX, has to be aweing"), plus the dashboard tickets list to stop leaking guest-session appeals across browser restarts. Audit found a 3-layer latency stack on the streaming pipeline and a localStorage-resurrect bug on the session id. Fixed all three.
-> - **Streaming hot-path moved to in-process event bus.** New `lib/server/jobs/event-bus.ts` exposes `emitProgress(jobId, event)` + `subscribeProgress(jobId, listener)`. `appendProgress()` calls `emitProgress` immediately after the durable DB write. The SSE route `/api/jobs/[id]/progress` no longer polls the DB on the hot path — it does ONE `readProgress` replay on connect (covers mid-stream reloads), then `subscribeProgress` for sub-millisecond live delivery. Status transitions (queued→running→done) flip ~3x per job so they still get a slow 2s poll. Bonus: SSE `: keep-alive\n\n` comment every 15s to survive long idles behind proxies. Race-free replay+subscribe via buffer-then-drain pattern: listener attaches in buffering mode → snapshot DB → replay snapshot → drain anything that arrived during the read (ts-deduped) → flip to live mode.
-> - **Watcher tightened.** `lib/server/jobs/progress.ts:watchScreenshots`:
->     - cwd-sweep interval `1000ms → 250ms` (Windows MCP server writes PNGs to cwd instead of the configured `--output-dir`).
->     - Bare `setTimeout(handle, 200)` debounce REMOVED. Replaced with copy-with-retry: try `copyFile` once; on `EBUSY`/`EPERM`/`ENOENT` retry up to 5× with 60ms backoff. Same "file may still be writing" tolerance, near-zero added latency on the hot path.
->     - Per-screenshot dev log `[watcher:<jobId>] +<filename> (t+<ms>)` so the timing is visible end-to-end.
->     - End-to-end latency target: under 300ms from `browser_take_screenshot` to image swap in the customer's DOM (was ~2s worst-case).
-> - **Premium MCP live view** — new `components/MCPLiveView.tsx` owns the SSE subscription + all the visual chrome; `/app/validating/[jobId]` and `/app/submitting/[id]` are thin wrappers passing in `{ milestones, copy, council, onDone, renderDoneOverlay, failureCta }`. Watertight: anything not factored would drift between the two screens. Visual upgrades:
->     - Cross-fade between consecutive screenshots (400ms ease-out, two stacked `<img>` layers).
->     - Spotlight ping (radial white pulse, scale 0.92→1.08, opacity fade) on every new screenshot — eye is drawn to the change.
->     - Ambient "warming up a secure browser" pre-first-screenshot state with a horizontal scan-line traversing a navy frame (`snappeal-mcp-warmup` keyframe).
->     - Council logo + name embedded in the URL chip via `<CouncilBadge>` (`/api/jobs/[id]` now returns `{ council }` alongside `{ job }`).
->     - Action ticker promoted: sticky chip under the screenshot with the latest tool action ("Typing into PCN reference", "Clicking Submit"), animates text-in on change.
->     - Agent thought stream: navy bar above the milestone ladder showing the most recent `thought` event in a typing-cursor style.
->     - Milestone ladder rows do a left-to-right fill animation on first completion.
->     - "Live" / "AI driving" dots both consume the `.snappeal-mcp-tick-dot` class that re-pulses on each `tool_use` event (synced with actual agent activity).
-> - **Verdict reveal modal** — new `components/VerdictReveal.tsx`. When `/app/validating/[jobId]` flips to `done`, the wrapper renders a full-screen blocking modal via `MCPLiveView`'s `renderDoneOverlay` slot. Three tonal variants by verdict — green (`open`), amber (`expired`/`unknown`/`paid`/`closed`), red (`not_found`). Single primary CTA dismisses + triggers `onDone` → routes to `/app/evidence` or `/app/blocked/[appealId]`. Gives the user a beat to read the council's reasoning before being whisked away.
-> - **Guest-session gate** — product rule: tickets page is signed-in only. Implementation:
->     - `lib/client/session.ts`: guest `sessionId` + `currentAppealId` moved from `localStorage` → `sessionStorage`. Naturally cleared on tab close; a fresh browser launch starts with no resurrected guest state. Legacy `localStorage` keys are removed once on first import for returning users.
->     - `app/app/tickets/page.tsx` + `app/app/inbox/page.tsx`: gate at mount via `/api/auth/me` — if no user, render a clean "Sign in to see your tickets" card with sign-in/sign-up CTAs + a small "Got a new ticket? Scan" pill. No list, no leaks.
->     - `app/api/appeals/route.ts` (GET): returns `{ appeals: [] }` for guest viewers (defence-in-depth; the dashboard already gates client-side).
-> - **Flow-watertight polish.**
->     - **Idempotent Validate CTA.** `/app/capture` reads `appeal.portalLookup.status` on hydrate. If `pending` → button reads "Resume validation" and routes straight to the existing `/app/validating/[jobId]`. If `verified|invalid|overridden|skipped|error` → button reads "Continue to evidence". Otherwise unchanged.
->     - **Duplicate-job guard.** `POST /api/appeals/[id]/lookup` checks for an existing `pcn_lookup` job in `queued`/`running` for the same appeal and returns the existing jobId instead of enqueueing a second one. One ticket → one lookup, even under double-click.
->     - **Stale screenshot cleanup.** `lib/server/jobs/progress.ts:cleanupStaleScreenshots()` walks `public/submissions/<jobId>/` and deletes folders older than 7 days. Called from `startWorker()` on boot; one-shot, cheap.
-> - **Fresh DB script.** `apps/web/scripts/reset-db.sql` truncates all data tables (FK-safe order) and leaves `councils` / `council_automation` / admin-role `users` rows intact. After running, also `rm -rf public/submissions/* public/dev-blobs/*`. Verified clean: 0 appeals, 0 jobs, 3 admins kept, 7 councils intact.
-> - **Bonus bug fix.** `lib/server/appeals.ts:patchAppealDraft` now hoists `ticket.councilSlug` onto the top-level `appeals.council_slug` FK column when the patch arrives. Previously only `attachDraftToAppeal` (post-letter-draft) set the column, so `/api/appeals/[id]/lookup` always returned 400 ("Appeal has no council yet").
-> - **Build status green.** `npx tsc --noEmit && npx eslint . && npm run build` all exit 0. Routes map unchanged at 80.
-> - **End-to-end verified via Playwright MCP.** Spun up a real lookup against Westminster's portal, captured a full-page screenshot of the live view mid-run: council logo in URL chip ✓, action ticker showing "Reading the page" ✓, agent thought bubble surfaced ✓, cross-faded portal screenshot rendered ✓, milestone ladder showing "Read ticket details — NOW" ✓, activity log streaming with timestamps ✓. The streaming is visibly live; the user's headline "it hangs" complaint is resolved.
->
-> **2026-05-22 (earlier — portal-validated PCN intake)** — New step inserted between PCN intake and the evidence/quiz page: a Claude+Playwright MCP **lookup** of the PCN on the council's own portal that confirms the ticket is still appealable, pulls down the warden photos, and overrides OCR'd ticket fields with the council's record.
-> - **New flow.** `/app/capture` (intake) → **`/app/validating/[jobId]`** (live SSE progress) → **`/app/evidence`** (combined warden-photo gallery + portal verdict banner + `GroundsCardQuiz` + user-evidence carousel + optional notes) → `/app/paywall`. For councils marked `paid`/`closed`/`not_found`, the validating page redirects to **`/app/blocked/[appealId]`** which hard-blocks with verdict-specific copy + a small "I disagree, let me appeal anyway" override link. `/app/notes` is now a 3-line redirect to `/app/evidence` for backwards compat.
-> - **New job kind `pcn_lookup`.** Registered in `lib/server/jobs/worker.ts` (concurrency 3, read-only so safer to fan out than `submit_appeal`). `runHandler` loads the appeal + council, calls `runPortalLookup` (`lib/server/submission/lookup.ts`), and persists the snapshot via `persistPortalLookup` in `lib/server/appeals.ts`. Returns `{ verdict, status, appealId, photoCount }` as the SSE `done` payload so the validating page can branch without an extra round-trip.
-> - **New lookup prompt — `prompts/westminster_lookup.ts`.** Sibling to the existing submission prompt. **Critical inversion:** the submission prompt says "never click View images / Pay — those are decoys"; the lookup prompt says "View images IS the primary route, never click Submit / Pay / Make representation". Returns extended JSON: `{ success, verdict, verdictReason, metadata: {pcnRef, vehicleReg, location, issuedAt, amountPence, discountUntil, fullChargeFrom, dueDateAt, paidAt}, photoFiles, stepsCompleted, errorMessage }`. Generic fallback (`FALLBACK_LOOKUP_PROMPT`) lives inline in `lookup.ts` for non-Westminster councils once they come online. Edit + dry-run from `/admin/councils/<slug>/automation` (the new `lookup_agent_prompt` column on `council_automation`).
-> - **Vercel Blob wired up.** New `lib/server/blob.ts` with `uploadAppealPhoto` + `uploadPortalPhotos`. Uses `@vercel/blob` when `BLOB_READ_WRITE_TOKEN` is set; falls back to `apps/web/public/dev-blobs/` so `pnpm dev` works without a Vercel account. **First real use of the long-dormant `appeal_photos` table** — the warden photos from each lookup are stored with `kind='portal'`. User-evidence carousel still rides data URLs in sessionStorage for now (next migration target).
-> - **Schema additions.** `appeals.portal_lookup jsonb` (snapshot with status / verdict / verdictReason / photoUrls / metadata) and `council_automation.lookup_agent_prompt text` (nullable, falls back to `FALLBACK_LOOKUP_PROMPT` when not seeded). Migration `drizzle/0010_portal_lookup.sql` is idempotent (`IF NOT EXISTS`). `appeals.ticket` is now patched server-side at lookup-persist time with any portal-confirmed fields so the downstream letter draft uses the council's record.
-> - **Generic SSE progress route.** `/api/jobs/[jobId]/progress` is now the canonical handler — both `submit_appeal` (live council submission) and `pcn_lookup` (validation) subscribe through it. The old `/api/submissions/[id]/progress` route is a 12-line shim that forwards to the new one (same job id passed through). The `kind` field in the queue-position event is now read off the actual job row instead of being hardcoded to `submit_appeal`.
-> - **Non-automated councils** (Camden, K&C, Lambeth, Islington, TfL, City of London) take the `{ skipped: true }` branch in `/api/appeals/[id]/lookup` — the API stamps a `status: 'skipped'` snapshot inline and tells the client to redirect straight to `/app/evidence`. The codepath is fully live for those councils; flipping them on later is a one-row `automation_status` change.
-> - **Shared MCP-progress helpers extracted.** `lib/server/submission/_progress.ts` now hosts `emitToolStep` / `describeToolUse` / `extractJsonObject` — both `portal.ts` (submission) and `lookup.ts` (validation) import from there. No behaviour change for the submission flow.
-> - **Build status green.** `npx tsc --noEmit`, `npx eslint .`, and `npm run build` all exit 0. Build maps **80 routes** (was 75 — added `/app/blocked/[appealId]`, `/app/evidence`, `/app/validating/[jobId]`, `/api/appeals/[id]/lookup`, `/api/appeals/[id]/lookup/override`, `/api/jobs/[jobId]/progress`).
->
-> **2026-05-22 (earlier — audit pass + migration safety fix + wiki refresh)** — End-of-day code-review sweep before context cleared. No feature work; only verifying the codebase still matches the wiki and patching what didn't.
-> - **Build status green.** `npx tsc --noEmit`, `npx eslint .`, and `npm run build` all exit 0. Build maps **75 routes**. The only remaining build warning is the pre-existing Turbopack NFT-list one on `health/route.ts` (Gotcha #1) — benign, traces to a fs.existsSync(claude binary) probe.
-> - **Migration 0009 made idempotent.** drizzle-kit auto-generated `0009_short_quicksilver.sql` after the hand-written `0007_live_submission_progress.sql` and `0008_user_postal_address.sql` (whose `meta/*_snapshot.json` files were never created), so it re-emitted the same `ALTER TABLE … ADD COLUMN` statements. A fresh `npm run db:migrate` against an empty DB would have failed at 0009 with "column already exists". Patched to use `ADD COLUMN IF NOT EXISTS` everywhere so it's a no-op on already-applied columns; the only genuinely new columns in 0009 are `councils.logo_url` and `councils.logo_bg`. The existing dev DB is unaffected (the new file hash will re-apply as a no-op next migrate).
-> - **Wiki drift corrected** (most-broken claims):
->     - `architecture/prototype.md` — route count `38 → 75`, components count `34 → 37 + inline ActionHero`, migration count `4 → 10`, drizzle-migration list expanded to `0000–0009`, lib/server tree gained `settings.ts` + `viewer.ts` + `jobs/progress.ts` + `submission/automation.ts` + `submission/prompts/`, `CouncilBadge` added to the components table, "Admin backend ⛔ not started" flipped to ✅ (14 pages live), "Open work" list refreshed (admin backend off, push send-side + screenshot cleanup added), wiki docker URL `snappeal.theailab.dev → 127.0.0.1:8800`.
->     - `architecture/admin.md` — env-inventory count `39 → 37` (matches `ENV_INVENTORY.length`).
->     - `architecture/data-model.md` — DDL header `0008 → 0009`, table extended with the `0009_short_quicksilver` row that documents both the genuinely new logo columns and the IF NOT EXISTS workaround.
->     - Below in this same handoff: "13 admin pages" → 14 (Settings was missing from the count), and the stale "personal-details UI form doesn't yet capture them, so they're effectively NULL in practice" footnote on the address columns was removed (the form landed in the v0.1.5 audit pass — see the 2026-05-20 update log below).
-> - **Schema sanity check passed.** `schema.ts` declares 11 tables — councils / council_automation / users / subscriptions / care_plan_waitlist / appeals / appeal_photos / payments / submissions / inbound_messages / jobs. Matches the diagram in `architecture/data-model.md`. JobProgressEvent discriminated union still has the four expected variants (status/step/thought/screenshot).
-> - **Submission engine still defaults to LIVE.** `lib/server/settings.ts → getSettings().submissionLive` resolves `state.submissionLiveOverride ?? process.env.SNAPPEAL_SUBMISSION_LIVE !== "0"` — LIVE on, opt out by setting `=0` or via the runtime override at `/admin/settings`. `/api/health` reads through the same getter so the UI and the engine never disagree (that was the v0.1.5 audit fix).
-> - **Open items not addressed in this pass** (carry-overs, not regressions): Care Plan real Stripe Subscription (needs `STRIPE_CARE_PLAN_PRICE_ID` + dashboard product), Web Push send-side (worker reading inbound classification → `web-push.send`), inbound mail DNS/MX for `appeals.parkingrabbit.com`, `public/submissions/<jobId>/` daily cleanup cron. All flagged in "In-flight" + Prototype's Open Work section.
->
-> **2026-05-22 (earlier — live-camera auto-capture + inline manual entry + home simplification)** —
-> - **`/app/capture` is now a real scanner.** The dark "Frame your PCN here" panel hosts a **live `<video>` feed behind a frosted-glass overlay** as soon as the page mounts. `navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })` is requested once; on success we write `localStorage["snappeal.camera.granted"] = "1"` so future visits know not to expect a prompt (the actual permission lives in the browser — note iOS Safari may still re-prompt per session). The stream is torn down on unmount or when the user advances past step 1.
-> - **Auto-capture loop** running at 300 ms cadence — two hidden canvases (80×60 detection, full-res capture). Per frame: downsample → Sobel edge magnitude in the central viewfinder band → frame-to-frame motion on the R channel. When edges > 38 AND motion < 6 for **4 consecutive frames (~1.2 s)** we grab the live video at its native resolution, JPEG-encode at q=0.88, fire `haptic("success")`, set `pcn`, and pipe into the existing `runExtract` OCR pipeline. `captureLockRef` prevents double-snaps. **The red "Open camera" button is gone** — visual feedback is the only affordance: corner brackets switch to `text-snappeal-success` green when locked, the overlay deblurs (`backdrop-blur-md → backdrop-blur-[2px]`), the top-left status pill reads `Scanning → Hold steady… → Captured`. Tapping the panel still works as a manual override (snaps the current frame if live, falls back to the native file picker otherwise). Note on `runExtract` ordering: it's declared further down the component, so `captureFromVideo` closes over it via a `runExtractRef` that an effect keeps in sync — direct closure would TDZ.
-> - **Inline manual entry replaces the redirect to `/app/manual-entry`.** Tapping the third tile ("Enter PCN / Type it in") now expands an inline form below the tile grid instead of routing. The tile takes a new `active` visual (light-blue background + primary-color border) so its expanded state reads. Form layout: **Required** (PCN reference, Vehicle registration, **Issuing council dropdown** populated from `/api/councils` — same source the homepage `<CouncilStrip>` uses, lazily fetched on first open, sorted alphabetically, stores both `councilSlug` and `councilName`, Amount due with `inputMode="decimal"`) + a collapsible **More details (optional)** `<details>` for Date issued / Location / Contravention code. On Continue: builds a `ConfirmedTicket`, fires `patchCurrentAppeal({ ticket, notes: "" })`, then `setTicket()` — the page auto-transitions to the existing field-confirmation grid. New `ManualField` helper sits with `CaptureTile` at the bottom of the file. Standalone `/app/manual-entry` page is untouched (still reachable via direct URL or push-notification deep links).
-> - **`/app` home stripped down.** The `HowItWorks` section (`Upload PCN / Choose action / Track result`) was removed entirely, and the green `SuccessTip` "Deadline tip" card was moved off the home and onto `/app/tickets` (above the help card). The home now ends at the three `ActionHero` tiles. Unused `Upload` / `Send` / `FileText` / `ShieldCheck` / `ArrowRight` icon imports were pruned.
-> - **Tickets-list help row.** The help card was reframed from `Need help with a ticket?` to **`Need help?`** with CTA **`Contact us`** (routes to `/app/profile/help`, not `/app/tips`). The subtitle ("See guidance on paying, challenging, and deadlines.") stays. The "Deadline tip" card sits directly above it. Both right-side pills share `min-w-[112px]` + `justify-center` so they render at identical widths despite different text lengths.
-> - **`Pay ticket` primary button is now green** (`bg-snappeal-success` / `#34c759`) instead of red. The red urgency chip ("Discount ends in 0 days") and the red "DUE / Today" `InfoTile` still carry the deadline pressure — the CTA itself reads as the positive resolution.
->
-> **2026-05-21 (earlier — home-card retitle + ticket-card dashboard redesign + bottom nav polish)** —
-> - **Home `ActionHero` cards retitled + whole-tile clickable.** Card 2 is now **`Challenge it`** with CTA `Appeal` (was `Challenge a ticket` / `Start appeal`); Card 1 stays `Scan PCN` / `Start now`; Card 3 stays `Pay a ticket` / `Pay now`. **The entire card is a `<Link>`** now (tap anywhere on the tile) — the inner CTA collapsed to a styled `<span>` since nesting `<Link>` inside `<Link>` is invalid. Destinations changed: **Scan PCN → `/app/capture`** (was `?from=review` — qs dropped), **Challenge it → `/app/tickets`** (was `/app/capture` + `setServiceTier("grounds")`), **Pay a ticket → `/app/tickets`** (was `/app/pay`). The obsolete `setServiceTier` side effect was removed entirely along with its import.
-> - **Tickets list — ticket-card dashboard redesign** (`apps/web/app/app/tickets/page.tsx → ActiveCard`). Each non-resolved card is now a **collapsible dashboard tile**, only one expanded at a time (`expandedId` lifted to `TicketsPage`). Collapsed: **32px bold amount as visual anchor** + status text in tone + right-side chip + chevron, then PCN + council badge + meta, then a 3-column **state-tinted `InfoTile`** row. Expanded: smooth `grid-rows-[0fr]→[1fr]` transition reveals **Ticket details / Appeal status / Next step / AI activity** sections — AI activity is a three-item `CheckCircle2` checklist (`Appeal generated` / `Evidence checked` / `Council response monitoring active`) plus a `View full activity →` link. Action buttons sit below the toggle so they never trigger expand. **The old dark "Watch the AI submission" gradient footer is gone** — replaced by the in-expansion AI section + the small "AI / Available" `InfoTile`. **Important React 19 caveat:** the toggle target uses `<div role="button" tabIndex={0} onClick onKeyDown>` rather than a real `<button>` because React 19 strict-renders the HTML spec that bans `<p>` / `<div>` (non-phrasing content) inside `<button>` — using a real button crashes the page with the global error boundary.
-> - **Persistent `Add new ticket` pill** sits above the help card on `/app/tickets` whenever `appeals.length > 0` (the empty-empty state's inline "Add your first ticket" CTA still renders for true emptiness — no double CTA).
-> - **`BottomNav` polish** — `items-end` → `items-center`, `pt-1.5 pb-2` → `py-1.5` (tighter, vertically-centered tabs). Camera button's `-mt-6` elevation unchanged.
->
-> **2026-05-21 (earlier — Scan PCN polish + Tickets dashboard cleanup)** —
-> - **`/app` home polish.** First `ActionHero` card retitled `Deal with parking tickets` → **`Scan PCN`** with subtitle `Scan your parking ticket and review your best options.` `RealisticPcnInWallet` SVG retuned to read as clear plastic on navy: translucent white gradient (8–18% opacity) + glass-edge stroke instead of solid white, viewBox cropped past the adhesive zip-seal, fully rounded corners (`rx=22`), and **diamond-hatched border halved** (14 → 7 px) so the yellow notice reads bigger. PCN width tightened (`w-[72%]` → `w-[60%]`) and **the scan-line animation is now clipped to the bracket box** (`absolute inset-1 overflow-hidden` wrapper) — used to spill above + below the brackets. Pay card's small green security-shield badge **removed** (inconsistent with the other two illustrations) and the £ circle moved up to overlap the top-right corner of the receipt card. `WizardOnboarding.MiniWestminsterPCN` got the same 7 px border so the splash/loading PCN matches the home card.
-> - **AppHeader** subtitle `Pay or challenge parking tickets in minutes` → **`Manage parking tickets quickly`**; rabbit logo enlarged on mobile (`SnappealMark` size 34 → 46).
-> - **Tickets page → dashboard cleanup** (`apps/web/app/app/tickets/page.tsx`). Removed the `Your Tickets` page-title block so the page opens straight onto the filter chips. A big blue `Scan or add ticket` CTA and a 3-pill status summary row (active / due soon / awaiting reply) were tried and then removed; filter chips are the primary landmark now. **Filter chips gained inline count badges** (e.g. `All 4`, `To Pay 1`) — counts computed in a single memoized pass alongside `filtered`. AI activity strip on the **list page only** got softer copy when not actively submitting (`AI activity available` / `Review the steps ParkingRabbit took.`); the detail-page strip keeps the action-oriented copy.
-> - **Appeal letter on `/app/tickets/[id]` is now a collapsible `<details>` closed by default** — mirrors the FAQ pattern on `/app/profile/help:40`. The wall of `<pre>` legalese was pushing every action button below the fold. Chevron rotates 180° on open.
-> - `tests/app.spec.ts` landmark moved from the removed `Your Tickets` heading to the filter chips; AppHeader subtitle assertion updated.
->
-> **2026-05-21 (earlier — error guards + cloud-first drafts)** —
-> - **Branded not-found / error boundaries.** Every URL the customer can fudge now returns a polished card, not a stack trace or eternal spinner. Three pieces: (a) new `apps/web/app/not-found.tsx` for any unmatched route; (b) new `apps/web/app/error.tsx` global render-exception boundary (logs `error.digest` to console, never shows the stack); (c) `/app/submitting/[id]` SSE client + `/api/submissions/[id]/progress` server fixed together — the SSE route now returns HTTP 200 with a one-shot `event: error` frame (instead of 404, which EventSource silently discards) and closes the stream, and the client parses it, sets `status: "failed"`, calls `es.close()`, then renders a "Submission not found" card via a new top-of-component render branch. `/app/tickets/[id]` got the same branded card treatment (was a bare red sentence). `/app/letter/[id]` and `/app/watch/[appealId]` already redirect into the tickets card so they reuse it. Full spec in [architecture/appeal-state-machine.md → Error UX](architecture/appeal-state-machine.md).
-> - **Cloud-first draft persistence.** Ticket fields, notes, selected grounds, and service tier no longer live in `sessionStorage`/`localStorage` — they go straight to Postgres via the existing `/api/appeals/[id]` PATCH the moment the customer touches them. New `lib/client/draft.ts` is the single client helper (`ensureCurrentAppeal()` creates the row on first write, `patchCurrentAppeal()` and `debouncedPatch()` mutate it). `lib/client/session.ts` keeps only `sessionId` (anonymous identity) + `currentAppealId` (pointer) + photo data URLs (deferred until Blob storage is wired) + `serviceTier` (UX preference captured before the appeal exists) — every other key was removed and there's a one-shot legacy-key flush on module import so returning users don't carry stale data. Refactored callsites: `app/app/capture/page.tsx`, `app/app/notes/page.tsx`, `app/app/paywall/page.tsx`, `app/app/manual-entry/page.tsx`, `components/GroundsCardQuiz.tsx`. PATCH schema extended (`apps/web/lib/server/appeals.ts → patchAppealDraft` + `app/api/appeals/[id]/route.ts → PatchBody`) to accept `grounds`. The customer can now close their tab mid-draft and resume from any device that's signed in (or the same guest sessionId).
->
-> **2026-05-21 (earlier — system audit + brand cleanup)** — Codebase-wide cleanup pass to get the project near production-ready (live keys still deferred):
-> - **Tickets page rebuilt** (`apps/web/app/app/tickets/page.tsx`). The old `STATUS_PILL` table + `HorizontalTimeline` + "Most Recent" star are gone. Each card now derives a `displayState` (`at_risk` / `due` / `appealed` / `resolved`) from `appeal.status` + `ticket.issuedAt` + a 14-day UK PCN discount window (last 4 days promotes a ticket from at-risk to due). Card layout: top-left amount + state line in the matching tone (e.g. `£65 at risk`, `£130 due`, `£80 appealed`, `Cancelled £65`), a single right-side timing chip with optional sub-line ("Submitted N days ago"), a compact `NEXT STEP` strip, and a two-button row (`Review options` / `Pay ticket` / `Track appeal` paired with `View details`). Resolved cards collapse to a chevron row. Filter chips: `All` / `To Pay` / `Challenging` / `Resolved` — the `Challenging` chip groups both reviewing (`at_risk`) and in-flight (`appealed`) cards because picking a fight with a PCN is one customer journey. (Earlier iterations had a separate `Reviewing` chip; removed 2026-05-21 post-audit.) New CSS token `--color-snappeal-appealed-*` (purple) added to `globals.css` — scoped to ticket-list state semantics only; brand surfaces remain purple-free.
-> - **`/app` home rebuilt** (`apps/web/app/app/page.tsx`). The previous `ChallengeHero` + `PricingTiers` + `PlanCard` trio is gone. The home now stacks **three reusable `ActionHero`** navy-gradient cards — `Deal with parking tickets` → `/app/capture?from=review`, `Challenge a ticket` → `/app/capture` (sets `serviceTier=grounds`), `Pay a ticket` → `/app/pay` — each with title + subtitle + blue CTA + right-side illustration: looping PCN scan animation reused from the splash; folded appeal letter with scales-of-justice seal + signature flourish; PCN receipt with floating £ badge + green secure-shield. `HowItWorks` and `SuccessTip` retained below; no pricing tier displayed on the home itself.
-> - **Brand cleanup** — every user-visible `snappeal.ai` email and URL replaced with `parkingrabbit.com` (landing footer, terms, privacy, profile/help, tips wiki link). Inbound-mail subdomain migrated to `appeals.parkingrabbit.com` across `appeals.ts`, inbox, inbound, submission email + portal + index + automation, plus the dry-run scripts and the API test. Stripe `appInfo` flipped to `ParkingRabbit` / `0.2.0`. LLM system prompts that previously referenced `Snappeal's` (extract, coach, strengthen, drafter, inbound classifier, fallback portal agent, Westminster portal agent) all read `ParkingRabbit's` now. `NEXT_PUBLIC_SITE_URL` default flipped to `https://parkingrabbit.com`.
-> - **Dead-code + lint cleanup** — `components/HorizontalTimeline.tsx` deleted (zero importers after the tickets refactor). Unused `router` import dropped from `/app/pay`. Unused `letterSoFar` accumulator dropped from `/app/paywall`. `drainTick` self-recursive `setTimeout` in `/app/paywall` refactored to a `setInterval`-based `startDrain` / `stopDrain` pair (eliminates the `react-hooks/immutability` lint error). Two genuine `setState`-inside-effect patterns (`/app/capture` URL-param read; `PaymentSheet` mount/visible state machine) now carry targeted `eslint-disable react-hooks/set-state-in-effect` with rationale comments.
-> - **Broken tests rewritten** — `tests/landing.spec.ts` and `tests/app.spec.ts` were testing the old Snappeal title, old "Pick your appeal plan" tiers, old `In Progress / Awaiting Decision / Won / Lost` filter labels, old `Camera` center tab, and old Care Plan copy. Both files now exercise the current UI: `ParkingRabbit` brand text, the three `ActionHero` cards on `/app`, the new tickets filter labels, the `Scan` center tab, and the updated Care Plan copy (`Unlimited appeals`).
-> - **Baseline is green** — `tsc --noEmit`, `eslint`, `next build` all exit 0 with no errors or warnings (Turbopack's NFT-list warning for `health/route.ts` was pre-existing and traces to a benign `existsSync(join(PATH))` lookup for `claude` — see Gotchas).
->
-> **2026-05-21 (earlier — superseded in places by the audit entry above)** — **Brand pivoted from Snappeal → ParkingRabbit and product scope widened from "challenge a ticket" to a parking-ticket management app (pay, challenge, track).** Logo replaced with a navy shield + white rabbit silhouette (`apps/web/public/logo.png`, also served as `app/icon.png` favicon and `app/apple-icon.png`; `app/icon.svg` and `app/apple-icon.tsx` removed). `SnappealMark` now renders `<img src="/logo.png">` instead of inline SVG — keeping the component name as the canonical identifier so every callsite still works. PWA manifest rewritten (name, short_name, description, icons, shortcuts now Pay/Challenge/Tickets). Layout metadata + OG + Twitter card all updated. `/app` home was first rebuilt to ParkingRabbit positioning with a single navy hero + three pricing cards ("Review my ticket" Free / "Pay a ticket" From £1.99 / "Challenge a ticket" £2.99 with MOST CHOSEN pill); **the audit pass on the same day replaced that with the three `ActionHero` cards described above — no pricing shown on the cards themselves.** **New `/app/pay` flow** scaffolded (`apps/web/app/app/pay/page.tsx`) — 2-step form (PCN details → review with ticket amount + ParkingRabbit £1.99 service fee = total) with an authorisation checkbox and a Stripe-ready placeholder ("Stripe payments are not connected yet" non-error surface, plus TODO comments at `createStripeCheckoutSession` / `redirectToStripeCheckout` integration points). Bottom-nav center button label "Camera" → "Scan". MCP-agent customer copy renamed to **"AI Auto-Submit Agent"** across paywall + wizard + profile. Repo-wide rename: `\bSnappeal\b` → `ParkingRabbit` in user-visible strings across app/* and components/*, leaving `SnappealMark`/`SnappealLogo`/`SnappealSplash` component identifiers + CSS tokens (`snappeal-primary` / `snappeal-navy` / `snappeal-bg`) intact. Wiki docs got the same word-boundary rename. Doc-level version bumped to **v0.2.0** to mark the brand pivot.
->
-> **2026-05-21 (earlier — superseded in places by the rebrand entry above)** — `/app` home rebuilt to a premium-fintech layout: navy-gradient hero with a continuously-looping yellow-PCN scan animation reusing the splash visual, divided-tile add-ticket card, active-appeal card with a 4-step dated horizontal timeline, mini-step How-it-works, soft-green Success-tip card. The Pricing-cards row from that pass has since been replaced by the **three action cards** (Review / Pay / Challenge) described in the entry above. `AppHeader` UK pill became a real flag + chevron; subtitle fits on one line at 393px. `HorizontalTimeline` opts into dates and draws the connector blue between the last-completed and active step. **`PaymentSheet` bottom-modal** introduced for the £2.99 auto-submit — now lives inside `/app/tickets/[id]` (formerly was on the standalone `/app/letter/<id>` page, which was merged into the ticket detail page in this batch and now redirects). The sheet mounts either the Stripe `<PaymentElement>` (Apple Pay / Google Pay / card auto-detected) or `FakePaymentButtons` when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`; on success the real PaymentIntent id is forwarded to `/api/submit`, replacing the hard-coded `pi_local_dev`. The redundant "Track" button in `LetterActions` was removed. WizardOnboarding permission rows now read **"Tap to allow"** instead of "Allow". Landing hero band (`page.tsx`) nudged from `translate(0,138)` to `translate(0,143)` to match visual centring.
->
-> **2026-05-20 (later session)** — pricing simplified to **free drafting + £2.99 per auto-submission**; council logos now sourced from Wikipedia thumbs and stored in `councils.logo_url` / `logo_bg` (migration 0009); new `<CouncilBadge>` component renders the logo + name in the tickets list, ticket detail, admin appeals/submissions, and the manual-entry authority picker; homepage now has a "Covering these London authorities" logo strip; hero copy is "Appealing a / PARKING TICKET / Is your right." with a faded Union Jack circle behind the phone mockup; bottom-nav active tab now correctly highlights in `text-snappeal-primary` (a global `a { color: inherit }` rule was beating the Tailwind utility — moved into `@layer base`).
-
-This page exists so a new collaborator (human or Claude) can get to "I know what's shipped and what's next" in 5 minutes. Everything below is current as of the latest commit on `main`.
-
-## TL;DR
-
-ParkingRabbit is a London-focused **parking-ticket management** app (pay, challenge, track) — not just an appeal tool any more. The v0.2 prototype frontend + backend are **live end-to-end** in dev:
-
-- **Real Postgres persistence** (Docker locally, Neon planned for prod).
-- **All AI piped through the headless Claude CLI** (`lib/server/claude-cli.ts`).
-- **Postgres-backed job queue** + in-process worker for portal submission.
-- **Email/password auth** with HS256 JWT cookies; admin role gate.
-- **Three navy `ActionHero` cards on `/app`** — **Scan PCN** → `/app/capture` (free scan + review options), **Challenge it** → `/app/tickets` (lands on the ticket dashboard so the user picks an existing ticket to challenge), **Pay a ticket** → `/app/tickets` (lands on the same dashboard so the user picks a ticket to pay). Each tile is a single `<Link>` — tapping anywhere on the card navigates. Navy radial-gradient surface with title + subtitle + blue CTA + right-side illustration; **no pricing shown on the cards themselves**. Pricing copy lives in the paywall + payment sheet: "Free to draft, £2.99 to auto-submit" / "Ticket amount + £1.99 ParkingRabbit service fee". Schema field `appeals.serviceTier` is still present but is no longer mutated by the home — the user picks their tier later in the journey (after reaching `/app/notes` or via the Review Recommendation panel on `/app/capture`). The "MCP agent" name is gone from customer copy — everywhere it used to say MCP agent now says **AI Auto-Submit Agent**.
-- **Full admin UI** at `/admin` — appeals, councils (with **per-council Playwright MCP automation editor + dry-run**), submissions, inbound mail (with **classifier sandbox**), jobs (retry / cancel), users, health.
-- **Westminster portal automation** scaffolded — prompt lives in `council_automation` table, edited via `/admin/councils/westminster/automation`, dry-run-able from the same page.
-
-Not deployed anywhere yet. Architecture is "Vercel for web tier + dedicated worker box" — see `architecture/deployment.md`.
-
-## Where everything lives
-
-| Need this? | Read this |
-|---|---|
-| File-by-file inventory of the codebase | [architecture/system-overview.md](architecture/system-overview.md) — historical v0.2.18 snapshot folded into [archive.md](archive.md) |
-| Schema + ER diagram + migration log | [architecture/data-model.md](architecture/data-model.md) |
-| Appeal status enum + UI `displayState` derivation (Tickets list state machine) | [architecture/appeal-state-machine.md](architecture/appeal-state-machine.md) |
-| Auth — JWT, sessions, sign-up flow | [architecture/auth.md](architecture/auth.md) |
-| How AI is wired (Claude CLI, all three callers, cost) | [architecture/ai-pipeline.md](architecture/ai-pipeline.md) |
-| Submission engine (portal + email + per-council prompts) | [architecture/submission-engine.md](architecture/submission-engine.md) |
-| Job queue mechanics | [architecture/job-queue.md](architecture/job-queue.md) |
-| Admin UI in detail | [architecture/admin.md](architecture/admin.md) |
-| Notification layers (haptics / confetti / Web Push) | [architecture/notifications.md](architecture/notifications.md) |
-| Production deployment runbook | [architecture/deployment.md](architecture/deployment.md) |
-| Pricing model (Free / £2.99 / £9.99) | [business/pricing.md](business/pricing.md) |
-| Roadmap + v0.1 status | [business/roadmap.md](business/roadmap.md) |
-| Competitor landscape (Resolvo, QuickAppeal, etc.) | [business/competitive-landscape.md](business/competitive-landscape.md) |
-| Gamification design (win-rate ring, confetti) | [product/gamification.md](product/gamification.md) |
-
-## What's shipped vs in-flight vs blocked
-
-### ✅ Shipped + working end-to-end
-
-- **Backend**: Postgres schema (11 tables), **10 migrations applied** (`0000…0009`). Email/password auth with JWT. Claude CLI piped headlessly. Job queue with FOR UPDATE SKIP LOCKED + retries + per-job `progress` jsonb event log. Submission engine (portal + email fallback, falls back on both throw AND `success=false`). Inbound mail webhook + Claude classifier. Care Plan subscription scaffold (with dev stub when Stripe price not set). **`users.address_line1/2 + city + postcode + phone` columns** (migration `0008`) loaded into the portal agent prompt by `loadCustomerProfile()`; the capture UI landed in v0.1.5 — sign-up form (`AddressAutocomplete` postcode → city via postcodes.io) + `/app/profile/personal-details` both write these now.
-- **Frontend**: All app pages (Home, Tickets, Inbox, Profile + 6 sub-pages, Capture, Evidence (inline drafting), Notes, manual-entry wizard, **Validating live-view**, **Submitting live-view**, **Watch redirect**). Sticky glass headers (light variant for app, dark variant available for special pages). 5-tab bottom nav with centered camera. `WizardSheet` reusable pattern for in-flow coaching. Real Stripe + fake-pay dev buttons. **Mobile users see `/app` at the root URL `/`** via `apps/web/proxy.ts` (Next.js 16 proxy convention); desktop and bots still see the marketing landing.
-- **Admin**: **14 admin pages** — Overview, Appeals (list + detail), Councils (list, **create**, edit, **MCP automation editor + dry-run + reset-to-canonical**), Submissions (with **per-row appeal-context dry-run**), Inbound (with **classifier sandbox**), Jobs (with **retry/cancel + per-row appeal-context dry-run**), Users, Health (**+ MCP headed/headless toggle + stop-at-review safety toggle**), **Settings (full 37-var env inventory + 6 runtime override toggles)**, Wiki (iframe). Mobile nav drawer. Layout adds `px-5 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-[1400px]` content padding so cards don't press against the sidebar.
-- **Westminster MCP automation**: canonical prompt seeded, editable from admin, dry-run-able against the live portal (Variant A/B route detection, 1× retry on transient "service unavailable", stops at review, screenshots every milestone).
-- **Live submission UX**: every customer submit fires `submit_appeal` → worker drives Claude+Playwright MCP → screenshots stream to `/app/submitting/<jobId>` via SSE. Ticket card shows a **navy "ParkingRabbit AI is filing your appeal"** strip while `status=submitting`, linking through `/app/watch/<appealId>` to the live job page. Corporate-themed (light glass header, outline icons, milestone ladder).
-- **AI features**: Per-field confidence dots on capture, photo coach (sheet on poor photos), Strengthen-my-notes one-tap rewrite (sheet with preview), AI inbox triage (one-line summary per thread), streaming letter SSE endpoint, voice notes (Whisper-compatible transcription endpoint).
-- **PWA features**: Web Push service worker (`public/sw.js`), VAPID-ready subscribe button, haptic feedback (Vibration API), confetti on cancelled status, no-zoom viewport, iOS safe-area insets.
-- **Docs**: 12 architecture + product + business pages refreshed for the current state.
-- **Tests**: `tests/api.spec.ts` + `tests/app.spec.ts` rewritten for the real surface. `scripts/test-e2e-backend.ts` runs full backend audit in ~30 s.
-
-### 🟡 In-flight (scaffolded but not fully wired)
-
-- **Care Plan real Stripe subscription** — UI live + endpoint live + dev stub returns success. Real path needs `STRIPE_CARE_PLAN_PRICE_ID` + the Stripe Subscription product created in the dashboard.
-- **Web Push delivery** — service worker + subscribe endpoint live. The sending side (worker reads inbound classification, fires `web-push.send` to stored subscriptions) is not yet wired. Needs `web-push` npm package + `VAPID_PRIVATE_KEY`.
-- **Inbound mail DNS/MX** — `/api/inbound` webhook handler is ready. DNS/MX for `appeals.parkingrabbit.com` + Postmark/Resend pick is open.
-- ~~**Streaming letter UI**~~ — done. `/app/evidence` consumes `/api/generate-stream` inline (was the deleted `/app/paywall` step) and the ticket detail page polls `/api/appeals/[id]` until `letterBody` lands (2 s interval, ~3 min cap). See "Streaming letter hang fix" in today's update log.
-- **`public/submissions/<jobId>/` cleanup** — live-submission PNGs accumulate forever. Add a daily cron that wipes anything older than 7 days. Low priority until disk pressure shows.
-- **UA rotation for headless Chromium** — deferred. No evidence Westminster blocks on UA (the `WE66452241 / S99SNN` dry-run sailed through). Revisit if/when a portal trips Bot Manager.
-
-### ⛔ Blocked on external accounts
-
-- **Apple OAuth** — Apple Developer Program enrolment (1–4 wk lead time).
-- **Google OAuth** — Google Cloud OAuth client.
-- **App Store submission** — Apple Developer + Capacitor wrapper (v0.3 scope).
-- **Live Stripe** — UK business verification.
-- **Live inbound mail** — Postmark / Resend account + DNS.
-
-### ❌ Not started (next session candidates)
-
-- **Defect-type scorecard** — second Claude call returning a 47-point defect check. Beats Parking Mate UK's marketing pitch.
-- **POPLA / private parking** — the bigger TAM (~70% of UK appeal volume). Out of v0.1 scope per the locked decision.
-- **Council win-rate dashboard** — per-council aggregate "appeals via ParkingRabbit win X%" surfaced on the evidence page (above the Draft my appeal CTA) and on the ticket detail page near the £2.99 submit.
-- **Apple Wallet pass** for submitted appeals.
-
-## How to run it locally
-
-```bash
-docker compose up -d                 # Postgres on 127.0.0.1:5544
-cd apps/web
-npm install
-npm run db:migrate                   # all 11 Drizzle migrations (0000–0010)
-npm run db:seed                      # 7 seeded councils
-npm run dev                          # http://localhost:3001
-```
-
-### Required env (`.env.local`)
-
-```env
-DATABASE_URL=postgres://snappeal:snappeal@127.0.0.1:5544/snappeal
-AUTH_SECRET=32+ random chars
-NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1   # dev only — bypass Stripe
-SNAPPEAL_SKIP_PAYMENT_CHECK=1         # dev only — skip Stripe verification
-SNAPPEAL_SUBMISSION_LIVE=1            # default is LIVE; set =0 to mock the engine
-# SNAPPEAL_MCP_HEADED=1               # show Chromium window during MCP runs (also togglable at /admin/health)
-# ANTHROPIC_API_KEY=sk-ant-...        # else uses CLI OAuth session
-# CLAUDE_MODEL=claude-sonnet-4-6
-```
-
-The full list is in `apps/web/.env.example`. See `architecture/infra.md` for prod env vars.
-
-### Smoke tests
-
-```bash
-npm run test:claude              # CLI wrapper ping, ~9 s
-npm run test:e2e:backend         # full backend audit, ~30 s
-npm run lint && npx tsc --noEmit && npm run build  # CI parity
-npm run test:e2e                 # Playwright UI suite
-```
-
-### Admin access
-
-```bash
-# Sign up via the UI (/sign-up), then:
-npm run admin:promote -- your@email.com
-# Sign back in — you'll auto-redirect to /admin
-```
-
-## The agentic MCP loop (Westminster)
-
-This is the most differentiating thing in the codebase. Read it once.
-
-1. `lib/server/submission/prompts/westminster.ts` — canonical Claude+Playwright MCP prompt. Now contains explicit **Variant A vs B route detection** ("Challenge / Make a representation" — never "View images" or "Pay"), a 1× retry on transient "service not currently available", and milestone screenshot mandate.
-2. Admin opens `/admin/councils/westminster/automation` — prompt auto-seeded into `council_automation` table on first visit.
-3. Admin edits the prompt + field hints → **Save**. To revert to canonical, hit **Reset to canonical** (one-click `DELETE` + re-seed).
-4. Admin clicks **Dry-run against live portal** → spawns `claude -p` with `@playwright/mcp` attached → agent navigates the real portal, stops at the review page (DOES NOT submit), screenshots every milestone, returns JSON.
-5. Trace + cost + screenshot path + `appealId` (if scoped) + tool-call list persist to `council_automation.last_dry_run`.
-6. Iterate until dry-run is reliably green. From `/admin/jobs` or `/admin/submissions`, click **Dry-run** on a failed `submit_appeal` row to replay the agent against that appeal's real PCN/reg without resubmitting.
-7. **Live customer submit** is on by default (`SNAPPEAL_SUBMISSION_LIVE` flag defaults to LIVE — set `=0` to opt-out and use the mock). `/api/submit` enqueues `submit_appeal` → worker (`instrumentation.ts` boot) claims via `FOR UPDATE SKIP LOCKED` → `runPortalAutomation({jobId, …})` → loads per-council prompt, plumbs `jobId` for live progress emission, watches `process.cwd()` + workDir for PNGs (`@playwright/mcp` ignores `--output-dir` on Windows) → SSE delivers events to `/app/submitting/<jobId>` → ticket card shows the **navy "AI is filing your appeal" strip** linking through `/app/watch/<appealId>`.
-8. Admin can flip **MCP browser visibility** (headless ↔ headed) at `/admin/health` to watch Chromium drive the portal in a visible window during the next dry-run or live submission.
-
-## Update log — 2026-05-21 (v0.1.7 — `/app` redesign + payment sheet)
-
-> **Superseded in part.** The `/app` home described below (single navy hero + three equal-height plan cards with a "MOST POPULAR" pill + active-appeal card with `HorizontalTimeline`) was REPLACED later the same day by the **three `ActionHero` cards** described in the v0.2.1 audit entry at the top of this doc. The `PaymentSheet`, `LetterActions`, `WizardOnboarding`, and `AppHeader` work below all still applies.
-
-**`/app` home rebuild** — `apps/web/app/app/page.tsx` rewritten from scratch:
-
-- Hero is a navy radial-gradient card with the headline "Challenge a ticket", a subtitle, and a blue "Start Appeal" CTA. The right-hand illustration is the **looping yellow PCN scan animation** — same `RealisticPcnInWallet` SVG used by `SnappealSplash` (now exported), wrapped in four white viewfinder brackets, with a blue scan line that sweeps top→bottom forever via a new `@keyframes snappeal-hero-scan` in `globals.css` (2.6 s, infinite). Replaces the previous one-off phone-with-PCN illustration.
-- Plan picker is three equal-height cards. Full Appeal (£2.99) is highlighted with a navy/white "★ MOST POPULAR" pill, a blue 2-px border, and a soft `shadow-snappeal-primary/15`. The old dark Care Plan card is gone.
-- Add-ticket card is one white card with three divided tiles (Scan / Upload / Enter PCN), each with the icon in a pale-blue rounded square.
-- Active appeal card has an "IN PROGRESS" blue pill, location-pin + council + issued date, and the `HorizontalTimeline` rendering dates under each label.
-- How-it-works is three mini-steps in pale-blue circles with numbered badges.
-- Success tip is a green-soft card with `ShieldCheck` + a "View tips" outline button.
-
-**`AppHeader`** — UK pill swapped from a `MapPin` icon to a real flag SVG + `ChevronDown`. Logo shrunk from 38 → 34, pill padding tightened, font sizes adjusted so the "Challenge your parking ticket in minutes" subtitle fits on **one line at 393px** (was truncating to `…in min…`).
-
-**`HorizontalTimeline`** — added opt-in `showDates` prop and a third connector colour: green between two completed steps, **blue between the last completed and the in-progress step**, grey otherwise. Pending circles get a thin border. Used by the active-appeal card; older usages (ticket cards) keep the date-less rendering by default.
-
-**`PaymentSheet`** (new) — `apps/web/components/PaymentSheet.tsx`. Bottom slide-up modal:
-
-- Two-phase mount/visible state so Stripe `<Elements>` only mounts when the sheet is open (no `/api/checkout` calls on page load).
-- Backdrop click + Esc + X close it. While `busy` (parent is mid `/api/submit`), all dismiss surfaces are disabled and the body renders a "Submitting to council…" spinner instead of the payment form.
-- Header: "Submit appeal" + "£2.99 · auto-submits to {council}". Order summary card. Body renders `<FakePaymentButtons>` when `NEXT_PUBLIC_SNAPPEAL_FAKE_PAYMENT=1`, else `<StripePaymentForm>`. Footer: "Powered by Stripe · 256-bit TLS".
-- Body-scroll lock while open.
-
-**`/app/letter/<id>`** — `apps/web/app/app/letter/[id]/page.tsx`:
-
-- New `paySheetOpen` state. The big "Submit appeal to council" button no longer calls `/api/submit` directly; it just toggles the sheet.
-- The previous `handleSubmit` is now `handlePaid(paymentIntentId)` and is passed to the sheet as `onPaid`. It posts to `/api/submit` with the **real PaymentIntent id** (the placeholder `"pi_local_dev"` is gone), then routes to `/app/submitting/<submissionId>` on success.
-- Error path: if `/api/submit` rejects (e.g. 402), the sheet closes and the existing red error banner on the letter page surfaces the message.
-
-**`LetterActions`** — Track button removed entirely (it just linked to `/app/tickets/<id>` — duplicates the post-submit "Submitted to the council" confirmation card). Layout collapsed from `grid-cols-3` to `grid-cols-2` (Copy + Share only). `appealId` prop dropped.
-
-**`WizardOnboarding`** — `PermissionRow` button copy changed from "Allow" → **"Tap to allow"** (renders as `TAP TO ALLOW` via the existing `uppercase tracking-wide` styling). Verified visually on both rows (Camera, Notifications).
-
-**Landing hero band** — `apps/web/app/page.tsx` line 285: the yellow "PARKING TICKET" `<g>` transform shifted from `translate(0, 138)` to `translate(0, 143)` so the band sits where the eye reads as centred between "Appealing a" and "Is your right." (the box-bounded measurement at 138 was already symmetric, but visual ink isn't — split the difference).
-
-Files touched: `apps/web/app/app/page.tsx`, `apps/web/app/app/letter/[id]/page.tsx`, `apps/web/app/globals.css`, `apps/web/app/page.tsx`, `apps/web/components/AppHeader.tsx`, `apps/web/components/HorizontalTimeline.tsx`, `apps/web/components/LetterActions.tsx`, `apps/web/components/PaymentSheet.tsx` (new), `apps/web/components/SnappealSplash.tsx` (exported `RealisticPcnInWallet`), `apps/web/components/WizardOnboarding.tsx`.
-
-The redesign portion (commit `4573b46`) is on `origin/main`; the PaymentSheet + wizard-copy bundle is unpushed at the time of this doc refresh. `apps/web/package.json` still reads `0.1.5` — the doc-level version (`v0.1.7` at the top of this file) is the source of truth for "what's shipped right now."
-
-## Update log — 2026-05-20 (streaming letter hang fix)
-
-The drafting flow felt hung on the paywall and could dead-end on the letter page. Four small fixes, no schema change.
-
-- **Restored `confirmedTicket` forwarding in `/api/generate-stream` (`app/api/generate-stream/route.ts`)** — the streaming-letter cutover dropped two pieces from the older `/api/generate` route's call to `generateDraft`: the user's already-confirmed ticket fields (`body.confirmedTicket`), and the `generateSemaphore` concurrency wrap. Without `confirmedTicket`, Claude re-OCRed the PCN from scratch on every request even though the user had already extracted+confirmed the fields on `/app/capture` — on real photos that re-OCR pushed the call past the 120 s CLI timeout, the row landed at `step = "generation_failed"`, and admin saw silent dead drafts. **This was the actual root cause of the "drafting hangs / admin drafts silently failing" report.** The route now mirrors `/api/generate` exactly — forwards `confirmedTicket` and acquires the same semaphore so a burst of concurrent SSE requests can't fork unbounded `claude` subprocesses.
-- **Paywall phase ladder honest (`app/app/paywall/page.tsx`)** — the SSE `appeal` event used to advance the milestone ladder straight to "ground", which then sat pulsing for the entire ~30 s `generateDraft` call (no further events flow during that window). The ladder now stays on "Reading your PCN photo" until the `ticket` event arrives, then "Identifying the strongest grounds", then "Drafting…" when the `ground` event lands. Matches the canonical event order in `architecture/ai-pipeline.md`.
-- **Letter page polls instead of one-shot fetch (`app/app/letter/[id]/page.tsx`)** — was a single `useEffect` fetch; any visit that arrived before `attachDraftToAppeal` committed was stuck on "Refresh in a moment" forever (tickets list → in-flight appeal, direct URL, refresh during chunk stream). Now polls `/api/appeals/<id>` every 2 s with a 90-poll cap (~3 min) until `letterBody` lands or `step === "generation_failed"`. Fallback UI is a spinner ("ParkingRabbit AI is still drafting…") not a refresh nag.
-- **Generation failures no longer leave zombie rows (`app/api/generate-stream/route.ts` + `lib/server/appeals.ts`)** — the route's catch block now calls a new `markAppealFailed(appealId)` that flips `step` to `"generation_failed"`. The letter page surfaces a red "We couldn't draft this appeal — Retry drafting" card linking back to `/app/paywall`. The next successful `attachDraftToAppeal` resets `step` to `"ready"`, so the marker self-clears on recovery.
-
-Files touched: `apps/web/app/app/paywall/page.tsx`, `apps/web/app/app/letter/[id]/page.tsx`, `apps/web/app/api/generate-stream/route.ts`, `apps/web/lib/server/appeals.ts`.
-
-Verified via DB inspection: pre-fix the two most recent failed rows (`ap_pwlrtp8fhqzz48lx`, `ap_rn5bej6thyzr6b78`) both terminated at exactly 120.05 s — matching the `generateDraft` CLI `timeoutMs: 120_000`. Older stuck rows from before the `markAppealFailed` catch-handler patch are still at `step = "photos"` (zombie) — they pre-date this fix and are not the streaming route's fault going forward.
-
-## Update log — 2026-05-20 (v0.1.5 — audit + UX bundle)
-
-This pass shipped the system audit, four user-requested UX fixes, and the doc-sync work in one PR. apps/web is now at version `0.1.5`.
-
-**Audit fixes**
-
-- **Health/engine drift** — `/api/health` + `/admin/health/page.tsx` now report the submission engine as LIVE when `SNAPPEAL_SUBMISSION_LIVE !== "0"` (matches `lib/server/submission/index.ts:29`). Previously health said "mock" while the engine was actually live with the env unset.
-- **Push subscribe clobber** — `POST /api/push/subscribe` now merges against existing `notificationPrefs` instead of overwriting, so the user's email/push toggles aren't wiped on each subscribe.
-- **Worker dead budget** — removed `generate_draft: 4` from the worker's `CONCURRENCY` table; the handler was throwing `not yet implemented` and burning retries.
-- **Dead code** — deleted unused `ParkingTicketStub` (landing), `_unused()` + `void readFile` (portal + automation), `void runStructured` (generate-stream).
-- **Admin users column leak** — `app/admin/users/page.tsx` now selects only the rendered columns; `passwordHash` no longer rides the RSC payload.
-
-**Security fixes**
-
-- New ownership-check helpers in `lib/server/viewer.ts`: `canViewAppeal()` + `getRequestSessionId()`. Read from JWT cookie OR `x-snappeal-session` header (also accepted as `?session=` query param on the SSE route since EventSource can't send headers).
-- `/api/appeals/[id]` (GET + PATCH) — requires ownership.
-- `/api/submit` — requires ownership.
-- `/api/jobs/[id]` — requires ownership; strips `payload` + `lockedBy` on the wire.
-- `/api/submissions/[id]/progress` — requires ownership before opening the SSE stream.
-- `/api/auth/sign-up` + `/api/auth/sign-in` — only claim guest appeals when `body.sessionId` matches the `x-snappeal-session` header (defends against guessed-sessionId inheritance).
-- `/api/inbound` — `INBOUND_WEBHOOK_SECRET` is now REQUIRED in `NODE_ENV=production`. Without it the endpoint returns 503.
-- `/api/care-plan/waitlist` — `GET` is now auth-gated; uses the viewer's email instead of an unauthenticated `?email=` query (removes the enumeration oracle).
-- All four guest-scoped client fetches now send `x-snappeal-session` (`/api/appeals/[id]` from letter + ticket pages, `/api/submit` from letter page, `/api/submissions/[id]/progress` from submitting page via `?session=` query).
-
-**PWA overlap fix (capture / notes / manual-entry / submitting)**
-
-- `components/BackHeader.tsx` no longer applies a negative top-margin. The sticky header now reserves its full height (incl. safe-area inset) in normal flow, matching `AppHeader`'s working pattern.
-- `app/globals.css` — `.snappeal-content-top` bumped to `1.25rem`; `html { scroll-padding-top }` bumped to `safe-area-inset-top + 76px`.
-- `app/app/capture/page.tsx`, `app/app/notes/page.tsx`, `app/app/manual-entry/page.tsx` — appended `snappeal-content-top` to their first content wrappers so the first card has proper headroom under the sticky header on notched iPhones.
-
-**Logo consolidation**
-
-- `components/Logo.tsx` rewritten as the canonical source. Two exports: `SnappealMark` (shield only) and `SnappealLogo` (shield + wordmark). Two variants: `dark` (navy fill, white check, default) and `light` (white fill, navy check, for hero sections). Backward-compat aliases `ShieldLogo` + `Wordmark` retained.
-- Shield path: `viewBox="0 0 80 80"`, rounded-square shield with a soft tip, hollow tick inside (stroked, rounded caps).
-- `AppHeader.tsx`, `SnappealSplash.tsx`, `app/icon.svg`, `app/apple-icon.tsx`, `app/opengraph-image.tsx`, `app/twitter-image.tsx`, `app/sign-up/page.tsx`, `app/sign-in/page.tsx` — every inline `<svg>` shield was replaced with the canonical mark (or the matching inline path on the OG/apple route handlers where ImageResponse can't import client components).
-
-**Landing headline brush stroke**
-
-- New `public/seconds-underline.svg` — single-path vector brush stroke in brand yellow `#f5b740`.
-- `app/page.tsx` — replaced the SVG squiggle under "Appeal it in seconds." with the brush-stroke image positioned under the word "seconds" only. The phrase now has `whitespace-nowrap` so "Appeal it in" and "seconds" stay on one line.
-
-**Signup form: name, phone, address autocomplete, OAuth**
-
-- `components/AddressAutocomplete.tsx` — new client component, postcode-driven city autofill via free public `api.postcodes.io` (no API key required). Optional `NEXT_PUBLIC_GETADDRESS_API_KEY` for full address-line search (unset = postcode + manual line entry, which is enough for the portal agent).
-- `components/OAuthButtons.tsx` — branded "Continue with Apple" (black) + "Continue with Google" (white + multi-colour G glyph). Click → `/api/auth/oauth/<provider>?next=…`.
-- `app/api/auth/oauth/[provider]/route.ts` — stub returning 503 + "configure these env vars" until OAuth credentials land. Provider-required env vars listed in the response so the operator sees exactly what's missing.
-- `lib/server/auth.ts` — `CreateUserInput` + `createUser()` extended for `phone`, `addressLine1`, `addressLine2`, `addressCity`, `addressPostcode`.
-- `app/api/auth/sign-up/route.ts` — Zod schema extended; sessionId-claim now verifies the header.
-- `app/sign-up/page.tsx` — full rewrite: OAuth buttons up top, divider, then form ordered Full name → Email → Phone → Address (postcode + lines) → Password. Logo uses the canonical `SnappealMark`.
-- `app/sign-in/page.tsx` — OAuth buttons added above the email form; logo swapped to canonical mark.
-- `components/WizardOnboarding.tsx` — `AuthStep`'s three buttons now wire real flows: Apple/Google → `/api/auth/oauth/<provider>`, Email → `/sign-up`.
-
-**Personal-details: capture phone + address (Task 2 from "what to do next")**
-
-- `/app/profile/personal-details` now captures `displayName`, `phone`, and full UK postal address (line 1, line 2, city, postcode) via the same `AddressAutocomplete` component used on sign-up. The DB columns existed since migration 0008; the profile UI now writes to them.
-- `/api/auth/me` GET returns `{ user, profile }` (profile = `{ phone, addressLine1, addressLine2, addressCity, addressPostcode }`); PATCH accepts all five fields. JWT cookie stays small — profile fields are not in the token.
-
-**Streaming letter cutover (Task 5)**
-
-- `/app/paywall` now consumes `/api/generate-stream` via `fetch().body` + a tiny SSE parser at `lib/client/sse.ts` (`EventSource` can't POST a JSON body). The `GeneratingOverlay` accepts new `phase` + `streamedText` props; the milestone ladder advances on real `appeal` / `ticket` / `ground` / `done` events, and the bottom of the overlay renders the letter being typed live as `chunk` events stream in.
-- Old synchronous `POST /api/generate` callsite removed. `/api/generate` route stays for backwards-compat; no client uses it now.
-- Letter page (`/app/letter/[id]`) unchanged — it still loads the already-persisted appeal; the streaming endpoint calls `attachDraftToAppeal` before emitting any chunks, so the route handler order keeps the DB authoritative.
-
-**Doc sync**
-
-- `.env.example` — rewritten with all 25+ referenced vars grouped (Auth / DB / Claude+AI / Stripe / Submission / Inbound / Push / OAuth / Wiki / Address). Inline comments explain every variable.
-- This `handoff.md` — gotcha #6 corrected (`NEXT_PUBLIC_WIKI_URL`, not `WIKI_URL`); migration count fixed in the "How to run it locally" block (was "6", actually 9).
-- `architecture/prototype.md` — substantially refreshed (routes + components + migrations + admin-shipped status).
-- `architecture/infra.md`, `architecture/system-overview.md` — "11 tables" + `council_automation` added to storage diagrams.
-- `architecture/auth.md` — users snippet now lists service_tier, notificationPrefs, address_*, phone.
-- `architecture/submission-engine.md` — fallback pseudocode updated, default-LIVE noted.
-- `architecture/job-queue.md` — `progress jsonb` added to DDL; shipped items removed from Open work.
-- `architecture/notifications.md` — `VAPID_SUBJECT` removed (not referenced in code).
-- `business/roadmap.md` — bump migration count; move admin UI to ✅; OAuth scaffold noted.
-- `wiki/mkdocs.yml` — `product/gamification.md` added to nav (was orphan).
-- Root `README.md` + `apps/web/README.md` — rewritten to point at the wiki handoff as canonical instead of the old "v0.1 prototype mock-data driven" framing.
-
-## Update log — 2026-05-20 (third pass)
-
-- **Card-based grounds quiz** replaces the old free-text + chip UI on `/app/notes` (step 2). Component: `components/GroundsCardQuiz.tsx` + catalogue at `lib/grounds-catalog.ts`. Six categories (Signs & markings, Permits & exemptions, Active use, Necessity & emergency, Wrong vehicle, Council error) covering ~25 customer-facing cards that each map to one of the 11 canonical groundIds. Customer selections persist in sessionStorage (`snappeal.selectedGrounds`) and feed `GenerateRequest.preferredGroundCardIds`. Old textarea demoted to a collapsible "optional note" `<details>` at the bottom of the page.
-- **Unified step-1 flow** — `/app/manual-entry` (council → PCN → reg → review) now routes back to `/app/capture?from=manual` instead of skipping straight to `/app/notes`. The capture page detects the manual ticket and renders the same field grid + evidence-upload zone, with a banner explaining the customer can still snap the PCN if they want. `canContinue` accepts EITHER a photo OR a manual ticket. Step-1 subtitle changed from "Photos" → "Ticket details".
-- **Tips page got a `BackHeader`** — was the only `/app/*` route still rendering its own bare header. Now matches every other in-app sub-page.
-- **WizardOnboarding skipped for signed-in users** — on mount it pings `/api/auth/me`; if a user row comes back, it stamps `snappeal.wizardDone` and hides immediately. Local skip-flag still works for returning guests.
-- **OG / Twitter share images + favicon** — `app/icon.svg` (rounded white tile with blue shield), `app/apple-icon.tsx` (180×180 ImageResponse), `app/opengraph-image.tsx` + `app/twitter-image.tsx` (1200×630 ImageResponse with ParkingRabbit mark + headline + yellow PCN). `metadataBase` + `siteName` + `twitter.card` added to root metadata. Manifest refreshed with shortcuts ("New appeal", "Tickets").
-- **Hydration mismatch fix** — `<html suppressHydrationWarning>` + `<body suppressHydrationWarning>` covers attributes injected by browser extensions (`__gcrremoteframetoken`, Grammarly, dark-reader, etc.) before React hydrates.
-- **Yellow parking-ticket headline** — `ParkingTicketStub` component renders an SVG of the iconic UK PCN ticket on the landing hero: bright `#ffc92a` body, diamond-hatched black/white border (`pattern`) only on the **top + bottom** edges, half-circle perforations on the long sides, "PARKING TICKET" set in Helvetica Neue 900 with `textLength + lengthAdjust` so the full word always fits. Sits flat (no tilt).
-- **Production build clean** — `npm run build` passes after fixing one Next.js route-segment-config issue (`twitter-image.tsx` was re-exporting `runtime`; must be inline). All 38 routes compile.
-
-## Update log — 2026-05-20 (later in the day)
-
-Layered on top of the morning's session:
-
-- **Stop-at-review safety mode** — `SNAPPEAL_ALLOW_REAL_SUBMIT` env (default unset) means the agent NEVER clicks Finish on the council portal unless explicitly armed. Defaults to ON in dev/staging. Toggleable from `/admin/health` (red-bordered "Safety mode" panel with confirm dialog). The accidental WE68106503 submission at 17:05 prompted this.
-- **Live submission report** for WE68106503 archived in `public/submissions/job_submit-appeal_mpe92yny_846ec412/` — 7 screenshots, including `06-06-confirmation.png` (the council's "Challenge submitted" page).
-- **Slideshow controls** on `/app/submitting/[id]` — prev/next arrows + play/pause + step counter + dot indicators. Slideshow auto-advances at 2 s, locks to manual on first click.
-- **PWA fixes** — landing-page sticky header now adds `pt-[env(safe-area-inset-top)]` so iOS status bar can't overlap the ParkingRabbit wordmark. `.snappeal-content-top` bumped to `1rem`, `.snappeal-content-bottom` to `6.5rem` so app cards have proper headroom + clear the bottom nav.
-- **Brand refresh** —
-  - Landing hero "PARKING TICKET." rendered as a yellow ticket-stub with sawtooth/perforated edges (CSS clip-path) and Impact/Anton condensed type. Component: `ParkingTicketStub` in `app/page.tsx`.
-  - Hero subtitle: "Challenge your London parking ticket easily. Upload the notice, answer a few questions, and we'll draft the appeal." (replaces older "ParkingRabbit helps London drivers…" copy.)
-  - Hero CTAs swapped to App Store + Google Play badges (no "Coming soon" pill, Google Play styled as a light glass outline).
-  - Footer download tile uses `variant="on-dark"` — white outlines on transparent.
-  - `AppHeader` uses the blue ParkingRabbit "S" shield (replaces the legacy navy "P").
-  - `WizardOnboarding` + `SnappealSplash` ticket SVG swapped to the realistic UK PCN-in-plastic-wallet (yellow square, diamond-hatched border, "PENALTY CHARGE NOTICE / WARNING" copy).
-- **Bottom nav** — active tab now uses just `text-snappeal-primary` (no pill, no dot, same stroke weight) per the design feedback.
-- **Profile page** — login controls (Sign out / Sign in + Create account) moved to the top of the page. Admin badge uses `bg-snappeal-navy` + `!text-white`. "Open admin dashboard" link also gets white text.
-- **"Watch the AI submission" CTA** persists on the ticket card + ticket detail page for any appeal that's gone through `submitting` / `submitted` / `under_review` / etc. — not just live. Adds a "SNAPPEAL AI" eyebrow + Live pulse when actively filing.
-- **Customer profile plumbing** — `runPortalAutomation` calls `loadCustomerProfile(appeal.userId)` and injects `displayName`, signup `email`, postal address fields, and phone into the agent prompt. Removes the "C/o ParkingRabbit / Foreign address" fallback when fields are present.
-- **Migration 0008** — `address_line1`, `address_line2`, `address_city`, `address_postcode`, `phone` on `users`. **UI form to capture these still pending** (personal-details page currently shows displayName + email only).
-- **Icon refresh + social share** —
-  - `app/icon.svg` for the favicon (blue shield on white rounded background).
-  - `app/apple-icon.tsx` — 180×180 ImageResponse so iOS home-screen icon stops 404'ing.
-  - `app/opengraph-image.tsx` + `app/twitter-image.tsx` — 1200×630 share-card with ParkingRabbit shield + headline + yellow PCN. `metadataBase` + `siteName` + `twitter.card` added to layout metadata.
-  - `manifest.webmanifest` updated with `/icon.svg` + `/apple-icon`, app shortcuts ("New appeal", "Tickets"), `start_url: /app`.
-- **Hydration** — `<html suppressHydrationWarning>` added in `app/layout.tsx` so browser extensions (Grammarly, GCR screen recorder, etc.) injecting attributes don't trigger the React mismatch warning. Doesn't suppress mismatches deeper in the tree.
-
-## What landed in this session (2026-05-20)
-
-The headline: the customer Submit button now actually drives an MCP-powered Westminster portal submission, the customer watches it happen live in a corporate-branded `/app/submitting/<jobId>` page, and the admin has fine-grained controls to dry-run / replay / watch the browser drive.
-
-- **Per-row dry-run buttons** on `/admin/submissions` + `/admin/jobs` — joined through `appeals.councilSlug`, scoped to the actual appeal's PCN ref / vehicle reg / grounds / letter. Shared `DryRunButton` modal (lives in `components/DryRunButton.tsx`). Reset-to-canonical button on the automation editor.
-- **Live progress streaming** — new `jobs.progress jsonb` column (migration `0007_live_submission_progress.sql`), `JobProgressEvent` discriminated-union type. Helpers in `lib/server/jobs/progress.ts`: `appendProgress`, `readProgress`, `queuePosition`, `watchScreenshots`. SSE endpoint at `/api/submissions/[id]/progress`. `runPortalAutomation` translates MCP tool calls into customer-friendly step events; assistant text becomes `thought` events.
-- **`/app/submitting/[id]`** — customer-facing live view of the AI driving the portal. Now light-themed and corporate: `BackHeader` (sticky glass-light, same language as every other in-app page), outline icons, milestone ladder, calmer activity log, no traffic-light browser chrome.
-- **`/app/watch/[appealId]`** — convenience server-side redirect to the appeal's latest job. Used by the **navy "AI is filing your appeal" CTA strip** that appears on the ticket card + ticket detail page while `status=submitting`.
-- **MCP headless/headed toggle** at `/admin/health` (component `McpHeadedToggle.tsx`, `/api/admin/settings/mcp`, in-memory store in `lib/server/settings.ts`). Flip ON to watch Chromium drive in a visible window for the next dry-run or live submit.
-- **Submit-engine LIVE by default** — `runSubmission` now reads `SNAPPEAL_SUBMISSION_LIVE !== "0"` (live unless explicit `=0`). Email fallback fires on **both** thrown errors AND `success: false` returns from `runPortalAutomation`.
-- **Westminster prompt rewrite** — explicit "Challenge / Make a representation" route selection (never View / Pay), 1× retry on transient "service not currently available", milestone screenshot mandate. Wrapper-side check that rejects `success=true` if no PNG ever lands.
-- **Screenshot pipeline fixed end-to-end** — `@playwright/mcp` ignores `--output-dir` on Windows and writes PNGs to `process.cwd()`. The dry-run wrapper now sweeps cwd post-run; `watchScreenshots` polls cwd every 1s to forward them to `public/submissions/<jobId>/` and emit `screenshot` events.
-- **JSON parser hardened** — agent JSON wrapped in ``` ```json ``` ``` fences is now extracted via brace-balance walking, not a greedy regex.
-- **Tool-call sniffing** — `DryRunResult.toolCalls` lists every MCP tool the agent called, with inputs. Pinpoints lying / skipped tool calls in seconds.
-- **Realistic PCN-in-wallet SVG** — replaced the yellow Westminster mock in the splash + onboarding scan animation with the iconic UK plastic-wallet warning notice (diamond-hatched border, "PENALTY CHARGE NOTICE / WARNING / IT IS AN OFFENCE…"). Files: `components/SnappealSplash.tsx → RealisticPcnInWallet`, `components/WizardOnboarding.tsx → MiniWestminsterPCN`.
-
-## Recent commits (most recent first)
-
-```
-(pending — this session's work is staged but unpushed at the time of this doc refresh)
-23d8115  Docs: capture the gotchas from this session
-56a34bc  Claude CLI: add --verbose flag required by --print + stream-json
-ef43dcf  Worker crashloop fix + Claude CLI error transparency
-4f969bb  Embed wiki at /admin/wiki via iframe inside the admin shell
-a94c8b3  Wiki link: bind wiki container on localhost:8800 + update default URL
-b242de6  gitignore: also exclude admin-audit and admin-councils screenshots
-ae928e7  Admin build-out: council CRUD, MCP automation editor, mobile nav, wiki link
-56e96a8  v0.1 backend live: Claude CLI, queue, auth, admin, gamification + docs refresh
-```
-
-## Gotchas you'll hit fast (lessons from the last few hours)
-
-These are real footguns I tripped over. Listing them here so the next person doesn't.
-
-1. **postgres-js + drizzle's raw `sql\`\`` template can't bind a JS `Date`.** Always pre-serialize with `.toISOString()` before interpolating into a `sql\`...\`` template. Drizzle's typed query builder (`db.update(...).set({ ... })`) handles Date fine — the issue is exclusively the raw-SQL path. Bit me in `lib/server/jobs/queue.ts → claimNext()` (worker crashloop) and `app/admin/page.tsx` (dashboard query). Both fixed.
-
-2. **Claude CLI: `--print` + `--output-format stream-json` requires `--verbose`.** Hard CLI requirement, fails with exit code 1 and a clear stderr otherwise. `runAgentic` includes `--verbose` now; the verbose preamble lines aren't JSON so the existing line-parse loop ignores them.
-
-3. **`ClaudeCliError` swallowed stderr** for a while — the error message was the opaque `claude exited with code N` line and the actual cause was on the error object but never made it into the response body. Fixed: the constructor now folds the stderr tail (600 chars) + stdout tail (300 chars) into `.message`.
-
-4. **Next.js `Edit` tool gotcha**: the Write/Edit pair requires you to *re-Read* a file after a Write before the next Edit can apply. A few admin layout edits in this session failed and had to be retried because of that.
-
-5. **`document.cookie = ""` doesn't clear httpOnly cookies.** When testing sign-out via MCP, hit `POST /api/auth/sign-out` instead of trying to wipe `snappeal.token` from JS.
-
-6. **The wiki container had no host port binding.** Default `NEXT_PUBLIC_WIKI_URL` was an unreachable `theailab.dev` subdomain. Fixed by binding the MkDocs container to `127.0.0.1:8800` in `docker-compose.yml` and defaulting the env var to that. (Note: the env var is `NEXT_PUBLIC_WIKI_URL`, read by `app/admin/wiki/page.tsx`. A previous version of this doc called it `WIKI_URL`.)
-
-7. **`@playwright/mcp` first-install takes ~30 s.** First dry-run from `/admin/councils/<slug>/automation` will fetch the package via `npx -y`. Subsequent runs hit the cache.
-
-8. **`@playwright/mcp` ignores `--output-dir` on Windows.** `browser_take_screenshot({filename:"foo.png"})` lands the PNG in `process.cwd()` (typically `apps/web/`) regardless of the flag. `lib/server/submission/automation.ts → rescuePngsFromCwd()` sweeps cwd post-run; `lib/server/jobs/progress.ts → watchScreenshots()` polls cwd every 1s so the live page also gets the screenshots. Don't remove these — without them the live UX shows zero PNGs even when the agent reports success.
-
-9. **The agent prefers `browser_snapshot` (text) over `browser_take_screenshot` (PNG).** Its tool description literally says "this is better than screenshot" — so even an explicit prompt asking for PNGs gets shortcut. The dry-run wrapper now checks `allScreenshots.length > 0` and overrides `ok=false` if the agent lied about taking screenshots. The fix at the model-control surface is the explicit "REQUIRED SCREENSHOTS / wrapper verifies / accessibility snapshots prove nothing" block at the top of the dry-run prompt override.
-
-10. **Agent JSON comes wrapped in ` ```json ... ``` ` fences.** A naive `\{[\s\S]*\}\s*$` regex won't match because of the trailing ` ``` `. The parser now does brace-balance walking and picks the longest balanced object (or falls back to the fenced block). Lives in `automation.ts → extractAgentJson()`.
-
-11. **`SNAPPEAL_SUBMISSION_LIVE` is captured at worker-boot.** The worker singleton is initialised once from `instrumentation.ts`. After changing `.env.local`, HMR may reload route handlers but **not** the worker — every customer submit will keep taking the old mock/live path until you `Ctrl+C` + `npm run dev`. `/api/health` will appear correct (it reads env fresh) while the worker is wrong; that mismatch is the canary.
-
-12. **Onboarding wizard covers the page on first visit.** `localStorage.setItem('snappeal.wizardDone', '1')` skips it. Don't try to drive past the wizard via MCP for non-onboarding flows — it'll wallpaper the target page.
-
-## Open questions / decisions waiting
-
-- **Provider for transactional + inbound mail.** Postmark Inbound is the front-runner. Decision needed before live launch.
-- **Worker hosting** — Fly.io vs Railway vs Vercel Sandbox. All work; Fly is cheapest for one always-on machine.
-- **POPLA / private parking** — defer past v0.1, or pull forward to capture the bigger TAM?
-- **OAuth — Clerk vs hand-rolled.** Hand-rolled is committed; Clerk would be a drop-in replacement and unlock Apple+Google instantly.
-
-## How this doc stays accurate
-
-- It's the **first** doc updated when something major lands.
-- All other architecture docs are children of this one; they may go stale but `handoff.md` should not.
-- A fresh session should `cat wiki/docs/handoff.md` before doing anything else.
+**Read this first if you're picking up ParkingRabbit cold.** Last refreshed **2026-05-27 (v0.3.10)**.
+
+A web app + PWA that helps Londoners challenge a Penalty Charge Notice in a few taps. The customer scans the ticket; the AI reads it + the council portal; for £2.99 a paid appeal is drafted and submitted end-to-end with live transparency. This page is the consolidated current-state snapshot. Long-form session-by-session entries from v0.2.x → v0.3.7 live in [`archive.md`](archive.md). For the story behind a specific decision, `git log -- wiki/docs/handoff.md`.
+
+## Stack at a glance
+
+- **App**: Next.js 16 App Router + TypeScript, deployed at `apps/web/`. Dev server on `:3001`.
+- **DB**: Postgres (Drizzle ORM). Local dev: `docker compose` → `127.0.0.1:5544`. Schema at `apps/web/lib/server/db/schema.ts`. 17 migrations applied (`0000`–`0016`).
+- **Object storage**: Vercel Blob in prod (`BLOB_READ_WRITE_TOKEN`). Dev fallback writes to `apps/web/public/dev-blobs/`.
+- **Auth**: HS256 JWT, hand-rolled (no dep), in an httpOnly cookie `parkingrabbit.token`. pbkdf2-sha256 (210,000 iters), 30-day TTL. Guest sessions identified by `x-parkingrabbit-session` header from `sessionStorage`. Sign-in claims guest sessionId onto userId.
+- **AI**: Claude Code CLI in headless mode (`-p --output-format json|stream-json`). NO Anthropic SDK — the CLI uses the developer's OAuth login (or `ANTHROPIC_API_KEY` + `--bare`). Wrapper at `apps/web/lib/server/claude-cli.ts` exposes `runStructured` (Zod-validated one-shot) and `runAgentic` (with MCP tools). Default model: **`claude-sonnet-4-6`** — override via `CLAUDE_MODEL`.
+- **Browser automation**: `@playwright/mcp` via `npx`, driven by Claude. Each council lookup or submission gets its own ephemeral workDir + Chrome profile.
+- **Job queue**: Postgres-backed (`jobs` table) with `FOR UPDATE SKIP LOCKED`. Worker boots in-process via Next.js `instrumentation.ts` → `startWorker()`. Slots: 2 × `submit_appeal`, 3 × `pcn_lookup`, 1 × `generate_draft`. Stale-lock recovery on 5 min cutoff. Backoff: 30 s, 2 min, 5 min. `jobs.appeal_id` deliberately has **no FK** — jobs can outlive deleted appeals (the merge sweep handles that explicitly).
+- **Notifications**: web-push dispatcher (`lib/server/push.ts`) with 410-Gone cleanup. `dispatchAppealEvent` per-event orchestrator + COPY registry. Every dispatch attempt — including no-ops (toggle off / no subscription / send failed) — writes one row to `notification_dispatches` (migration 0016) so admins can answer "why wasn't user X notified?".
+- **Cost telemetry**: `ai_calls` table (migration 0015) — one row per Claude invocation with stage (`council_id` / `ocr` / `lookup` / `draft` / `strength` / `submit` / `strengthen_notes`), model, mode (`cli` / `sdk` / `deterministic`), input/output/cache tokens, costUsd, durationMs, ok, errorKind. Legacy `appeals.model_used` + `appeals.cost_pence_millis` columns dropped — read from `ai_calls` instead.
+- **Payments**: Stripe PaymentIntent for the £2.99 appeal. Care Plan (£9.99/mo) subscription scaffold present but in waitlist mode — webhook wiring pending, not yet billable.
+
+## Current product flow
+
+1. **Scan** → `/app/scan` shows three buttons (Camera / Upload / Input manually). Tap one → `uploadPcn()` creates an appeal row, PATCHes the photo, fires `/api/extract`, redirects to `/app/tickets?expand=<id>`.
+2. **OCR runs in TWO passes** (`/api/extract`):
+   - **Pre-pass** (`identifyCouncil()`) — ~2 s. Returns `{issuer, councilSlug}`. PATCHed onto the appeal mid-request so the `IssuerLogoReel` lands on the correct council logo while the full extract is still running.
+   - **Full extract** (`extractTicket()`) — ~10–15 s. Returns the rest: pcnRef, vehicleReg, contraventionCode, location, amountPence, dates **AND** the photo-coach verdict (quality / advice / issues) inline. **v0.3.10 consolidation**: the coach used to be a second parallel Claude call; it's now a single combined vision call (~$0.075 per upload, down from ~$0.129). Coach output is parsed with `.catch(...).default(...)` so a malformed coach block never fails the whole extract — the ticket + confidence still flow through.
+   - **Post-OCR**: `mergeDuplicateDraftIfAny(appealId)` runs. If the same viewer already owns an older draft for the same `(pcnRef, vehicleReg)` (post-confirm rows are excluded), the duplicate is folded into the older row in one transaction (FK sweep for `jobs`, `payments`, `notification_dispatches`; the rest cascade). The response surfaces `mergedInto` and the client repoints its `currentAppealId`.
+   - `patchAppealDraft({ ticket })` now **merges field-by-field**, not wholesale-replace — empty-string values from a pass don't erase fields a prior pass already stamped (this was the bug where Pass 2 would wipe Pass 1's councilSlug if its extract came back blank).
+3. **Pending review** — card shows editable PCN ref + vehicle reg + council picker. If OCR returned `amountPence=0` or `issuedAt=""`, conditional inputs appear (gated by a `touched` ref so the council can backfill them quietly if the user never typed; but once typed, the input stays mounted regardless). The user hits **Confirm & validate with council** → step is stamped `ticket_confirmed` AND `/api/appeals/[id]/lookup` is POSTed (with `x-parkingrabbit-session` so guests aren't 403'd). Card flips to `validating`.
+4. **Lookup** — `enqueueLookupIfAutomated()` enqueues a `pcn_lookup` job with two-layer idempotency:
+   - **Layer 1**: any existing queued/running `pcn_lookup` for this appeal → return that jobId.
+   - **Layer 2**: settled snapshot with non-error status + a jobId → return that jobId. Pending-snapshot stale-jobId guard: if `status='pending'` and `jobs.id` no longer exists, fall through and enqueue fresh (so a worker-purge or admin delete doesn't strand the appeal).
+   - Worker tries `runDeterministicLookup(slug)` first. If a recipe is registered for the slug, the Playwright walk runs (Lambeth: ~10–20 s @ $0). On `drift: true` or error, falls back to `runPortalLookup` (Claude MCP, ~60–120 s @ ~$0.30).
+   - `persistPortalLookup(snapshot)` writes the result. All `metadata` date fields go through `normalisePortalSnapshotDates` so dd/mm/yyyy strings land as ISO. Backfill into `appeals.ticket` is fill-only (never overwrites user-typed values).
+5. **Card transitions** — the per-card poll (validating mode, 2.5s, max 120 ticks) refetches `/api/appeals/[id]` until `portal.status !== 'pending'`. As soon as the verdict lands, the status-snapshot fetch effect re-runs (its deps include `portalLookup?.status` + `fetchedAt`) and `deriveCardState` flips the kind to `needs_decision` — no manual refresh required.
+6. **Pay/Appeal decision** (`needs_decision`) — three tiles: **Appeal £2.99** (primary), **Pay yourself** (free deep-link to the council payment URL), **Apple/Google Pay** (placeholder, "Coming soon"). "Edit details" pops back to the confirm view.
+7. **Appeal tap** → `startAppeal()` just PATCHes `preferredMethod=portal` and re-derives. It used to POST a fresh `/lookup` — that's gone (the v0.3.5 leftover that caused the "lookup twice" issue; `agreeTicket` is the single trigger now).
+8. **Build appeal** (`gathering_evidence`) — single composer ("What happened?") + Common-reason pills (clamped to 3 rows). The **CouncilCheckChip** at the top narrates the lookup state (pending → streams the live MCP agent thought; verified → green pill or diff card; error → amber "we'll try again").
+9. **Lookup verdict gates the draft**:
+   - `open` / `expired` → continue.
+   - `paid` / `closed` / `not_found` → card transitions to `appeal_not_possible` with an explainer + override link. No letter drafted, £2.99 never reached.
+10. **Start drafting** → `confirmEvidenceAndDraft()` stamps `step=evidence_gathered`. A separate draft-kickoff `useEffect` watches for both conditions (`step===evidence_gathered` AND lookup-settled, verdict-not-bad) and fires `/api/generate-stream` exactly once. The drafting body shows the **Council confirms** structured block (every populated field from `portalLookup.metadata`) above an inline status row.
+11. **Letter ready** (`letter_ready`) — rendered letter + £2.99 Submit CTA + strength score (green ≥80, amber 50–79, red <50 with "Add more evidence" affordance that re-scores without redrafting).
+12. **Submit** → `submitting` → `runSubmission()` (Playwright MCP fills the council portal OR email fallback) → `submitted`.
+
+If drafting fails, `markAppealFailed(id, message)` stashes the error into `processing.draft.error`. The card surfaces a **DraftingFailedRow** with the message + **Try again** button — `retryDraft()` PATCHes `step=evidence_gathered` and clears the draft-kickoff ref so generate-stream re-fires.
+
+## State machine (17 CardKinds)
+
+`scanning`, `processing`, `pending_review`, `validating`, `needs_decision`, `gathering_evidence`, `drafting`, `letter_ready`, `submitting`, `submitted`, `terminal`, `appeal_not_possible`, plus 5 failure kinds: `image_issue`, `image_unclear`, `info_needed`, `extraction_failed`, `council_lookup_failed`.
+
+Two sentinels on `appeal.step`: `EVIDENCE_DONE_STEP = "evidence_gathered"` (gate from gathering_evidence to drafting) and `TICKET_CONFIRMED_STEP = "ticket_confirmed"` (gate from pending_review to needs_decision). Failure sentinel: `GENERATION_FAILED_STEP = "generation_failed"` (drafting → retry).
+
+Full enumeration + the derive ladder lives in `lib/deriveCardState.ts`. Per-kind UI lives in `components/TicketCardBody.tsx`. The smart card itself (`components/TicketCard.tsx`, ~1,900 lines after the v0.3.10 modularization) extracted its sub-components into `components/ticket/{StatusPill,DeleteTicketButton,Field,FailureActions,SubmissionStatusBits}.tsx`.
+
+## Pricing (live + planned)
+
+| Tile / SKU | Status | Price | Notes |
+|---|---|---|---|
+| **Appeal £2.99** | Live | £2.99 one-off | Stripe PaymentIntent. `PRICE_PENCE = 299` in `lib/server/stripe.ts`. |
+| **Pay yourself** | Live | Free | Deep-link to council payment URL. No payment processed by us. |
+| **Apple/Google Pay** | Coming soon | TBD | Inert tile in `<PayAppealTiles>`. |
+| **Care Plan** | Waitlist (scaffolded) | £9.99/mo | Subscription product not yet billable. `subscriptions` + `care_plan_waitlist` tables exist; Stripe webhook pending. |
+
+## Models
+
+`claude-sonnet-4-6` is the default for every stage (council_id, ocr, lookup MCP, draft, strength, submission MCP, strengthen_notes). Override via `CLAUDE_MODEL`. All calls go through `lib/server/claude-cli.ts` — single entry point. Per-call attribution lands in `ai_calls.model` so a future model split per stage is a config change, not a code one.
+
+## Recent milestones (newest first)
+
+### v0.3.10 (2026-05-26 → 2026-05-27)
+
+A long session that landed two major strands plus a deep code-review pass that caught and fixed 15+ defects. Grouped by theme:
+
+#### Strand A — Brand rename: Snappeal → ParkingRabbit
+
+Full pass over the repo (273 modified files). Identifier rule: `Snappeal` → `ParkingRabbit`, `snappeal` → `parkingrabbit`, `SNAPPEAL` → `PARKINGRABBIT`. Env vars renamed (`PARKINGRABBIT_MODE`, `PARKINGRABBIT_DISABLE_WORKER`, `PARKINGRABBIT_SUBMISSION_LIVE`, `PARKINGRABBIT_SKIP_PAYMENT_CHECK`, `PARKINGRABBIT_MCP_HEADED`, `PARKINGRABBIT_ALLOW_REAL_SUBMIT`, `NEXT_PUBLIC_PARKINGRABBIT_FAKE_PAYMENT`, `NEXT_PUBLIC_PARKINGRABBIT_SHOW_MCP_LIVE_VIEW`, `PARKINGRABBIT_GENERATE_CONCURRENCY`, `PARKINGRABBIT_CLAUDE_MODE`). Wire-protocol renames: guest-session header `x-snappeal-session` → `x-parkingrabbit-session`; JWT cookie `snappeal.token` → `parkingrabbit.token`; CSS tokens `snappeal-*` → `parkingrabbit-*`; `globalThis.__snappeal*` cache keys → `__parkingrabbit_db_v2__` / `__parkingrabbit_sql_v2__` (the `_v2` suffix flushes a stale client cached during the rename window). Component rename `SnappealSplash.tsx` → `ParkingRabbitSplash.tsx`. LICENSE email `hello@parkingrabbit.com`.
+
+**Intentionally preserved as `snappeal`** (with inline comments): Postgres role + db + password + volume identifier in `docker-compose.yml` + the matching `DATABASE_URL` credentials + `-U snappeal -d snappeal` in `scripts/reset-db.sql`. They tie to the running role table inside the existing `snappeal_snappeal_db` Docker volume — renaming would orphan dev data. Container names (`parkingrabbit-db`, `parkingrabbit-wiki`, `parkingrabbit-tunnel`) and the wiki container alias on `caddy_default` were rebranded.
+
+Action on first pull: the auth cookie name changed, so users are signed out once. A dev-server restart picks up the new env var names + the renamed `globalThis` cache keys.
+
+#### Strand B — Per-council grounds-translation registry (P11)
+
+New `apps/web/lib/server/submission/grounds/` tree owns the canonical-slug ↔ council-portal-radio-label mapping. Pattern:
+
+- `grounds/<slug>.ts` exports a `CouncilGroundsMapping` (council slug + display name + verbatim portal grounds list + canonical-slug → portal-label table + fallback row + `verifiedAgainst` provenance pointer).
+- `grounds/registry.ts` is the central lookup: `getCouncilGroundsMapping(slug)`, `resolveCouncilGroundLabel(slug, canonicalGrounds)` (pre-resolves the chosen portal row from the appeal's grounds, fallback-aware), `renderTranslationRule(mapping)` (renders the table as a markdown bullet list for prompt embedding), `renderPortalGroundsList(mapping)` (numbered audit hint for the agent), `listRegisteredCouncils()`.
+- `grounds/lambeth.ts` shipped first — verified against four real portal screenshots (step 1 grounds, step 2 details, step 3 contact, step 3 populated). The 10 portal rows + the 11-canonical-slug mapping are encoded here.
+
+Lambeth's slug-table previously lived inline in `prompts/lambeth.ts` and used some stale slugs (`tmo-invalid`, `broke-down`, `already-paid`) that pre-dated the canonical taxonomy in `lib/grounds-catalog.ts`. The registry uses the **correct 11** `CanonicalGroundId` keys (`contravention-did-not-occur`, `signage-unclear`, `valid-permit`, `blue-badge`, `loading-unloading`, `breakdown`, `medical-emergency`, `vehicle-not-mine`, `penalty-exceeds-amount`, `procedural-impropriety`, `traffic-order-invalid`).
+
+The Lambeth submission prompt now imports `renderTranslationRule(LAMBETH_GROUNDS)` and `renderPortalGroundsList(LAMBETH_GROUNDS)` and composes the TRANSLATION RULE / portal audit blocks at module load — single source of truth. `LAMBETH_FIELD_HINTS.groundsRadioOptions` references the registry's `portalGrounds` directly.
+
+To onboard a new council (Westminster, Camden, RBKC, Islington, TfL, City of London): drop a `grounds/<slug>.ts` with verified portal rows + translate table and register it. See [`architecture/grounds-registry.md`](architecture/grounds-registry.md) for the full pattern.
+
+#### Strand C — AI pipeline consolidation
+
+- **Combined OCR + photo-coach** into one Claude vision call: `extractTicket()` now returns `{ ticket, confidence, coach, modelUsed, costUsd }` from a single round-trip. The separate `coachPhoto()` function + `COACH_PROMPT` are deleted. Per-upload cost drops from ~$0.129 to ~$0.075 (the embedded coach output costs ~$0.005 in extra tokens; the saved $0.060 was the duplicate vision pass).
+- **PhotoCoach schema is now lenient**: `PhotoCoach.catch({...}).default({...})` substitutes a neutral "good / no advice" verdict when Claude returns a malformed coach block (quality outside enum, advice > 280 chars, etc.). This was the root cause of "Rabbit couldn't finish reading this PCN" — one off-shape coach field was failing the whole extract.
+
+#### Strand D — Post-OCR appeal merge (dedup at the right boundary)
+
+`mergeDuplicateDraftIfAny(appealId)` in `lib/server/appeals.ts`. Eligibility: fresh appeal is `status='draft'` and `step !== 'ticket_confirmed'`; has `pcnRef + vehicleReg`; an OLDER draft owned by the same viewer (signed-in userId OR guest sessionId) shares the same `(pcnRef, normalised vehicleReg)`. Strict older-only direction (`lt(createdAt, fresh.createdAt)`) so concurrent uploads can't merge in opposite directions.
+
+Wrapped in `db().transaction(async (tx) => { ... })`. Explicit cleanup of child rows that DON'T cascade (the previous docstring claimed full cascade — it lied): `jobs` (NO FK at all → orphans the worker would later try to pick up), `payments` (`ON DELETE no action` → would throw FK 23503 and leave the older row already mutated), `notification_dispatches` (`ON DELETE SET NULL` → still cleared inside the txn for tidiness). Then `tx.delete(appeals)`. `appeal_photos`, `submissions`, `inbound_messages`, `ai_calls` cascade naturally.
+
+The surviving row's top-level `councilSlug` FK column is hoisted from the merged ticket if the older row lacked it. The route surfaces `mergedInto: <olderId>` to the client; `uploadPcn`'s `.then` reassigns `currentAppealId` so follow-up PATCHes target the right row.
+
+#### Strand E — Two-layer lookup idempotency + stale-jobId guard
+
+`enqueueLookupIfAutomated()` previously only caught queued/running siblings (layer 1). Layer 2 added: a previous lookup that settled with any non-error status (`verified`/`invalid`/`skipped`/`overridden`/`pending`) AND has a `jobId` → return `in_flight` with that jobId without enqueueing fresh. The two flow triggers (`agreeTicket` then `startAppeal`) were both enqueueing a fresh job once the first hit `done` — that was the "lookup twice in a row" you saw in admin.
+
+Pending-snapshot stale-jobId guard: if `status='pending'` and the referenced `jobs.id` no longer exists (admin purge, worker-crash cleanup), fall through to enqueue a fresh job rather than handing the client a dead jobId.
+
+Plus: `startAppeal` no longer POSTs `/lookup` — the lookup fires from `agreeTicket` (the validate-first trigger). The leftover v0.3.5 POST is gone.
+
+#### Strand F — UK-date normalisation at the write boundary
+
+New utility `lib/parseUkDate.ts`: `parseUkDate(raw)` + `parseUkDateToIso(raw)`. **UK-format regex tried FIRST** (catches `dd/mm/yyyy`, `dd-mm-yyyy`, `dd.mm.yyyy` with optional `HH:MM[:ss]`), native `Date(...)` only when the regex doesn't match. Dates built via `Date.UTC(...)` so the same input always round-trips to the same ISO regardless of server TZ (no BST/UTC drift for date-only strings). V8 silently US-parses `12/05/2026` as Dec 5 — the previous native-first order would have shipped the wrong month for any day ≤ 12.
+
+`formatShortDate` (in `lib/format.ts`) delegates to `parseUkDate`. `persistPortalLookup` normalises `metadata.{issuedAt, dueDateAt, discountUntil, fullChargeFrom, paidAt}` before write — single normalisation boundary, every reader sees ISO. `scripts/normalize-portal-dates.ts` is the one-shot backfill for legacy rows. See [`architecture/date-handling.md`](architecture/date-handling.md).
+
+#### Strand G — Validate-first gate (carried from v0.3.9, reinforced)
+
+Customer must tap "Confirm & validate with council" on `pending_review` before any MCP token is spent. `step=ticket_confirmed` is the dam. `useAutoValidate` hook is the backstop for old tickets, gated on `step === TICKET_CONFIRMED_STEP`. Cost story: OCR ~$0.075 (combined) + council-id ~$0.04, MCP only when the customer has eyeballed the data.
+
+v0.3.10 fix: both `agreeTicket` AND `useAutoValidate` now send `x-parkingrabbit-session` on their `/lookup` POSTs. Previously guests hit a silent 403 — and `useAutoValidate` added the appealId to its `FIRED_SESSION` dedup set BEFORE the fetch, so a single 403 permanently disabled the backstop until tab close. Now: the dedup add stays sync (concurrent mount protection) but a 403 response calls `FIRED_SESSION.delete(appealId)` so a refreshed session can retry.
+
+#### Strand H — UI polish + status-bridge fix
+
+- **De-duped status pills**: the absolute `ActivityIndicator` in TicketCard's top-right was rendering on top of the £ amount + duplicating the inline status pill in the header. Removed; the header pill is now the single source of truth.
+- **Filter row sized for 390 px**: All 4 pills (All / To Pay / Challenging / Resolved) fit at iPhone width.
+- **Status-snapshot stale bridge**: `useEffect` deps now include `appeal.portalLookup?.status` + `fetchedAt`. Previously the validating-stub `{stage: "status_check_pending"}` cached at mount survived the verdict arriving, leaving the card on "Checking council" until a manual refresh — `deriveCardState` was still seeing the stale snapshot's stage. Fixed.
+- **`needsAmount` / `needsDate` use userTouched refs**: input stays mounted while the user types AND auto-collapses if the council lookup fills the value before they touched it. Best of both worlds. Replaces the v0.3.10 first-pass latch which left the input mounted-but-empty if the council backfilled.
+- **/app/tickets expand fallback**: when `?expand=<id>` lands on an appeal that got merged away (the duplicate), auto-expand the newest in-flight card instead of an empty slot. The reconciliation poll then picks up the merged row.
+- **TicketCardBody amount-input bug**: the conditional render gated on `ticket.amountPence === 0` was unmounting the input on the first keystroke (parent received the value, conditional flipped, input gone). The prop-sync `useEffect` was ALSO overwriting in-progress typing because it had `amountPence` + `issuedAt` in its deps + a lossy pounds↔pence round trip. Both fixed.
+
+#### Strand I — Single-page manual entry
+
+`/app/manual-entry` collapsed from a 4-step wizard (council → pcn → vehicle → review) into one form. Five `<FieldShell>` rows: Issuing council · PCN reference · Vehicle reg · Issue date (optional) · Amount (optional). One Continue button. Reads `?appealId=<id>` from the URL — fetches that appeal, prefills any field OCR captured, stamps a green "Prefilled" chip next to each prefilled field. The failure card's "Enter details manually" link forwards `appealId={appeal.id}` so the customer lands on a form that already knows their council + whatever OCR could read.
+
+#### Strand J — TicketCard modularization
+
+Pulled 5 sub-components out of the 2,246-line TicketCard.tsx:
+- `components/ticket/StatusPill.tsx` — `StatusPill` + `pillPaletteFor`.
+- `components/ticket/DeleteTicketButton.tsx` — two-tap delete.
+- `components/ticket/Field.tsx` — `<Field>` + `humanize` + `formatFieldValue`.
+- `components/ticket/FailureActions.tsx` — `<ReadingFailureActions>`, `<CouncilFailureActions>`, `<ExtractedStream>`.
+- `components/ticket/SubmissionStatusBits.tsx` — `<OutstandingDetail>`, `<StuckSubmittingNotice>`, `isSubmissionStuck`, `STUCK_THRESHOLD_MS`.
+
+TicketCard.tsx drops to ~1,900 lines focused on orchestration.
+
+#### Strand K — Hardening fixes from the deep code review
+
+- **db/client.ts orphan-cleanup attaches `.catch`**: `closeOrphanClient()` helper attaches `.catch(() => {})` to postgres-js `end()` so a mid-query hot-reload doesn't emit an unhandled rejection (the synchronous try/catch only catches throws, not async rejections).
+- **`PORTAL_METADATA_DATE_KEYS` includes `paidAt`**: previously omitted, so paid-PCN snapshots had a raw `dd/mm/yyyy` string in `metadata.paidAt` while every other date was ISO. Now uniform.
+- **Scripts cleaned up**: `scripts/peek-latest-appeal.ts` no longer selects the dropped `model_used` column; `scripts/test-e2e-backend.ts` no longer reads `appeal.modelUsed`.
+- **Falsy-zero `TODO` note**: the `current === 0` "is empty" heuristic in the ticket-merge backfill works today because amountPence is the only numeric field where 0 conventionally means "unknown". Inline comment warns the next numeric field needs an explicit allowlist.
+
+### v0.3.9 (2026-05-26 evening) — major consolidation
+
+Eight strands shipped: Lambeth automation (appeal/payment URL split, per-council prompts, 4-step wizard), validate-first flow with confirm gate, per-stage cost telemetry (`ai_calls` table + helpers), settings system refactor (dev/prod mode + per-toggle applicability), notification system (server: web-push + dispatcher + audit log; client: `NotificationPromptGate` two-moment prompt), backlog safety + deadline ribbon, slick MCP automation editor at `/admin/councils/[slug]/automation`, DB pool leak fix. Full detail in [`archive.md`](archive.md#v039).
+
+### Phase 9 — Deterministic Playwright + drift detection
+
+`lib/server/submission/recipes/` directory introduces a per-council Playwright runtime (NOT MCP). `CouncilRecipe` interface returning `RecipeSuccess | RecipeDrift | RecipeError`. Lambeth recipe ships first: drives challenge.php directly via Playwright, ~10–20 s @ **$0** vs ~60–120 s @ $0.30 for the Claude MCP path. DOM signature checks at each step return `{ drift: true }` on portal markup changes, falling back to Claude. `runDeterministicLookup` owns the Chromium lifecycle (fresh isolated context per call, 60 s ceiling). See [`architecture/deterministic-recipes.md`](architecture/deterministic-recipes.md).
+
+### Earlier entries
+
+- **v0.3.7** (2026-05-26) — Lookup refactor: DOM-first photo extraction via single `browser_evaluate`; 3 milestone PNGs as the audit trail. Drafting timeout bumped. [archive](archive.md#v037)
+- **v0.3.6** (2026-05-26) — `Agree & continue` gate on the OCR review surface; conditional Amount + Issue-Date inputs; CouncilCheckChip absorbed the diff list; `persistPortalLookup` backfill-only merge; `getTicketDiscrepancies()` helper. [archive](archive.md#v036)
+- **v0.3.5** (2026-05-26) — Lazy council lookup. Pay/Appeal tiles moved to `pending_review`; lookup only fires when the user picks Appeal; new `appeal_not_possible` CardKind for paid/closed/not_found verdicts. [archive](archive.md#v035)
+- **v0.3.4** (2026-05-25) — Build-appeal redesigned as a dictation-first conversational flow; weak-appeal "Add more evidence" re-scores in place; OCR amount hardening; issuer-logo reel; `lib/ticketDisplay.ts` as single source of truth for the displayed amount. [archive](archive.md#v034)
+- **v0.3.3** (2026-05-25) — Dedicated `/app/scan` landing page; `<ScanningOverlay>` replaces `<UploadingOverlay>`; `<TicketLifecycleTimeline>` replaces `<TicketJourney>`; 5 new failure CardKinds. [archive](archive.md#v033)
+- **v0.3.2** (2026-05-24) — Background notification system; `<TicketJourney>` vertical stepper; `/app/support`; persisted submit-progress. [archive](archive.md#v032)
+- **v0.3.1** (2026-05-23) — Drafting-hang fix; 3-step `<GatheringEvidenceCard>`; Cloudflare-grade SSE padding; MCP prewarm at worker boot. [archive](archive.md#v031)
+- **v0.3.0** (2026-05-23) — Deep 75-card grounds quiz across 12 categories; voice dictation; markdown knowledge base; appeal-strength score (0–100). [archive](archive.md#v030)
+
+Older entries (v0.2.x): [`archive.md`](archive.md).
+
+## Where to look
+
+- **System overview** → [`architecture/system-overview.md`](architecture/system-overview.md)
+- **State machine** → [`architecture/appeal-state-machine.md`](architecture/appeal-state-machine.md)
+- **AI pipeline** → [`architecture/ai-pipeline.md`](architecture/ai-pipeline.md)
+- **Submission engine** → [`architecture/submission-engine.md`](architecture/submission-engine.md)
+- **Grounds registry** (P11) → [`architecture/grounds-registry.md`](architecture/grounds-registry.md)
+- **Deterministic recipes** (Phase 9) → [`architecture/deterministic-recipes.md`](architecture/deterministic-recipes.md)
+- **Date handling** (`parseUkDate`) → [`architecture/date-handling.md`](architecture/date-handling.md)
+- **Data model** → [`architecture/data-model.md`](architecture/data-model.md)
+- **Customer UX flow** → [`product/user-flow.md`](product/user-flow.md)
+- **Pricing + monetisation** → [`business/pricing.md`](business/pricing.md), [`business/payment-strategy.md`](business/payment-strategy.md)
+- **Roadmap** → [`business/roadmap.md`](business/roadmap.md)
+- **Council automation status** → [`councils/index.md`](councils/index.md) + live at `/admin/councils`
+- **Admin surfaces** → [`admin/index.md`](admin/index.md)
+
+## Not yet (open items)
+
+### Pickup-here items (next session priorities)
+
+- **P11 council onboardings (Westminster, Camden, RBKC, Islington, TfL, City of London)** — drop a `grounds/<slug>.ts` per council using `grounds/lambeth.ts` as the template. Awaiting user screenshots of each council's grounds page. The registry is structured to slot them in cleanly. See [`architecture/grounds-registry.md`](architecture/grounds-registry.md) for the onboarding checklist.
+- **Grounds slug taxonomy refresh** — once 3+ councils are mapped, audit `CanonicalGroundId` coverage so every customer-friendly slug has a home on at least one council (with the council's "Other reasons" row as the fallback). Touches `lib/grounds-catalog.ts` + every registered `grounds/<slug>.ts`.
+- **Admin grounds-mapping CRUD** — admin edits the slug ↔ council-radio map without redeploy. Needs schema (JSONB `councils.grounds_mapping` OR a new `council_grounds` table), admin UI at `/admin/councils/[slug]/grounds`. Defer until 3+ councils are mapped from screenshots.
+- **Drift-baseline admin audit tool** (P9 follow-up) — UI at `/admin/councils/[slug]/audit` that runs the recipe against a known-good PCN + reg, captures DOM signatures, lets admin "promote" them as the new baseline when council markup changes. Placeholder doc at [`architecture/drift-baseline-audit.md`](architecture/drift-baseline-audit.md).
+- **Westminster + other deterministic recipes** — only Lambeth has one. Add `recipes/westminster.ts` etc. following the `CouncilRecipe` pattern. Each council saved is ~$0.30 per lookup at scale.
+- **Mobile MCP audit at 390×844** — pending visual verification of the v0.3.9–v0.3.10 surfaces. Drive `localhost:3001` through Playwright MCP with the test user's cookie + screenshot each surface.
+
+### Standing items (pre-existing, lower priority)
+
+- **Care Plan Stripe webhook wiring** — `subscriptions` table + `/api/subscriptions/care-plan` route exist but no payment is processed; waitlist captures only.
+- **Apple/Google OAuth completion** — branded sign-in buttons live but return 503 without provider env vars configured.
+- **Capacitor native wrapper** — PWA is live as `/app/*`; iOS/Android wrappers roadmapped but not built.
+- **Apple/Google Pay tile** — placeholder; not wired to a real intent.
+
+### Hardening epics (deferred)
+
+- **AUTH_SECRET / VAPID rotation** — current setup has one secret per env; rotating requires re-issuing all sessions or all push subscriptions. Multi-secret verify chain + key-id on push subs would fix this.
+- **Per-user rate limiting** — `generateSemaphore` caps `/api/generate` to 4 concurrent globally but there's no per-user cap. A bad actor could rotate sessionId and burn budget.
+- **TE9 witness statement flow** — once a Lambeth/Westminster PCN escalates to Order for Recovery, the only appeal route is a TE9 witness statement at Northampton TEC. Today our lookup maps OfR → `expired`; the flow doesn't offer TE9 filing. Separate legal product.
+- **Worker on serverless** — `instrumentation.ts` warns when running on Vercel/Lambda/Netlify because the in-process worker dies between requests. Production needs `PARKINGRABBIT_DISABLE_WORKER=1` + an external long-lived worker.
