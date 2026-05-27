@@ -189,6 +189,16 @@ export const appeals = pgTable(
     letterAddressedTo: text("letter_addressed_to"),
     timeline: jsonb("timeline").notNull().default([]),
     councilSlug: text("council_slug").references(() => councils.slug),
+    /** v0.3.12 — FK into the normalised `tickets` table. NULL while the
+     *  appeal is still being built (no pcnRef yet) or for legacy rows
+     *  pre-backfill. When set, the canonical (council, pcn, vehicle)
+     *  identity + the shared portal_snapshot live there; many appeals
+     *  from different users can reference the same ticket_id and share
+     *  the cached council verdict instead of each firing its own lookup.
+     *  The `appeals.ticket` jsonb continues to hold this user's
+     *  display-and-confirmation copy (user-typed values still win on
+     *  the card). */
+    ticketId: text("ticket_id"),
     /** Pricing tier for this appeal: 'buy_time' | 'grounds' | 'care_plan'. */
     serviceTier: text("service_tier").notNull().default("grounds"),
     /** Customer-picked submission path (v0.2.11). Nullable until the user
@@ -228,6 +238,7 @@ export const appeals = pgTable(
     index("appeals_session_idx").on(t.sessionId),
     index("appeals_user_idx").on(t.userId),
     index("appeals_status_idx").on(t.status),
+    index("appeals_ticket_id_idx").on(t.ticketId),
   ],
 );
 
@@ -363,6 +374,135 @@ export interface PortalLookupSnapshot {
   };
   fetchedAt: string;
 }
+
+/* ───── tickets (v0.3.12 — cross-user PCN cache) ─────
+ *
+ * The canonical record of a PCN — keyed on (council_slug, pcn_ref) so
+ * a single physical ticket is one row, regardless of how many users
+ * have scanned it. Each `appeals` row that touches this PCN points at
+ * the same ticket_id and shares the cached portal_snapshot. The
+ * council lookup (~$0.30 / ~60s) fires once per ticket per TTL window,
+ * not once per appeal per user.
+ *
+ * `portal_snapshot` here is a STRICT SUBSET of `PortalLookupSnapshot`
+ * (TicketPortalSnapshot below) — no per-user lifecycle bits like
+ * status/jobId/overridden. Each appeal still owns its own
+ * `appeals.portal_lookup` which adds those per-user overlays.
+ *
+ * UNIQUE (council_slug, normalised pcn_ref) is enforced via a
+ * functional index in migration 0017 (the SQL UNIQUE keyword alone
+ * can't normalise on insert).
+ */
+export const tickets = pgTable(
+  "tickets",
+  {
+    id: text("id").primaryKey(), // `t_` + 16-char nanoid
+    councilSlug: text("council_slug")
+      .notNull()
+      .references(() => councils.slug),
+    /** Normalised: uppercase, whitespace-stripped. The functional
+     *  unique index uses `upper(regexp_replace(pcn_ref, '\s+', ''))`
+     *  to enforce this at the DB level too. */
+    pcnRef: text("pcn_ref").notNull(),
+    /** Normalised: uppercase, whitespace-stripped. */
+    vehicleReg: text("vehicle_reg").notNull(),
+    /** Council-record fields — backfilled from `appeals.ticket` jsonb
+     *  the first time this ticket is created. Updated when the portal
+     *  lookup returns authoritative metadata. */
+    issuer: text("issuer"),
+    contraventionCode: text("contravention_code"),
+    contraventionDescription: text("contravention_description"),
+    issuedAt: timestamp("issued_at", { withTimezone: true }),
+    location: text("location"),
+    amountPence: integer("amount_pence"),
+    /** Shared portal snapshot — TicketPortalSnapshot shape (no
+     *  per-user status/jobId). Null until first successful lookup. */
+    portalSnapshot: jsonb("portal_snapshot").$type<TicketPortalSnapshot | null>(),
+    /** When the snapshot above was captured (used by the verdict-aware
+     *  TTL gate in `lib/server/tickets.ts:getCachedSnapshot`). */
+    portalSnapshotAt: timestamp("portal_snapshot_at", { withTimezone: true }),
+    /** 'deterministic' (Lambeth recipe etc.) | 'cli' (Claude MCP). */
+    portalSnapshotSource: text("portal_snapshot_source"),
+    /** Cost of the lookup that produced the current snapshot.
+     *  Denormalised for cheap "$ saved by cache" reporting — full
+     *  audit lives on `ai_calls`. */
+    portalSnapshotCostUsd: numeric("portal_snapshot_cost_usd"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("tickets_vehicle_reg_idx").on(t.vehicleReg),
+    index("tickets_council_idx").on(t.councilSlug),
+  ],
+);
+
+/** Subset of `PortalLookupSnapshot` that's safe to share across users.
+ *
+ *  Stripped vs the per-appeal type:
+ *   - `status` — that's per-user lifecycle (pending/verified/overridden)
+ *   - `jobId`  — that's a per-appeal worker reference
+ *
+ *  Adds:
+ *   - `source` — denormalised provenance ('deterministic' | 'cli')
+ *
+ *  When `getCachedSnapshot` returns this, the caller constructs a
+ *  fresh `PortalLookupSnapshot` for the NEW appeal with `jobId: null`
+ *  and a status derived from the verdict ('verified' for open,
+ *  'invalid' for paid/closed/not_found). Never copy A's status/jobId
+ *  to B. */
+export interface TicketPortalSnapshot {
+  verdict: PortalLookupVerdict;
+  verdictReason?: string;
+  photoUrls: string[];
+  metadata?: PortalLookupSnapshot["metadata"];
+  fetchedAt: string;
+  source: "deterministic" | "cli";
+}
+
+/* ───── ticket_normalisation_audit (v0.3.12) ─────
+ *
+ * Append-only audit log for the backfill + ongoing cache writes.
+ * Powers two things:
+ *   1. Proving the migration didn't silently lose data (any backfill
+ *      collision where one OCR'd ticket row was discarded in favour
+ *      of another logs a 'created_collision_loser' entry — manually
+ *      review before greenlighting prod migrate).
+ *   2. Cost-savings reporting — every cache hit logs a 'cache_hit'
+ *      entry, joinable with `ai_calls` to compute "$ saved this week".
+ *
+ * Also captures `'snapshot_drift'` from the Step 2.5 shadow validation
+ * window (cache hit + parallel real lookup; mismatches logged so TTL
+ * tuning bugs surface before users see stale verdicts).
+ */
+export const ticketNormalisationAudit = pgTable(
+  "ticket_normalisation_audit",
+  {
+    id: text("id").primaryKey(), // `tna_` + 16-char nanoid
+    /** 'created' | 'promoted' | 'cache_hit' | 'snapshot_drift'
+     *  | 'created_collision_loser' | 'merge_ticket_id_conflict'. */
+    event: text("event").notNull(),
+    ticketId: text("ticket_id").references(() => tickets.id, {
+      onDelete: "set null",
+    }),
+    /** No FK — appeals may be merged-and-deleted; we want the audit row
+     *  to survive that cleanup so cost-savings totals stay correct. */
+    appealId: text("appeal_id"),
+    /** Event-specific payload — see the helpers in lib/server/tickets.ts. */
+    details: jsonb("details"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("ticket_norm_audit_event_idx").on(t.event),
+    index("ticket_norm_audit_ticket_idx").on(t.ticketId),
+    index("ticket_norm_audit_created_idx").on(t.createdAt),
+  ],
+);
 
 /**
  * Inbound mail from councils. Per-appeal alias is `<appeal-id>@appeals.parkingrabbit.com`;
