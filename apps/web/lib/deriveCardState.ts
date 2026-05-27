@@ -332,6 +332,37 @@ export function deriveCardState(
     });
   }
 
+  // ----- 3.z — v0.3.11. OCR finished but missed a required field
+  //         (pcnRef and/or vehicleReg). Distinguishable from 3.y because
+  //         enough of the photo READ (2+ critical fields recovered) that
+  //         it's clearly a parking ticket — just a low-confidence read on
+  //         the bits we need to validate against the council portal.
+  //
+  //         Previously this state fell through to `processing` ("Reading
+  //         your PCN…") and stayed there forever because nothing else
+  //         could advance the flow. The card now surfaces image_unclear
+  //         (which the FailureActions component already renders with
+  //         Retake / Choose another / Enter manually buttons) — the
+  //         user has a forward path. -----
+  if (
+    isPreLookup &&
+    !ocrRunning &&
+    ocrStep?.status === "done" &&
+    (!appeal.ticket?.pcnRef || !appeal.ticket?.vehicleReg)
+  ) {
+    return finalize({
+      kind: "image_unclear",
+      pillLabel: "Action needed",
+      pillTone: "warn",
+      caption: "We couldn't read this PCN clearly.",
+      progress: null,
+      inFlight: false,
+      stage,
+      canAppeal,
+      isEscalated,
+    });
+  }
+
   if (
     isPreLookup &&
     (ocrRunning || !appeal.ticket?.pcnRef || !appeal.ticket?.vehicleReg)
