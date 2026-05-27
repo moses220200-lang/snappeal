@@ -77,8 +77,34 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // v0.3.11 — `closed` latch makes the SSE teardown idempotent.
+      //
+      // The client uses fire-and-forget `void fetch` (TicketCard's draft-
+      // kickoff watcher) and pulls the result via a separate poll loop
+      // on the appeal row. That means the SSE connection often dies
+      // before we finish sending the cosmetic 80-char chunk stream
+      // (idle browser, tab nav, network blip). Without this latch,
+      // `controller.enqueue` throws "Invalid state: Controller is
+      // already closed" mid-loop, which bubbles to the outer catch,
+      // which calls `send("error", ...)` → throws AGAIN, then
+      // `finally` runs `controller.close()` → throws AGAIN. Each layer
+      // muddies the logs and risks aborting downstream cleanup
+      // (recordAiCall, setProcessingStep, etc.).
+      //
+      // Letter persistence (`attachDraftToAppeal`) and the `processing
+      // .draft.status = "done"` flag both happen BEFORE the chunk loop,
+      // so a closed controller is now genuinely cosmetic — the data the
+      // client cares about is already durable.
+      let closed = false;
       const send = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(sseFrame(event, data)));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(sseFrame(event, data)));
+        } catch {
+          // Underlying socket / controller is gone (client disconnect).
+          // Mark closed so subsequent sends silently no-op.
+          closed = true;
+        }
       };
 
       // Hoisted so the catch can flag the row if generation throws mid-flight.
@@ -97,7 +123,7 @@ export async function POST(request: Request) {
           const existing = await getAppealById(appealId);
           if (!existing) {
             send("error", { message: `Appeal ${appealId} not found` });
-            controller.close();
+            try { controller.close(); closed = true; } catch { closed = true; }
             return;
           }
           // v0.3.7 — in-flight guard. The draft-kickoff useEffect in
@@ -130,7 +156,7 @@ export async function POST(request: Request) {
               message:
                 "Drafting already in flight for this appeal; not starting a duplicate.",
             });
-            controller.close();
+            try { controller.close(); closed = true; } catch { closed = true; }
             return;
           }
           // Claim the lane (also bumps updatedAt as our in-flight timestamp).
@@ -271,7 +297,14 @@ export async function POST(request: Request) {
         }
         send("error", { message });
       } finally {
-        controller.close();
+        if (!closed) {
+          try {
+            controller.close();
+          } catch {
+            /* underlying controller already torn down — no-op */
+          }
+          closed = true;
+        }
       }
     },
   });

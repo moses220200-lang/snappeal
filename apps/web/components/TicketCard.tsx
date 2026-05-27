@@ -929,12 +929,40 @@ export function TicketCard({
         evidencePhotos,
         confirmedTicket: appeal.ticket ?? undefined,
       }),
-    }).catch(() => {
-      // Soft failure — the drafting-state poll will surface
-      // step === "generation_failed" if the server side errors. We let
-      // the user retry there rather than ringing alarms inline.
-      draftKickedOffRef.current = null;
-    });
+    })
+      .catch(() => {
+        // Soft failure — the drafting-state poll will surface
+        // step === "generation_failed" if the server side errors. We let
+        // the user retry there rather than ringing alarms inline.
+        draftKickedOffRef.current = null;
+      })
+      .finally(() => {
+        // v0.3.11 — backstop refetch.
+        //
+        // The fetch promise settles when the server closes the SSE
+        // stream — which is AFTER `attachDraftToAppeal` has already
+        // persisted `letterBody`. The 3 s poll loop above usually
+        // catches that on its next tick, but a handful of legit paths
+        // can terminate the poll early:
+        //   - cardState.kind transitions out of "drafting" because of
+        //     a concurrent state change.
+        //   - fetchAppealRow returned 404 (e.g. mergeDuplicateDraftIfAny
+        //     folded this row into an older one).
+        //   - the poll already hit its 180 s cap.
+        // In every one of those cases the letter IS in the DB; the UI
+        // just doesn't know yet. A one-shot refetch here guarantees
+        // the card flips to letter_ready as soon as the SSE response
+        // closes, even when the cosmetic 80-char chunk loop on the
+        // server died with "Controller is already closed".
+        void (async () => {
+          try {
+            const fresh = await fetchAppealRow();
+            if (fresh) refreshAppeal(fresh);
+          } catch {
+            /* poll loop will retry the next tick */
+          }
+        })();
+      });
   }, [
     appeal.id,
     appeal.step,
