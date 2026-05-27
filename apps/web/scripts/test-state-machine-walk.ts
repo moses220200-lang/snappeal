@@ -43,6 +43,7 @@ import { deriveCardState, EVIDENCE_DONE_STEP, TICKET_CONFIRMED_STEP } from "../l
 import { setProcessingStep, type AppealRecord } from "../lib/server/appeals";
 import { getDb, schema } from "../lib/server/db/client";
 import type { TicketStatusSnapshot } from "../lib/server/connectors/types";
+import type { PortalLookupSnapshot } from "../lib/server/db/schema";
 
 const BASE = process.env.PARKINGRABBIT_BASE ?? "http://127.0.0.1:3001";
 const SESSION = `walker_${Date.now()}`;
@@ -118,7 +119,7 @@ const FULL_TICKET = {
 
 const OCR_SNAPSHOT: TicketStatusSnapshot = {
   stage: "appeal_open",
-  status: "open",
+  status: "unpaid",
   canAppeal: true,
   canPay: true,
   paidAt: null,
@@ -194,7 +195,7 @@ async function main() {
       metadata: {},
       photos: [],
       sourceUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
-    } as unknown as typeof schema.appeals.portalLookup,
+    } as PortalLookupSnapshot,
   });
   a = await get(id);
   assertKind("7. validating", deriveCardState(a, null, null).kind, "validating");
@@ -209,7 +210,7 @@ async function main() {
       metadata: {},
       photos: [],
       sourceUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
-    } as unknown as typeof schema.appeals.portalLookup,
+    } as PortalLookupSnapshot,
   });
   a = await get(id);
   assertKind("8. council_lookup_failed", deriveCardState(a, null, null).kind, "council_lookup_failed");
@@ -225,7 +226,7 @@ async function main() {
       metadata: { paidAt: "2026-05-25T12:00:00.000Z" },
       photos: [],
       sourceUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
-    } as unknown as typeof schema.appeals.portalLookup,
+    } as PortalLookupSnapshot,
   });
   a = await get(id);
   assertKind("9. appeal_not_possible", deriveCardState(a, null, null).kind, "appeal_not_possible");
@@ -240,7 +241,7 @@ async function main() {
       metadata: {},
       photos: [],
       sourceUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
-    } as unknown as typeof schema.appeals.portalLookup,
+    } as PortalLookupSnapshot,
     step: TICKET_CONFIRMED_STEP, // not yet EVIDENCE_DONE_STEP
   });
   a = await get(id);
@@ -285,7 +286,7 @@ async function main() {
       metadata: {},
       photos: [],
       sourceUrl: "https://pcnevidence.lambeth.gov.uk/pcnonline/challenge.php",
-    } as unknown as typeof schema.appeals.portalLookup,
+    } as PortalLookupSnapshot,
   });
   a = await get(paidId);
   const paidSnap: TicketStatusSnapshot = { ...OCR_SNAPSHOT, stage: "paid", canAppeal: false, canPay: false };

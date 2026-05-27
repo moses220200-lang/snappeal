@@ -154,6 +154,12 @@ export interface AppealRecord {
    *  typed ticket fields) continues to live in `appeals.ticket`
    *  jsonb — never overwritten by the shared cache. */
   ticketId: string | null;
+  /** v0.3.12 — populated via LEFT JOIN tickets when ticketId is set.
+   *  This is the SHARED council record — the same view every other
+   *  user looking at the same PCN sees. UI continues to read
+   *  `appeal.ticket` for display (per-user authority); consumers that
+   *  want the canonical / latest portal snapshot read this. */
+  canonicalTicket: CanonicalTicketView | null;
   createdAt: string;
   updatedAt: string;
   /** Latest queued/running job for this appeal, used by the smart ticket
@@ -180,10 +186,67 @@ export interface AppealRecord {
 type CouncilDisplay = { logoUrl: string | null; logoBg: string | null };
 type ActiveJob = { id: string; kind: JobKind };
 
+/** What we expose from a joined `tickets` row. Strict subset of the
+ *  full Drizzle row type — strips internal timestamps the API doesn't
+ *  need to surface and re-shapes Date → ISO string for JSON safety.
+ *
+ *  `portalSnapshot` here is the SHARED `TicketPortalSnapshot` — no
+ *  per-user status/jobId. Different from `appeal.portalLookup`. */
+export interface CanonicalTicketView {
+  id: string;
+  councilSlug: string;
+  pcnRef: string;
+  vehicleReg: string;
+  issuer: string | null;
+  contraventionCode: string | null;
+  contraventionDescription: string | null;
+  issuedAt: string | null;
+  location: string | null;
+  amountPence: number | null;
+  portalSnapshot: import("./db/schema").TicketPortalSnapshot | null;
+  portalSnapshotAt: string | null;
+  portalSnapshotSource: string | null;
+}
+
+function ticketToView(
+  row: typeof schema.tickets.$inferSelect,
+): CanonicalTicketView {
+  return {
+    id: row.id,
+    councilSlug: row.councilSlug,
+    pcnRef: row.pcnRef,
+    vehicleReg: row.vehicleReg,
+    issuer: row.issuer,
+    contraventionCode: row.contraventionCode,
+    contraventionDescription: row.contraventionDescription,
+    issuedAt: row.issuedAt ? row.issuedAt.toISOString() : null,
+    location: row.location,
+    amountPence: row.amountPence,
+    portalSnapshot: (row.portalSnapshot as import("./db/schema").TicketPortalSnapshot | null) ?? null,
+    portalSnapshotAt: row.portalSnapshotAt ? row.portalSnapshotAt.toISOString() : null,
+    portalSnapshotSource: row.portalSnapshotSource,
+  };
+}
+
+async function loadTicketMap(
+  ids: Array<string | null>,
+): Promise<Map<string, CanonicalTicketView>> {
+  const distinct = Array.from(
+    new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0)),
+  );
+  if (distinct.length === 0) return new Map();
+  const rows = await db()
+    .select()
+    .from(schema.tickets)
+    .where(inArray(schema.tickets.id, distinct));
+  return new Map(rows.map((r) => [r.id, ticketToView(r)]));
+}
+
 function toRecord(
   row: typeof schema.appeals.$inferSelect,
   council?: CouncilDisplay | null,
   activeJob?: ActiveJob | null,
+  canonicalTicket?: CanonicalTicketView | null,
 ): AppealRecord {
   return {
     id: row.id,
@@ -209,6 +272,7 @@ function toRecord(
     councilLogoUrl: council?.logoUrl ?? null,
     councilLogoBg: council?.logoBg ?? null,
     ticketId: row.ticketId ?? null,
+    canonicalTicket: canonicalTicket ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     activeJobId: activeJob?.id ?? null,
@@ -303,14 +367,16 @@ export async function createAppeal(input: CreateAppealInput): Promise<AppealReco
 export async function getAppealById(id: string): Promise<AppealRecord | null> {
   const rows = await db().select().from(schema.appeals).where(eq(schema.appeals.id, id));
   if (!rows[0]) return null;
-  const [councilMap, jobMap] = await Promise.all([
+  const [councilMap, jobMap, ticketMap] = await Promise.all([
     loadCouncilDisplayMap([rows[0].councilSlug]),
     loadActiveJobMap([rows[0].id]),
+    loadTicketMap([rows[0].ticketId]),
   ]);
   return toRecord(
     rows[0],
     rows[0].councilSlug ? councilMap.get(rows[0].councilSlug) : null,
     jobMap.get(rows[0].id) ?? null,
+    rows[0].ticketId ? ticketMap.get(rows[0].ticketId) ?? null : null,
   );
 }
 
@@ -332,15 +398,17 @@ export async function listAppealsForViewer(opts: {
     .from(schema.appeals)
     .where(conditions)
     .orderBy(desc(schema.appeals.createdAt));
-  const [councilMap, jobMap] = await Promise.all([
+  const [councilMap, jobMap, ticketMap] = await Promise.all([
     loadCouncilDisplayMap(rows.map((r) => r.councilSlug)),
     loadActiveJobMap(rows.map((r) => r.id)),
+    loadTicketMap(rows.map((r) => r.ticketId)),
   ]);
   return rows.map((r) =>
     toRecord(
       r,
       r.councilSlug ? councilMap.get(r.councilSlug) : null,
       jobMap.get(r.id) ?? null,
+      r.ticketId ? ticketMap.get(r.ticketId) ?? null : null,
     ),
   );
 }

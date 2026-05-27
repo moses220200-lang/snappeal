@@ -169,6 +169,30 @@ export async function enqueueLookupIfAutomated(
         ageMs: cached.ageMs,
         source: cached.snapshot.source,
       });
+
+      // v0.3.12 — Step 2.5: opt-in shadow validation. When
+      // PARKINGRABBIT_CACHE_SHADOW=1, also fire a real lookup in
+      // the background. The worker's shadow branch will run the
+      // lookup but skip persistPortalLookup + dispatchAppealEvent
+      // (so this user's card stays on the fast-forwarded cached
+      // state), and instead call cacheSnapshot directly — which
+      // triggers the drift detection in lib/server/tickets.ts.
+      //
+      // Off by default. Operational tool — flip on for the prod
+      // rollout window, leave for ~48h to catch TTL bugs + council
+      // verdict changes that the cache held over. Costs ~$0.30 per
+      // shadow run; that's the trade-off for verification confidence.
+      if (process.env.PARKINGRABBIT_CACHE_SHADOW === "1") {
+        await enqueue({
+          kind: "pcn_lookup",
+          appealId,
+          payload: { appealId, shadow: true },
+          maxAttempts: 1,
+        }).catch(() => {
+          /* shadow enqueue is best-effort */
+        });
+      }
+
       return { outcome: "cached", ticketId: cached.ticketId, ageMs: cached.ageMs };
     }
   }

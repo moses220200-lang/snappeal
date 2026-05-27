@@ -299,6 +299,13 @@ async function runHandler(job: Job): Promise<unknown> {
     }
     case "pcn_lookup": {
       const appealId = String(job.payload.appealId);
+      // v0.3.12 — Step 2.5: shadow jobs run the real lookup but
+      // skip every write that would disturb the appeal whose cache
+      // hit triggered them. The verdict still flows through
+      // cacheSnapshot (which triggers drift detection in
+      // lib/server/tickets.ts), but persistPortalLookup,
+      // dispatchAppealEvent, and onVerdictConfirmed all no-op.
+      const isShadow = job.payload.shadow === true;
       const appeal = await getAppealById(appealId);
       if (!appeal) throw new Error(`Appeal ${appealId} not found`);
       if (!appeal.councilSlug) {
@@ -324,9 +331,13 @@ async function runHandler(job: Job): Promise<unknown> {
           // customer advances to Pay/appeal immediately. The agent keeps
           // capturing warden photos in the background; the final persist
           // below overwrites this with the full snapshot (incl. photos).
-          onVerdictConfirmed: async (snapshot) => {
-            await persistPortalLookup({ appealId, snapshot }).catch(() => null);
-          },
+          // Shadow runs skip this — the cache-hit consumer already saw
+          // the cached verdict and we don't want to flicker their card.
+          onVerdictConfirmed: isShadow
+            ? undefined
+            : async (snapshot) => {
+                await persistPortalLookup({ appealId, snapshot }).catch(() => null);
+              },
         });
         // Mode telemetry: the deterministic-recipe path costs $0 and
         // skips the Claude CLI entirely. We detect it by costUsd===0
@@ -385,22 +396,42 @@ async function runHandler(job: Job): Promise<unknown> {
         );
         throw err;
       }
-      await persistPortalLookup({ appealId, snapshot: lookup.snapshot });
-      // Dispatch push notification when the verdict lands. The copy
-      // entry pulls amount + days-left from the snapshot/appeal so
-      // the customer sees the actual figures (not generic copy).
-      void dispatchAppealEvent({
-        appealId,
-        event: lookup.success ? "validation_done" : "validation_failed",
-        amountPence: lookup.snapshot.metadata?.amountPence ?? null,
-        daysLeftToAppeal: daysUntil(lookup.snapshot.metadata?.dueDateAt ?? null),
-      }).catch((err) =>
-        console.warn(
-          `[worker] dispatch validation push failed for ${appealId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        ),
-      );
+      if (isShadow) {
+        // Shadow path: skip both the per-appeal write (would flicker
+        // the user's already-fast-forwarded card) AND the push
+        // dispatch (user already saw the cache-hit notification, if
+        // any). Push the result through cacheSnapshot directly to
+        // refresh the shared cache + fire drift detection in
+        // lib/server/tickets.ts:cacheSnapshot.
+        if (lookup.success && appeal.ticket?.pcnRef) {
+          const { cacheSnapshot } = await import("../tickets");
+          const sourceKind: "deterministic" | "cli" =
+            lookup.costUsd === 0 ? "deterministic" : "cli";
+          await cacheSnapshot(
+            { councilSlug: appeal.councilSlug, pcnRef: appeal.ticket.pcnRef },
+            lookup.snapshot,
+            sourceKind,
+            lookup.costUsd ?? null,
+          ).catch(() => null);
+        }
+      } else {
+        await persistPortalLookup({ appealId, snapshot: lookup.snapshot });
+        // Dispatch push notification when the verdict lands. The copy
+        // entry pulls amount + days-left from the snapshot/appeal so
+        // the customer sees the actual figures (not generic copy).
+        void dispatchAppealEvent({
+          appealId,
+          event: lookup.success ? "validation_done" : "validation_failed",
+          amountPence: lookup.snapshot.metadata?.amountPence ?? null,
+          daysLeftToAppeal: daysUntil(lookup.snapshot.metadata?.dueDateAt ?? null),
+        }).catch((err) =>
+          console.warn(
+            `[worker] dispatch validation push failed for ${appealId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+      }
       // Surface the verdict to the SSE consumer so the validating page
       // can pick its redirect target without an extra round-trip.
       return {

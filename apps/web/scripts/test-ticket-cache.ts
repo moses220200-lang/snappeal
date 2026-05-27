@@ -306,6 +306,115 @@ async function main() {
     `audit: at least one 'cache_hit' event logged (events: ${JSON.stringify(events)})`,
   );
 
+  // ── 7. canonicalTicket populated via LEFT JOIN (Step 4 LEFT JOIN) ──
+  // Re-roll the tickets row to a fresh state for the join assertion —
+  // step 5 set portalSnapshotAt 2h ago, which we don't care about
+  // for this. Re-stamp it via a real persistPortalLookup so the join
+  // reads a populated snapshot.
+  await persistPortalLookup({
+    appealId: appealAId,
+    snapshot: {
+      jobId: "job_test_join_a",
+      status: "verified",
+      verdict: "open",
+      verdictReason: "Open and challengeable — rejoin",
+      photoUrls: [],
+      metadata: { dueDateAt: "2026-06-17T23:59:59.000Z" },
+      fetchedAt: new Date().toISOString(),
+    },
+  });
+  // Re-fetch appeal A via the public API to exercise the join path.
+  const appealARes = await fetch(`${BASE}/api/appeals/${encodeURIComponent(appealAId)}`, {
+    headers: { "x-parkingrabbit-session": sessionA },
+    cache: "no-store",
+  });
+  const aDto = (await appealARes.json()) as {
+    appeal: {
+      ticketId: string | null;
+      canonicalTicket: {
+        id: string;
+        pcnRef: string;
+        portalSnapshot: { verdict: string } | null;
+      } | null;
+    };
+  };
+  assert(
+    aDto.appeal.ticketId !== null,
+    `Step 4 join: appeal A has ticketId set (got ${JSON.stringify(aDto.appeal.ticketId)})`,
+  );
+  assert(
+    aDto.appeal.canonicalTicket !== null,
+    "Step 4 join: appeal A has canonicalTicket populated from LEFT JOIN",
+  );
+  assert(
+    aDto.appeal.canonicalTicket?.pcnRef === "LX99887766",
+    `Step 4 join: canonicalTicket.pcnRef matches normalised identity (got "${aDto.appeal.canonicalTicket?.pcnRef}")`,
+  );
+  assert(
+    aDto.appeal.canonicalTicket?.portalSnapshot?.verdict === "open",
+    `Step 4 join: canonicalTicket.portalSnapshot mirrors the council read (got "${aDto.appeal.canonicalTicket?.portalSnapshot?.verdict}")`,
+  );
+
+  // ── 8. Drift detection (Step 2.5) ─────────────────────────────────
+  // Push a verdict change into the same tickets row by calling
+  // persistPortalLookup again — this time say the council closed the
+  // case (verdict='closed'). cacheSnapshot should log 'snapshot_drift'
+  // because the prior cache held verdict='open'.
+  const driftBefore = await db
+    .select({ id: schema.ticketNormalisationAudit.id })
+    .from(schema.ticketNormalisationAudit)
+    .where(eq(schema.ticketNormalisationAudit.event, "snapshot_drift"));
+  await persistPortalLookup({
+    appealId: appealAId,
+    snapshot: {
+      jobId: "job_test_drift",
+      status: "invalid",
+      verdict: "closed",
+      verdictReason: "Council has closed this PCN",
+      photoUrls: [],
+      metadata: {},
+      fetchedAt: new Date().toISOString(),
+    },
+  });
+  const driftAfter = await db
+    .select({ id: schema.ticketNormalisationAudit.id, details: schema.ticketNormalisationAudit.details })
+    .from(schema.ticketNormalisationAudit)
+    .where(eq(schema.ticketNormalisationAudit.event, "snapshot_drift"));
+  assert(
+    driftAfter.length > driftBefore.length,
+    `Step 2.5 drift: differing verdict ('open' -> 'closed') logged a 'snapshot_drift' audit row (before=${driftBefore.length}, after=${driftAfter.length})`,
+  );
+  const latestDrift = driftAfter[driftAfter.length - 1]?.details as
+    | { previousVerdict?: string; newVerdict?: string }
+    | null;
+  assert(
+    latestDrift?.previousVerdict === "open" && latestDrift?.newVerdict === "closed",
+    `Step 2.5 drift: audit details capture both verdicts (got prev="${latestDrift?.previousVerdict}", new="${latestDrift?.newVerdict}")`,
+  );
+
+  // Sanity: writing the SAME verdict back doesn't log additional drift.
+  const sameBefore = driftAfter.length;
+  await persistPortalLookup({
+    appealId: appealAId,
+    snapshot: {
+      jobId: "job_test_no_drift",
+      status: "invalid",
+      verdict: "closed",
+      verdictReason: "Council still says closed",
+      photoUrls: [],
+      metadata: {},
+      fetchedAt: new Date().toISOString(),
+    },
+  });
+  const sameAfter = await db
+    .select({ id: schema.ticketNormalisationAudit.id })
+    .from(schema.ticketNormalisationAudit)
+    .where(eq(schema.ticketNormalisationAudit.event, "snapshot_drift"));
+  assert(
+    sameAfter.length === sameBefore,
+    `Step 2.5 drift: same-verdict re-write does NOT log drift (before=${sameBefore}, after=${sameAfter.length})`,
+  );
+
   console.info(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);
 }

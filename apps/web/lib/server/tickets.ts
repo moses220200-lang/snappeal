@@ -267,8 +267,14 @@ export async function cacheSnapshot(
   // Find the ticket by identity (caller usually has the appeal's
   // ticket_id but we look up by identity to keep this callable from
   // anywhere — including a future tickets_refresh_open_verdicts job).
+  // Pull the existing snapshot alongside so we can run drift detection
+  // before the write clobbers it.
   const existing = await db
-    .select({ id: schema.tickets.id })
+    .select({
+      id: schema.tickets.id,
+      snapshot: schema.tickets.portalSnapshot,
+      snapshotAt: schema.tickets.portalSnapshotAt,
+    })
     .from(schema.tickets)
     .where(
       and(
@@ -277,7 +283,8 @@ export async function cacheSnapshot(
       ),
     )
     .limit(1);
-  const ticketId = existing[0]?.id ?? null;
+  const row = existing[0];
+  const ticketId = row?.id ?? null;
   if (!ticketId) {
     // No tickets row to update. This is a soft no-op rather than an
     // error: the appeal that triggered this lookup may not have been
@@ -285,6 +292,40 @@ export async function cacheSnapshot(
     // legacy code path). The per-appeal `appeals.portal_lookup`
     // jsonb still gets written by `persistPortalLookup`.
     return { ticketId: null };
+  }
+
+  // v0.3.12 — Step 2.5: drift detection. If the cache already held a
+  // snapshot AND its verdict differs from the incoming one, log a
+  // 'snapshot_drift' audit row with both values + the staleness.
+  // Powers two things:
+  //   - The post-prod-deploy verification window (real lookups landing
+  //     against cached values catch TTL-too-long bugs before users see
+  //     stale verdicts).
+  //   - Operational visibility: if a council reverses a verdict the
+  //     audit table tells you when + by how much.
+  //
+  // The cache-hit-mirror path in enqueueLookupIfAutomated writes the
+  // SAME snapshot back, so verdict matches and no drift is logged —
+  // that's the desired behaviour (no false positives from our own
+  // mirror).
+  const prev = row.snapshot as TicketPortalSnapshot | null;
+  if (
+    prev &&
+    prev.verdict &&
+    prev.verdict !== sanitised.verdict
+  ) {
+    const ageMs = row.snapshotAt ? Date.now() - row.snapshotAt.getTime() : null;
+    logAudit("snapshot_drift", { ticketId }, {
+      previousVerdict: prev.verdict,
+      newVerdict: sanitised.verdict,
+      previousFetchedAt: prev.fetchedAt,
+      newFetchedAt: sanitised.fetchedAt,
+      previousSource: prev.source,
+      newSource: source,
+      ageMs,
+      previousAmountPence: prev.metadata?.amountPence ?? null,
+      newAmountPence: sanitised.metadata?.amountPence ?? null,
+    });
   }
 
   await db
