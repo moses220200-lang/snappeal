@@ -259,16 +259,53 @@ export function deriveCardState(
     });
   }
 
-  // ----- 3a. Processing — appeal row exists but OCR hasn't returned
-  //         field data yet. v0.2.15 — progressive ticket creation routes
-  //         the user to the smart card the instant we have an appealId,
-  //         and the OCR / status-check / analysis pipelines fan out in
-  //         the background. The card renders inline status rows here
-  //         ("Reading PCN details…") instead of a full-screen blocker. -----
+  // ============================================================
+  //   PCN extraction state machine — the spec's named states map
+  //   onto the existing CardKind union as follows:
+  //
+  //     spec name              | CardKind          | trigger
+  //     ───────────────────────|───────────────────|──────────────────────
+  //     uploading              | (instant — no UI) | n/a — /api/appeals
+  //                            |                   |   returns synchronously
+  //     image_uploaded         | processing        | ocr.status pending
+  //     extracting             | processing        | ocr.status running
+  //     partially_extracted    | processing        | ocr running, some
+  //                            |                   |   fields landed via
+  //                            |                   |   Pass 1 (issuer)
+  //     ready_to_confirm       | pending_review    | issuer + pcnRef +
+  //                            |                   |   vehicleReg present
+  //     validating_with_council| validating        | portal lookup running
+  //     validation_complete    | needs_decision /  | portal lookup verdict
+  //                            |   letter_ready /  |   landed
+  //                            |   appeal_not_…    |
+  //     extraction_failed      | extraction_failed | ocr.status=failed AND
+  //                            |   / image_issue / |   critical fields
+  //                            |   image_unclear   |   missing
+  //
+  //   Acceptance criteria the spec asks for, implemented here:
+  //     • Never show failure while OCR is still running.
+  //       → ocrRunning short-circuits to `processing`.
+  //     • Never show failure when issuer + pcnRef + vehicleReg are
+  //       all present (regardless of OCR status — a definitive
+  //       "failed" status with all required fields means OCR's job
+  //       is materially done; the user can confirm and proceed).
+  //       → `hasAllRequired` check below short-circuits to
+  //       `pending_review` BEFORE any failure branch.
+  //     • `timeouts.ocr` (client watchdog flag) is NO LONGER a
+  //       failure trigger. The card stays in `processing` even after
+  //       the watchdog fires; the slow-OCR helper banner inside
+  //       <ReadingPCNActive> (8 s timer) provides the user-visible
+  //       escape hatch (manual entry / try another photo) without
+  //       flipping the card kind.
+  // ============================================================
   const ocrStep = appeal.processing?.ocr;
   const ocrRunning = ocrStep?.status === "running" || ocrStep?.status === "pending";
   const ocrFailed = ocrStep?.status === "failed";
-  const ocrTimedOut = !!timeouts.ocr && ocrRunning;
+  const ocrDone = ocrStep?.status === "done";
+  // `timeouts.ocr` is retained on the interface for portal lookups +
+  // any future use, but intentionally NOT consulted by the OCR
+  // failure branches below — see the acceptance-criteria block above.
+  void timeouts;
   // How many of the 4 critical PCN fields did OCR actually extract?
   // Used to disambiguate "not a PCN" from "PCN but blurry / cropped".
   const critical = [
@@ -282,30 +319,29 @@ export function deriveCardState(
     !portal &&
     !appeal.preferredMethod &&
     !appeal.letterBody;
+  // The spec's "ready_to_confirm" gate: all three council-validation
+  // anchors (issuer, PCN reference, vehicle registration) are present.
+  // When this holds, the card MUST land in `pending_review` regardless
+  // of OCR status — a late `ocr.status="failed"` can no longer drag a
+  // confirmable ticket back into the failure surface.
+  const hasAllRequired =
+    !!appeal.ticket?.issuer &&
+    !!appeal.ticket?.pcnRef &&
+    !!appeal.ticket?.vehicleReg;
 
-  // ----- 3.x — OCR failure / timeout. The pipeline can't progress
-  //         without a real read. Surface a clear "Reading failed" state
-  //         with retry / manual entry / re-upload options.
-  //
-  //         v0.3.11 — manual-entry trap guard. The failure card is only
-  //         a dead-end while the required PCN data is missing. If the
-  //         user has since supplied pcnRef + vehicleReg via
-  //         /app/manual-entry (or inline edit), we have everything we
-  //         need to proceed — fall through to pending_review so the
-  //         normal "Confirm details" + lookup flow can take over.
-  //         Belt-and-braces against any future caller that writes
-  //         ticket data without clearing processing.ocr.status.
-  //         (patchAppealDraft also clears the failed flag on its own.) -----
-  const hasManualTicketData =
-    !!appeal.ticket?.pcnRef && !!appeal.ticket?.vehicleReg;
-  if (isPreLookup && (ocrFailed || ocrTimedOut) && !hasManualTicketData) {
+  // ----- Ready to confirm — wins over both failure branches and the
+  //         processing fallthrough. This is the load-bearing fix for
+  //         the spec's "A late successful OCR result cannot be
+  //         overwritten by an older failure/timeout" acceptance
+  //         criterion: even if a stale `ocr.status="failed"` is on
+  //         the row, the presence of the three required fields means
+  //         the user has everything they need to proceed. -----
+  if (isPreLookup && hasAllRequired && appeal.step !== TICKET_CONFIRMED_STEP) {
     return finalize({
-      kind: "extraction_failed",
-      pillLabel: "Action needed",
-      pillTone: "warn",
-      caption: ocrTimedOut
-        ? "Reading is taking longer than expected — try again."
-        : "Rabbit couldn't finish reading this PCN.",
+      kind: "pending_review",
+      pillLabel: "Confirm",
+      pillTone: "info",
+      caption: "Check these details and tap Agree when they look right.",
       progress: null,
       inFlight: false,
       stage,
@@ -314,42 +350,92 @@ export function deriveCardState(
     });
   }
 
-  // ----- 3.y — OCR ran but the photo doesn't look like a PCN at all.
-  //         Heuristic: zero or one of the four critical fields came back.
-  //         (A genuine PCN photo will have at least the PCN ref AND a
-  //         vehicle reg, usually all four.) -----
-  if (isPreLookup && !ocrRunning && ocrStep?.status === "done" && critical <= 1) {
+  // ----- Confirm-tapped → validating transition. The agreeTicket
+  //         handler PATCHes step=TICKET_CONFIRMED_STEP and POSTs
+  //         /api/appeals/:id/lookup in parallel. The PATCH lands fast
+  //         (~50 ms); the lookup POST takes longer (~500 ms+) to write
+  //         portalLookup={status:"pending"}. During that race window
+  //         step is set but portalLookup is still null — without this
+  //         branch the state machine falls through pending_review's
+  //         exclusion → into the image_unclear failure branch → user
+  //         briefly sees "Couldn't read all details" on a perfectly
+  //         valid ticket. (2026-05-27 audit: this is the "second
+  //         confirm card asking again" symptom the user reported.)
+  //         Show validating with a "Starting…" caption until the
+  //         portalLookup write lands and the regular validating
+  //         branch takes over. -----
+  if (isPreLookup && hasAllRequired && appeal.step === TICKET_CONFIRMED_STEP) {
     return finalize({
-      kind: "image_issue",
-      pillLabel: "Action needed",
-      pillTone: "warn",
-      caption: "This doesn't look like a parking ticket.",
-      progress: null,
-      inFlight: false,
+      kind: "validating",
+      pillLabel: "Validating",
+      pillTone: "info",
+      caption: "Starting council check…",
+      progress: 0.1,
+      inFlight: true,
       stage,
       canAppeal,
       isEscalated,
     });
   }
 
-  // ----- 3.z — v0.3.11. OCR finished but missed a required field
-  //         (pcnRef and/or vehicleReg). Distinguishable from 3.y because
-  //         enough of the photo READ (2+ critical fields recovered) that
-  //         it's clearly a parking ticket — just a low-confidence read on
-  //         the bits we need to validate against the council portal.
+  // ----- OCR still running → processing. Per spec we NEVER enter a
+  //         failure kind while OCR is in flight; the client watchdog
+  //         no longer escalates to failure. The slow-OCR helper card
+  //         inside ReadingPCNActive offers manual entry / re-shoot
+  //         without changing the card kind. -----
+  if (isPreLookup && ocrRunning) {
+    return finalize({
+      kind: "processing",
+      pillLabel: "Processing",
+      pillTone: "info",
+      caption: "Reading your PCN…",
+      progress: 0.35,
+      inFlight: true,
+      stage,
+      canAppeal,
+      isEscalated,
+    });
+  }
+
+  // ----- OCR settled (done or failed) WITHOUT the three required
+  //         fields → one of the failure variants. Copy + recovery
+  //         affordances vary by how much we DID manage to read:
   //
-  //         Previously this state fell through to `processing` ("Reading
-  //         your PCN…") and stayed there forever because nothing else
-  //         could advance the flow. The card now surfaces image_unclear
-  //         (which the FailureActions component already renders with
-  //         Retake / Choose another / Enter manually buttons) — the
-  //         user has a forward path. -----
-  if (
-    isPreLookup &&
-    !ocrRunning &&
-    ocrStep?.status === "done" &&
-    (!appeal.ticket?.pcnRef || !appeal.ticket?.vehicleReg)
-  ) {
+  //         critical ≤ 1            → image_issue ("not a PCN")
+  //         critical ≥ 2, missing   → image_unclear / extraction_failed
+  //           one or more required  →   (the surface itself further
+  //           fields                →   softens when the issuer was
+  //                                 →   detected by Pass 1)
+  //
+  //         All three share the same recovery actions; the kind
+  //         differentiation is purely for the headline copy. -----
+  if (isPreLookup && (ocrDone || ocrFailed)) {
+    if (critical <= 1) {
+      return finalize({
+        kind: "image_issue",
+        pillLabel: "Action needed",
+        pillTone: "warn",
+        caption: "This doesn't look like a parking ticket.",
+        progress: null,
+        inFlight: false,
+        stage,
+        canAppeal,
+        isEscalated,
+      });
+    }
+    if (ocrFailed) {
+      return finalize({
+        kind: "extraction_failed",
+        pillLabel: "Action needed",
+        pillTone: "warn",
+        caption: "Rabbit couldn't finish reading this PCN.",
+        progress: null,
+        inFlight: false,
+        stage,
+        canAppeal,
+        isEscalated,
+      });
+    }
     return finalize({
       kind: "image_unclear",
       pillLabel: "Action needed",
@@ -363,43 +449,20 @@ export function deriveCardState(
     });
   }
 
+  // ----- Defensive fallthrough: appeal row exists but no OCR step
+  //         has been recorded yet (e.g., immediately after row
+  //         creation, before /api/extract has flipped status to
+  //         "running"). Show processing until the first status
+  //         write lands. -----
   if (
     isPreLookup &&
-    (ocrRunning || !appeal.ticket?.pcnRef || !appeal.ticket?.vehicleReg)
+    (!appeal.ticket?.pcnRef || !appeal.ticket?.vehicleReg)
   ) {
     return finalize({
       kind: "processing",
       pillLabel: "Processing",
       pillTone: "info",
       caption: "Reading your PCN…",
-      progress: ocrRunning ? 0.35 : null,
-      inFlight: ocrRunning,
-      stage,
-      canAppeal,
-      isEscalated,
-    });
-  }
-
-  // ----- 3b. Pending review — OCR has run, ticket fields are on the
-  //         appeal, the user hasn't tapped "Agree" yet (step is not the
-  //         confirmed sentinel). v0.3.6 — Agree is the explicit
-  //         confirmation gesture before Pay/Appeal tiles appear; the
-  //         user can also edit the PCN ref / vehicle reg / council
-  //         picker inline here if OCR misread anything. -----
-  if (
-    appeal.status === "draft" &&
-    !portal &&
-    !appeal.preferredMethod &&
-    !appeal.letterBody &&
-    appeal.ticket?.pcnRef &&
-    appeal.ticket?.vehicleReg &&
-    appeal.step !== TICKET_CONFIRMED_STEP
-  ) {
-    return finalize({
-      kind: "pending_review",
-      pillLabel: "Confirm",
-      pillTone: "info",
-      caption: "Check these details and tap Agree when they look right.",
       progress: null,
       inFlight: false,
       stage,

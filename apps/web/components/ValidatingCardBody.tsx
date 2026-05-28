@@ -38,6 +38,12 @@ interface Props {
   onProceedWithoutValidation?: () => void;
   /** Set true while the proceed-without action is in flight. */
   busy?: boolean;
+  /** 2026-05-27 — formatted ETA string (e.g. "~45s", "~1 min") sourced
+   *  from the rolling-14-day avg of successful lookup-stage ai_calls.
+   *  Renders the "we'll notify you when it's done" line under the
+   *  reassurance row. Null when we have no recent data; the surface
+   *  falls back to "usually under 2 minutes" in the bubble copy. */
+  eta?: string | null;
 }
 
 export function ValidatingCardBody({
@@ -48,6 +54,7 @@ export function ValidatingCardBody({
   liveStep,
   onProceedWithoutValidation,
   busy,
+  eta,
 }: Props) {
   const bubbleText =
     liveThought?.trim() ||
@@ -118,6 +125,16 @@ export function ValidatingCardBody({
           Pay and Appeal options will appear here once the council confirms.
         </span>
       </div>
+
+      {/* ETA + notification promise — sourced from the rolling
+       *  14-day avg of successful lookup-stage ai_calls. Suppressed
+       *  when we have no recent data (eta=null). */}
+      {eta && (
+        <p className="text-[11px] text-parkingrabbit-primary/85 leading-snug font-semibold inline-flex items-center gap-1.5">
+          <Loader2 className="size-3 animate-spin" strokeWidth={2.5} />
+          We&apos;ll notify you when it&apos;s done. Usually takes {eta}.
+        </p>
+      )}
 
       {/* Escape hatch — only render when the parent supplies a handler.
           Deliberately understated so it doesn't compete with the calm

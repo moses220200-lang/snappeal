@@ -3,9 +3,9 @@
  *
  * 1. Applies migration 0013_appeal_strength_and_kb.sql (idempotent — all
  *    columns use ADD COLUMN IF NOT EXISTS).
- * 2. Truncates the volatile tables that hold per-appeal state — appeals,
- *    appeal_photos, jobs, submissions, payments, inbound_messages — so
- *    the next E2E run starts on a clean slate.
+ * 2. Truncates the volatile tables that hold per-appeal state plus the
+ *    canonical-ticket cache so the next E2E run starts on a clean
+ *    slate.
  *
  * Reference tables (councils, council_automation), user records, and
  * subscriptions are NOT touched, so the test account + Westminster
@@ -26,6 +26,17 @@ const VOLATILE_TABLES = [
   "appeal_photos",
   "jobs",
   "appeals",
+  // 2026-05-27 — canonical-ticket cache tables (added by migration 0017,
+  // feat/ticket-normalisation). Without these in the truncate list the
+  // shared portal_snapshot cache survives an E2E reset, so the cache
+  // READ in enqueueLookupIfAutomated short-circuits the council lookup
+  // and tests of the "fresh PCN, fresh council check" path see stale
+  // verdicts from the previous run. List order matters: tickets has a
+  // FK referenced by appeals.ticket_id, but CASCADE on the TRUNCATE
+  // handles that ordering. ticket_normalisation_audit is a leaf event
+  // log so it goes last.
+  "tickets",
+  "ticket_normalisation_audit",
 ];
 
 async function main() {
@@ -52,10 +63,14 @@ async function main() {
       }
     }
 
-    // Quick sanity check — count rows in appeals (should be 0).
+    // Quick sanity check — count rows in appeals + tickets (both
+    // should be 0 post-reset), plus councils (preserved).
     const countAppeals = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM appeals`;
     const countCouncils = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM councils`;
-    console.log(`\nappeals=${countAppeals[0].count}  councils=${countCouncils[0].count}`);
+    const countTickets = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM tickets`;
+    console.log(
+      `\nappeals=${countAppeals[0].count}  tickets=${countTickets[0].count}  councils=${countCouncils[0].count}`,
+    );
     console.log("\nDB reset complete — ready for E2E.");
   } finally {
     await sql.end();

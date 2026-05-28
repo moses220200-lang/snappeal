@@ -242,6 +242,45 @@ export const appeals = pgTable(
   ],
 );
 
+/* ───── appeal_viewers — multi-user access to a shared appeal ─────
+ *
+ * 2026-05-27 — "one appeals row per canonical PCN" plumbing. When
+ * User B uploads a PCN that User A already has an appeals row for,
+ * we add B to this table as an additional viewer rather than
+ * creating a duplicate appeals row. The owner remains identified by
+ * appeals.user_id / appeals.session_id; this table tracks SECONDARY
+ * viewers.
+ *
+ * Reads via viewer.ts canViewAppeal which checks both the appeals
+ * row's owner fields AND this join table.
+ */
+export const appealViewers = pgTable(
+  "appeal_viewers",
+  {
+    appealId: text("appeal_id")
+      .notNull()
+      .references(() => appeals.id, { onDelete: "cascade" }),
+    /** Signed-in viewer's userId. Null for guests. */
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    /** Always set — distinguishes guests + scopes the PK so the
+     *  same physical user (across sign-in / sign-out) can hold one
+     *  viewer link per session. */
+    sessionId: text("session_id").notNull(),
+    joinedAt: timestamp("joined_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Composite PK matches the SQL migration. Drizzle's `pgTable`
+    // doesn't infer composite PKs from notNull alone — the column
+    // names map to the SQL-defined PRIMARY KEY (appeal_id, session_id).
+    index("appeal_viewers_user_idx").on(t.userId),
+    index("appeal_viewers_session_idx").on(t.sessionId),
+  ],
+);
+
 /* ───── jobs (Postgres-backed work queue) ─────
  *
  * Used for any work that's either expensive (Claude CLI subprocess), long
@@ -315,6 +354,15 @@ export interface ProcessingStatus {
     error?: string;
     /** Set when the OCR PATCH wrote to ticket. */
     completedAt?: string;
+    /** Unique id for the currently-active OCR run on this appeal.
+     *  Stamped by `startOcrRun()` at the top of /api/extract; checked
+     *  before each partial / final write. When a newer upload starts
+     *  a run, this id is overwritten and the older run's pending
+     *  writes silently bail (see `applyOcrPartialIfFresh` /
+     *  `applyOcrFinalIfFresh`). This is the race guard that stops a
+     *  delayed late success from being overwritten by an earlier
+     *  failure (and vice versa). */
+    runId?: string;
   };
   /** AI appeal-analysis step — recommendation card generation. */
   analysis?: {
@@ -538,14 +586,26 @@ export const inboundMessages = pgTable(
  *
  * Stage strings are deliberately free-text (not a pgEnum) so adding a
  * new stage doesn't require a migration. Known values today:
- *   - 'council_id'   — fast logo identification pass (extract route)
- *   - 'ocr'          — full PCN field extraction (extract route)
- *   - 'coach'        — photo-coach hints (extract route, optional)
- *   - 'lookup'       — pcn_lookup MCP agent (worker)
- *   - 'draft'        — letter generation (generate-stream route)
- *   - 'strength'     — appeal strength re-score (generate-stream route)
- *   - 'submit'       — submit_appeal MCP agent (worker)
+ *   - 'pcn_identify'  — fast pass-1 ID extract (council + pcnRef + reg)
+ *                       in /api/extract route. Renamed 2026-05-27 from
+ *                       'council_id' for clarity now that Pass 1 also
+ *                       returns the PCN ref + vehicle reg.
+ *   - 'pcn_extract'   — pass-2 full ticket-field extract (the actual
+ *                       OCR work) in /api/extract route. Renamed
+ *                       2026-05-27 from 'ocr' to read better next to
+ *                       its parallel sibling `photo_check`.
+ *   - 'photo_check'   — photo-legibility judgement (separate parallel
+ *                       Claude call alongside pcn_extract). Renamed
+ *                       2026-05-27 from 'coach' for clarity.
+ *   - 'lookup'        — pcn_lookup MCP agent (worker)
+ *   - 'draft'         — letter generation (generate-stream route)
+ *   - 'strength'      — appeal strength re-score (generate-stream route)
+ *   - 'submit'        — submit_appeal MCP agent (worker)
  *   - 'strengthen_notes' — rewriting raw notes into a structured prose
+ *
+ * Historical rows may carry the old stage strings (council_id / ocr /
+ * coach). The avg-duration query in `getAvgStageDurationsMs` UNIONs
+ * them so existing telemetry isn't lost.
  */
 export const aiCalls = pgTable(
   "ai_calls",
@@ -583,14 +643,21 @@ export const aiCalls = pgTable(
 );
 
 export type AiCallStage =
-  | "council_id"
-  | "ocr"
-  | "coach"
+  // New names (2026-05-27).
+  | "pcn_identify"
+  | "pcn_extract"
+  | "photo_check"
   | "lookup"
   | "draft"
   | "strength"
   | "submit"
-  | "strengthen_notes";
+  | "strengthen_notes"
+  // Legacy names — kept in the union so old ai_calls rows still
+  // type-check when read back. Writers all use the new names; if
+  // a no-longer-supported stage appears it's a historic row.
+  | "council_id"
+  | "ocr"
+  | "coach";
 
 export type AiCallMode = "cli" | "sdk";
 

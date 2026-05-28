@@ -260,13 +260,19 @@ export async function POST(request: Request) {
         // `processing` itself; this is the explicit handoff.
         await setProcessingStep(appealId, "draft", "done").catch(() => {});
 
-        // Stream the letter in 80-char chunks with a tiny delay so the UI
-        // gets a visible typing animation.
+        // Stream the letter in small chunks so the client sees it being
+        // written rather than flashed in. Pacing target ~600 chars/sec —
+        // a 1500-char letter types out in ~2.5 s, fast enough to keep
+        // the flow snappy but slow enough that the reveal reads as
+        // "the AI is writing this" rather than a 0.5 s burst. The
+        // client (TicketCard.consumeSSE → LetterPreview isStreaming)
+        // appends each chunk into the live preview body.
         const body_ = persisted.letterBody ?? "";
-        const CHUNK = 80;
+        const CHUNK = 24;
+        const DELAY_MS = 40;
         for (let i = 0; i < body_.length; i += CHUNK) {
           send("chunk", { text: body_.slice(i, i + CHUNK) });
-          await new Promise((r) => setTimeout(r, 30));
+          await new Promise((r) => setTimeout(r, DELAY_MS));
         }
 
         send("done", {

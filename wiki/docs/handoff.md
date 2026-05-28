@@ -1,30 +1,33 @@
 # Context handoff
 
-**Read this first if you're picking up ParkingRabbit cold.** Last refreshed **2026-05-27 (v0.3.10)**.
+**Read this first if you're picking up ParkingRabbit cold.** Last refreshed **2026-05-28 (v0.3.13)**.
 
 A web app + PWA that helps Londoners challenge a Penalty Charge Notice in a few taps. The customer scans the ticket; the AI reads it + the council portal; for £2.99 a paid appeal is drafted and submitted end-to-end with live transparency. This page is the consolidated current-state snapshot. Long-form session-by-session entries from v0.2.x → v0.3.7 live in [`archive.md`](archive.md). For the story behind a specific decision, `git log -- wiki/docs/handoff.md`.
 
 ## Stack at a glance
 
 - **App**: Next.js 16 App Router + TypeScript, deployed at `apps/web/`. Dev server on `:3001`.
-- **DB**: Postgres (Drizzle ORM). Local dev: `docker compose` → `127.0.0.1:5544`. Schema at `apps/web/lib/server/db/schema.ts`. 17 migrations applied (`0000`–`0016`).
+- **DB**: Postgres (Drizzle ORM). Local dev: `docker compose` → `127.0.0.1:5544`. Schema at `apps/web/lib/server/db/schema.ts`. 19 migrations applied (`0000`–`0018`).
 - **Object storage**: Vercel Blob in prod (`BLOB_READ_WRITE_TOKEN`). Dev fallback writes to `apps/web/public/dev-blobs/`.
 - **Auth**: HS256 JWT, hand-rolled (no dep), in an httpOnly cookie `parkingrabbit.token`. pbkdf2-sha256 (210,000 iters), 30-day TTL. Guest sessions identified by `x-parkingrabbit-session` header from `sessionStorage`. Sign-in claims guest sessionId onto userId.
 - **AI**: Claude Code CLI in headless mode (`-p --output-format json|stream-json`). NO Anthropic SDK — the CLI uses the developer's OAuth login (or `ANTHROPIC_API_KEY` + `--bare`). Wrapper at `apps/web/lib/server/claude-cli.ts` exposes `runStructured` (Zod-validated one-shot) and `runAgentic` (with MCP tools). Default model: **`claude-sonnet-4-6`** — override via `CLAUDE_MODEL`.
 - **Browser automation**: `@playwright/mcp` via `npx`, driven by Claude. Each council lookup or submission gets its own ephemeral workDir + Chrome profile.
 - **Job queue**: Postgres-backed (`jobs` table) with `FOR UPDATE SKIP LOCKED`. Worker boots in-process via Next.js `instrumentation.ts` → `startWorker()`. Slots: 2 × `submit_appeal`, 3 × `pcn_lookup`, 1 × `generate_draft`. Stale-lock recovery on 5 min cutoff. Backoff: 30 s, 2 min, 5 min. `jobs.appeal_id` deliberately has **no FK** — jobs can outlive deleted appeals (the merge sweep handles that explicitly).
 - **Notifications**: web-push dispatcher (`lib/server/push.ts`) with 410-Gone cleanup. `dispatchAppealEvent` per-event orchestrator + COPY registry. Every dispatch attempt — including no-ops (toggle off / no subscription / send failed) — writes one row to `notification_dispatches` (migration 0016) so admins can answer "why wasn't user X notified?".
-- **Cost telemetry**: `ai_calls` table (migration 0015) — one row per Claude invocation with stage (`council_id` / `ocr` / `lookup` / `draft` / `strength` / `submit` / `strengthen_notes`), model, mode (`cli` / `sdk` / `deterministic`), input/output/cache tokens, costUsd, durationMs, ok, errorKind. Legacy `appeals.model_used` + `appeals.cost_pence_millis` columns dropped — read from `ai_calls` instead.
+- **Cost telemetry**: `ai_calls` table (migration 0015) — one row per Claude invocation with stage (`pcn_identify` / `pcn_extract` / `photo_check` / `lookup` / `draft` / `strength` / `submit` / `strengthen_notes`; legacy strings `council_id` / `ocr` / `coach` survive in historic rows), model, mode (`cli` / `sdk` / `deterministic`), input/output/cache tokens, costUsd, durationMs, ok, errorKind. Legacy `appeals.model_used` + `appeals.cost_pence_millis` columns dropped — read from `ai_calls` instead. `GET /api/stats/avg-durations` (added v0.3.13) returns rolling-14-day avg `duration_ms` per stage; the smart card's validating / drafting / submitting bubbles surface this as "We'll notify you when it's done. Usually takes ~Xs."
 - **Payments**: Stripe PaymentIntent for the £2.99 appeal. Care Plan (£9.99/mo) subscription scaffold present but in waitlist mode — webhook wiring pending, not yet billable.
 
 ## Current product flow
 
 1. **Scan** → `/app/scan` shows three buttons (Camera / Upload / Input manually). Tap one → `uploadPcn()` creates an appeal row, PATCHes the photo, fires `/api/extract`, redirects to `/app/tickets?expand=<id>`.
-2. **OCR runs in TWO passes** (`/api/extract`):
-   - **Pre-pass** (`identifyCouncil()`) — ~2 s. Returns `{issuer, councilSlug}`. PATCHed onto the appeal mid-request so the `IssuerLogoReel` lands on the correct council logo while the full extract is still running.
-   - **Full extract** (`extractTicket()`) — ~10–15 s. Returns the rest: pcnRef, vehicleReg, contraventionCode, location, amountPence, dates **AND** the photo-coach verdict (quality / advice / issues) inline. **v0.3.10 consolidation**: the coach used to be a second parallel Claude call; it's now a single combined vision call (~$0.075 per upload, down from ~$0.129). Coach output is parsed with `.catch(...).default(...)` so a malformed coach block never fails the whole extract — the ticket + confidence still flow through.
-   - **Post-OCR**: `mergeDuplicateDraftIfAny(appealId)` runs. If the same viewer already owns an older draft for the same `(pcnRef, vehicleReg)` (post-confirm rows are excluded), the duplicate is folded into the older row in one transaction (FK sweep for `jobs`, `payments`, `notification_dispatches`; the rest cascade). The response surfaces `mergedInto` and the client repoints its `currentAppealId`.
-   - `patchAppealDraft({ ticket })` now **merges field-by-field**, not wholesale-replace — empty-string values from a pass don't erase fields a prior pass already stamped (this was the bug where Pass 2 would wipe Pass 1's councilSlug if its extract came back blank).
+2. **OCR runs in TWO passes + a parallel coach** (`/api/extract`):
+   - **Pass 1** (`identifyCouncil()`) — ~7 s on Sonnet. Returns `{issuer, councilSlug, pcnRef, vehicleReg, confidence}`. PATCHed onto the appeal mid-request so the `IssuerLogoReel` lands on the correct council logo while the full extract is still running. **v0.3.13**: also returns `pcnRef + vehicleReg` so a canonical-ticket lookup can short-circuit Pass 2 entirely when a fresh row already exists for the PCN.
+   - **Canonical short-circuit (v0.3.13)** — after Pass 1, `findCanonicalTicket(councilSlug, pcnRef)` is consulted. If a canonical row exists AND its portal snapshot is still fresh, Pass 2 + coach are SKIPPED. Saves ~$0.10 + ~20 s per duplicate upload. If the canonical row belongs to ANOTHER user/session, `dedupAsCrossUserViewer()` instead links the current user as a viewer of the owner's appeal + DELETES the just-created appeals row — see "Appeals consolidation" below.
+   - **Pass 2** (`extractTicket()`) — ~19 s on Sonnet (down from 52 s pre-v0.3.13). Schema trimmed to just `Ticket` (no per-field confidence, no contraventionDescription) so output tokens dropped ~10×. EXTRACT_PROMPT compressed from ~1500 to ~400 tokens. **Haiku 4.5 was tried + reverted** — it misread digits (LJ39952021 → LJ30052021, PN65LBU → PN85LBU); Sonnet's depth matters for pixel-level digit disambiguation.
+   - **Coach** (`coachPhoto()`) — ~19 s on Sonnet, runs IN PARALLEL with Pass 2 via `Promise.all`. Wall-clock = max(extract, coach), not sum. Stage name in `ai_calls`: `photo_check` (renamed from `coach` v0.3.13).
+   - Total `/api/extract` wall-clock: **~26 s fresh** / **~7 s on canonical-fresh dup** (was ~59 s pre-v0.3.13).
+   - **Post-OCR same-user dedup**: `mergeDuplicateDraftIfAny(appealId)` runs when the user re-uploads the same PCN. Folds into the older draft in one transaction (FK sweep for `jobs`, `payments`, `notification_dispatches`; the rest cascade). The response surfaces `mergedInto` and the client repoints `currentAppealId`.
+   - **`/api/extract` race guard (v0.3.x)**: each call generates a `runId` via `startOcrRun`; partial + final writes go through `applyOcrPartialIfFresh` / `applyOcrFinalIfFresh` which re-read the row and bail when a newer run has taken over. A late failure response can never overwrite a fresh success. Ticket writes use "fill empty only" merge — once a field has a value (user-edit, manual entry, prior pass), OCR cannot clobber it. Explicit retries via `retryOcrWithPhoto()` clear the OCR-extracted fields inside `startOcrRun` so a new photo can correct a previous wrong read.
 3. **Pending review** — card shows editable PCN ref + vehicle reg + council picker. If OCR returned `amountPence=0` or `issuedAt=""`, conditional inputs appear (gated by a `touched` ref so the council can backfill them quietly if the user never typed; but once typed, the input stays mounted regardless). The user hits **Confirm & validate with council** → step is stamped `ticket_confirmed` AND `/api/appeals/[id]/lookup` is POSTed (with `x-parkingrabbit-session` so guests aren't 403'd). Card flips to `validating`.
 4. **Lookup** — `enqueueLookupIfAutomated()` enqueues a `pcn_lookup` job with two-layer idempotency:
    - **Layer 1**: any existing queued/running `pcn_lookup` for this appeal → return that jobId.
@@ -66,6 +69,98 @@ Full enumeration + the derive ladder lives in `lib/deriveCardState.ts`. Per-kind
 `claude-sonnet-4-6` is the default for every stage (council_id, ocr, lookup MCP, draft, strength, submission MCP, strengthen_notes). Override via `CLAUDE_MODEL`. All calls go through `lib/server/claude-cli.ts` — single entry point. Per-call attribution lands in `ai_calls.model` so a future model split per stage is a config change, not a code one.
 
 ## Recent milestones (newest first)
+
+### v0.3.13 (2026-05-27 → 2026-05-28)
+
+A very long iterative session covering speed, UX merges, the appeals-row consolidation, and the cross-user canonical reuse. Verified end-to-end via mobile MCP Playwright with the live Lambeth ticket. Branch: `feat/ticket-normalisation`. Uncommitted at end of session — handoff carries a `git status` + open-tasks pointer for the resumer.
+
+#### Strand A — `/api/extract` rewritten for speed + correctness
+
+OCR wall-clock dropped from **~59 s to ~26 s** (fresh upload) / **~7 s** (canonical-fresh duplicate), without a correctness regression.
+
+- **Pass 1 (`identifyCouncil`) extended** to return `pcnRef + vehicleReg` alongside the council. Output schema grew by 2 string fields (~+1 s); enables the canonical short-circuit below.
+- **Pass 2 (`extractTicket`) schema trimmed**: per-field `confidence` block dropped (no UI consumer remained after the form refactor); `contraventionDescription` dropped (long-form prose was the biggest single output field; portal lookup fills it in later). EXTRACT_PROMPT compressed from ~1500 to ~400 input tokens.
+- **Photo-coach un-merged** into `coachPhoto()` (separate Claude call) and run IN PARALLEL with Pass 2 via `Promise.all`. Wall-clock = `max(extract, coach)` instead of sum. The v0.3.10 merge was undone deliberately: it dropped cost but bloated the combined schema to ~500 output tokens, serialising the work into one slow call.
+- **Haiku 4.5 attempted + reverted** for Pass 2. It saved ~25 s but misread digits on a real Lambeth ticket (`LJ39952021 → LJ30052021`, `PN65LBU → PN85LBU` — the 9↔0 / 6↔8 confusion). Pixel-level digit disambiguation needs Sonnet's depth. The comment in `ai.ts:extractTicket` records the attempt + reason for the revert.
+- **Canonical short-circuit when fresh**: after Pass 1, `findCanonicalTicket(council, pcnRef)` is consulted. If a fresh canonical row exists, Pass 2 + coach are skipped entirely and the canonical data is written via `applyOcrFinalIfFresh`. Saves ~$0.10 + ~20 s per duplicate upload.
+- **Run-id race guard** added in v0.3.x and untouched here: `startOcrRun` stamps a unique `runId` on `processing.ocr`; every later write goes through `applyOcrPartialIfFresh` / `applyOcrFinalIfFresh` which re-read the row and bail when the runId has been superseded by a newer upload. Closes the "late failure overwrites success" class of bug.
+- **`ai_calls.stage` rename**: `council_id` → `pcn_identify`, `ocr` → `pcn_extract`, `coach` → `photo_check`. The `AiCallStage` type union still includes the legacy strings so historic rows type-check; new writes use the new names.
+
+#### Strand B — Appeals-row consolidation: one row per canonical PCN
+
+The hypothesis the user pushed for: when User B uploads a PCN that User A already has an appeals row for, link B as a viewer of A's appeal instead of spawning a duplicate. Single record per `(council, pcnRef)`.
+
+- **Migration 0018** creates `appeal_viewers (appeal_id, user_id, session_id, joined_at)` with PK `(appeal_id, session_id)`. Owner stays on `appeals.user_id` / `appeals.session_id`; the join table tracks SECONDARY viewers.
+- **`linkAsViewer(appealId, userId, sessionId)`** (`lib/server/viewer.ts`) — idempotent INSERT … ON CONFLICT DO NOTHING.
+- **`resolveAccess(viewer, appeal, sessionId)` → `"owner" | "shared" | "none"`** — async version of `canViewAppeal`. Admins always `"owner"`. Owner check is the same sync logic; falls through to a join-table query for shared access. `canViewAppeal` (sync) stays in place for code paths that only care about owner status (e.g. PATCH gate — shared viewers cannot mutate).
+- **`dedupAsCrossUserViewer(newAppealId, canonicalTicketId)`** in `lib/server/appeals.ts` — finds the OLDEST OTHER appeals row for the canonical ticket, links the current user as a viewer, DELETES the just-created appeals row (the FK cascade drops `appeal_photos`/`jobs`/`ai_calls`/etc tied to it), returns `{mergedInto}`. Skips when the only existing row belongs to the same user/session — that's the case `mergeDuplicateDraftIfAny` already handles.
+- **`/api/extract` wires the dedup** right after Pass 1's canonical-lookup. If `dedup` returns non-null, the response includes `mergedInto + crossUserDedup: true` and the client repoints its `currentAppealId`.
+- **`listAppealsForViewer`** extended to OR-union shared appeals (via a join on `appeal_viewers`) with owned appeals. Per-row `isViewerOnly` is computed by checking whether the row's `id` was in the owned set.
+- **`toRecord`** redacts owner-only fields when `isViewerOnly` (letter body / subject / word count / addressedTo, grounds, notes, active job ids, strength score + rationale + improvements, knowledge pack, reply email). The canonical ticket data (issuer, pcnRef, vehicleReg, contraventionCode, issuedAt, location, amountPence) and portal verdict stay visible — they're public facts about the PCN. Exported `redactAppealForViewer` for routes that already have an `AppealRecord` and want the same redaction without an extra DB round-trip.
+- **`/api/appeals/[id]` GET** uses `resolveAccess`. Owner gets the full payload; shared viewer gets `redactAppealForViewer(appeal)`; none returns 403. PATCH stays owner-only via `canViewAppeal`.
+- **`SharedViewerBody`** (`components/TicketCardBody.tsx`) — early-out at the top of the body switch when `appeal.isViewerOnly`. Renders a "Shared with you" banner + a read-only canonical-fields summary (council, PCN ref, registration, council verdict, status). No edit form, no Confirm button, no Pay/Appeal tiles.
+- **`TicketCard`** gates the Delete button + lifecycle-step children (which carry Retake / Choose-another / Manual-entry buttons) on `!isViewerOnly`.
+- **Verified end-to-end via MCP**: User A uploads → 1 appeal + 1 ticket. Session storage cleared (simulating User B as a different guest) → upload SAME ticket → DB has 1 appeal + 1 ticket + 1 viewer link. User B's UI shows the "Shared with you" banner + canonical fields, no controls. See `final-10-shared-viewer.png` / `final-11-shared-viewer-after-reload.png`.
+
+#### Strand C — Phase 2 cross-user canonical reuse (the foundation)
+
+Shipped before Strand B and is what made Strand B viable. The `tickets` canonical row already existed (v0.3.12, Step 1-4b — see prior commits on `feat/ticket-normalisation`); this strand added the consumer-side reuse:
+
+- **`findCanonicalTicket(councilSlug, pcnRef)`** in `lib/server/tickets.ts` — returns the canonical OCR-derived fields + the cached portal snapshot + a freshness flag (verdict-aware TTL ladder, same as `getCachedSnapshot`). Returns null when no canonical row exists. The OCR fields are always returned regardless of snapshot freshness — they describe the physical PCN and don't go stale.
+- **`/api/extract` overlay-on-Pass-2** (when not short-circuiting): canonical fields overlay onto Pass 2's output before `applyOcrFinalIfFresh` writes. Canonical wins WHERE canonical has a value; Pass 2 fills WHERE canonical is null. Audit log fires `cache_hit` with `event: extract_canonical_reuse`.
+- **Reset script extended** (`scripts/reset-db-for-e2e.ts`) — now truncates `tickets` and `ticket_normalisation_audit` too (it pre-dated those tables).
+
+#### Strand D — Duplicate-input collapse (one editable surface on the smart card)
+
+User reported that "after OCR it asks me to edit/input details on 2 UIs — one on the ticket and the other comes after as a modal". The off-ticket modal was the `/app/manual-entry` page navigation from the failure card.
+
+- **`/app/manual-entry/page.tsx`** is now a tiny back-compat redirect (`?appealId=…` → `/app/tickets?expand=<id>&inputManual=1`, else `/app/tickets`). The old 470-line wizard is gone.
+- **`<TicketDetailsForm>`** (`components/ticket/TicketDetailsForm.tsx`) is the SINGLE editable surface: image preview + (optional) photo-coach badge + PCN ref input + Registration input + Confirm button. **Council picker dropped from the form** — handled by the header's badge tile. Per user directive: amount NOT asked (OCR detects), issue date NOT asked (portal returns).
+- **Mounted in three places**: `PendingReviewCard` (happy path), `ReadingFailureActions` (expand-on-tap on the failure surface), `ReadingPCNActive` (slow-OCR "Taking longer than usual?" helper). The slow-OCR helper used to `router.push('/app/manual-entry')` — now expands the form inline on the same card.
+- **Header de-dup**: `TicketCardHeader` takes `hideIdentityLine` and suppresses the `pcnRef · vehicleReg` line + location row during `pending_review`. Otherwise the user saw the same data in the header AND in the editable form below it (the "asks twice" symptom).
+- **`/app/scan` "Input manually" tile** now creates a fresh draft via `ensureCurrentAppeal()` and routes to `/app/tickets?expand=<id>&inputManual=1`. The list page reads `inputManual=1` and pre-expands the inline form via the `autoExpandManualEntry` prop chain.
+
+#### Strand E — State-machine race fix ("Couldn't read all details" panic after Confirm)
+
+`deriveCardState`'s `pending_review` early-out excluded `step === TICKET_CONFIRMED_STEP`. The race: `agreeTicket` PATCHes step=confirmed (~50 ms) THEN POSTs `/lookup` (~500 ms+) which sets `portalLookup.status='pending'`. In that 500 ms window step was confirmed but portal was still null, so the state fell through pending_review's exclusion → into the `image_unclear` branch → user briefly saw "Couldn't read all details" on a perfectly valid ticket. Fix: explicit branch — `hasAllRequired && step === TICKET_CONFIRMED_STEP && !portal` → `validating` with caption "Starting council check…".
+
+#### Strand F — Notification permission timing
+
+Moved the notification permission prompt from the £2.99 Appeal-tap moment (in `startAppeal`) to the Confirm-validate tap (in `agreeTicket`). User opts into push notifications BEFORE the long council-portal wait, not after. Skip-once string `"appealTap"` preserved on the server so users already prompted aren't re-prompted.
+
+#### Strand G — Avg AI-call duration ETAs on the bubbles
+
+- **Server**: `getAvgStageDurationsMs()` in `lib/server/aiCalls.ts` — `SELECT stage, AVG(duration_ms) FROM ai_calls WHERE ok=true AND created_at >= now() - interval '14 days' GROUP BY stage`. Endpoint at `GET /api/stats/avg-durations` with 5-min in-memory cache + single-flight dedup.
+- **Client**: module-level cache + `useAvgDurations()` hook + `formatEta(ms)` formatter (`12_400 → "~12s"`, `38_900 → "~40s"`, `65_000 → "~1 min"`).
+- **UI**: validating / drafting / submitting bubbles render "We'll notify you when it's done. Usually takes ~Xs." when a positive average exists for the stage. Suppressed gracefully when no data.
+
+#### Strand H — Letter SSE: real streaming, auto-collapse on done
+
+The client used to fire `void fetch('/api/generate-stream')` and discard the response, relying on the 3 s poll loop to show the letter once persisted. Now the client consumes the SSE chunks via `consumeSSE` and accumulates them into a `streamingBody` state passed down to `<LetterPreview isStreaming>`. On the streaming → settled edge, the preview auto-collapses after 1.4 s so the blue Submit CTA below it is immediately visible. Server-side chunk pacing slowed from 80c/30ms to 24c/40ms (~600 c/s) so the writing reads as legible typing.
+
+#### Strand I — Splash logo white silhouette
+
+`ParkingRabbitSplash` uses an inline `<img>` with `filter: invert(1) contrast(2)` to convert the navy-shield-on-transparent PNG into a pure-white shield + black rabbit + transparent background, all in CSS. The shared `<ParkingRabbitMark>` still uses the canonical navy mark everywhere else.
+
+#### Strand J — Open admin-detail work
+
+Three admin-side tasks were opened during the session and remain pending (no code yet — exploration of the admin codebase not done):
+
+1. **Admin appeal-detail: MCP screenshots gallery** — surface the screenshots Playwright captured during council lookup + submit runs.
+2. **Admin appeal-detail: per-call activity/thinking log** — the streaming reasoning output from each AI call.
+3. **Admin appeal-detail: rich metadata + categorised image gallery** — uploaded PCN photo, warden photos, evidence photos, MCP screenshots grouped by category.
+
+All three share the same surface (`app/admin/appeals/[id]/page.tsx`) and probably want to land as one batch. None of them block the consumer flow.
+
+#### Open product question carried forward
+
+`appeal_viewers` ships as v0.3.13's first cross-user-share primitive. The privacy boundary is "letter body + grounds + notes + scoring stay with the owner; canonical ticket fields + portal verdict are shared". Open questions for future product passes:
+1. Should viewers ever be able to start their OWN appeal for the same PCN (opt-out of the shared model)?
+2. If A's appeal is in a TERMINAL state (paid / submitted / closed), is B's view "tracking only" or do they get to start fresh?
+3. Notification routing — do shared viewers get push notifications on the appeal's status changes, or only the owner?
+4. Two strangers sharing a plate (cloned plates, fleet handovers) — accept the privacy collateral or expose an "I'm a different person" override?
+
+These can be answered by usage data once a few cross-user dedups have fired in production.
 
 ### v0.3.10 (2026-05-26 → 2026-05-27)
 
@@ -198,12 +293,18 @@ Older entries (v0.2.x): [`archive.md`](archive.md).
 
 ### Pickup-here items (next session priorities)
 
+- **Admin appeal-detail enhancements (3 tasks opened v0.3.13 — all admin-side, none block consumers)**:
+  1. **MCP screenshots gallery** — the screenshots Playwright captured during council lookup + submit runs. Source: `jobs.progress` JSON + Vercel Blob URLs (per Strand E in v0.3.7). Surface as a thumbnail grid on `app/admin/appeals/[id]/page.tsx`.
+  2. **Per-call activity/thinking log** — the streaming "thinking" output from each AI call. May need infrastructure changes if we don't currently capture the CLI streaming output.
+  3. **Rich metadata + categorised image gallery** — uploaded PCN photo, warden photos (from `portalLookup.photoUrls`), evidence photos (from `appeal_photos`), MCP screenshots — grouped by category with clear labels.
+
+  All three share `app/admin/appeals/[id]/page.tsx`; probably want to land as one batch. Start with #3 (the broadest — the metadata + gallery layout is the chrome the other two slot into).
+
 - **P11 council onboardings (Westminster, Camden, RBKC, Islington, TfL, City of London)** — drop a `grounds/<slug>.ts` per council using `grounds/lambeth.ts` as the template. Awaiting user screenshots of each council's grounds page. The registry is structured to slot them in cleanly. See [`architecture/grounds-registry.md`](architecture/grounds-registry.md) for the onboarding checklist.
 - **Grounds slug taxonomy refresh** — once 3+ councils are mapped, audit `CanonicalGroundId` coverage so every customer-friendly slug has a home on at least one council (with the council's "Other reasons" row as the fallback). Touches `lib/grounds-catalog.ts` + every registered `grounds/<slug>.ts`.
 - **Admin grounds-mapping CRUD** — admin edits the slug ↔ council-radio map without redeploy. Needs schema (JSONB `councils.grounds_mapping` OR a new `council_grounds` table), admin UI at `/admin/councils/[slug]/grounds`. Defer until 3+ councils are mapped from screenshots.
 - **Drift-baseline admin audit tool** (P9 follow-up) — UI at `/admin/councils/[slug]/audit` that runs the recipe against a known-good PCN + reg, captures DOM signatures, lets admin "promote" them as the new baseline when council markup changes. Placeholder doc at [`architecture/drift-baseline-audit.md`](architecture/drift-baseline-audit.md).
 - **Westminster + other deterministic recipes** — only Lambeth has one. Add `recipes/westminster.ts` etc. following the `CouncilRecipe` pattern. Each council saved is ~$0.30 per lookup at scale.
-- **Mobile MCP audit at 390×844** — pending visual verification of the v0.3.9–v0.3.10 surfaces. Drive `localhost:3001` through Playwright MCP with the test user's cookie + screenshot each surface.
 
 ### Standing items (pre-existing, lower priority)
 

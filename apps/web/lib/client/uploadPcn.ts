@@ -103,7 +103,6 @@ export async function uploadPcn(photoDataUrl: string): Promise<UploadPcnResult> 
       if (!res.ok) return;
       try {
         const json = (await res.json()) as {
-          confidence?: Record<string, number>;
           coach?: PhotoCoachResult | null;
           /** Server-side post-OCR dedup may have folded this upload
            *  into an older draft for the same (pcnRef, vehicleReg).
@@ -118,11 +117,14 @@ export async function uploadPcn(photoDataUrl: string): Promise<UploadPcnResult> 
         if (json.mergedInto && json.mergedInto !== updated.id) {
           setCurrentAppealId(json.mergedInto);
         }
-        // Fold confidence + photo coach into the handoff so the card
-        // can render the "2 greens" confidence pills on the inputs.
+        // Fold the photo-coach verdict into the handoff so the
+        // failure card / pending-review form can render the
+        // "photo could be sharper" amber hint when needed.
+        // Per-field `confidence` was removed from Pass 2's schema
+        // in 2026-05-27 (no UI consumer remained).
         setOcrHandoff({
           appealId: survivingAppealId,
-          confidence: json.confidence ?? {},
+          confidence: {},
           photoCoach: json.coach ?? null,
         });
       } catch {
@@ -134,6 +136,89 @@ export async function uploadPcn(photoDataUrl: string): Promise<UploadPcnResult> 
     });
 
   return { appealId: updated.id };
+}
+
+/**
+ * Re-run OCR against an EXISTING failed appeal row with a new photo.
+ *
+ * Used by the "Retake photo" / "Choose another photo" recovery actions
+ * on the Reading-failed surface. The naive approach (call `uploadPcn`
+ * with the new photo) would create a fresh appeal row + leave the
+ * failed one as an orphan in the list. This helper instead reuses the
+ * same row so the user sees THEIR card recover in place.
+ *
+ * Steps:
+ *   1. Replace the sessionStorage photo + reset the OCR handoff so the
+ *      smart card renders the new photo immediately and clears any
+ *      confidence pills from the failed run.
+ *   2. PATCH `pcnImageUrl` on the existing appeal row. Best-effort.
+ *   3. Fire `/api/extract` with `{ appealId, pcnPhoto }`. The route's
+ *      first action is `setProcessingStep("ocr", "running")` which
+ *      overwrites the existing `"failed"` status — so by the next
+ *      polling tick `deriveCardState` exits the failure branch and
+ *      flips the card back to `processing`. On success the route
+ *      PATCHes the new ticket fields + flips status to `"done"`; on
+ *      failure it sets `"failed"` again and the card returns to the
+ *      same surface (with the new image preview).
+ *
+ * `setProcessingStep` is called server-side as fire-and-forget, so the
+ * client briefly sees stale `"failed"` between this call and the next
+ * `/api/appeals/[id]` poll. That's acceptable: the calling component
+ * disables the button + shows a spinner during this window, so the
+ * user has feedback that something is happening.
+ */
+export async function retryOcrWithPhoto(
+  appealId: string,
+  photoDataUrl: string,
+): Promise<void> {
+  setPcnPhoto(photoDataUrl);
+  setOcrHandoff({
+    appealId,
+    confidence: {},
+    photoCoach: null,
+  });
+
+  const sessionId = getOrCreateSessionId();
+  const headers = {
+    "content-type": "application/json",
+    "x-parkingrabbit-session": sessionId,
+  };
+
+  // Step 1 — PATCH the new photo onto the row. /api/extract reads
+  // `pcnPhoto` from the request body for OCR (so this PATCH isn't
+  // load-bearing for the extraction itself), but the appeal row's
+  // pcnImageUrl drives the preview rendered inside ReadingPCNActive,
+  // so we update it before triggering OCR so the card flips to the
+  // new image immediately.
+  //
+  // We deliberately do NOT clear the OCR-extracted ticket fields
+  // here — that's done atomically inside the server's `startOcrRun`
+  // helper, which is invoked at the top of /api/extract. Doing it
+  // server-side keeps the clear + the new-run stamp in a single
+  // UPDATE (no half-cleared state visible to the polling loop).
+  void fetch(`/api/appeals/${encodeURIComponent(appealId)}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ pcnImageUrl: photoDataUrl }),
+  }).catch(() => {});
+
+  // Step 2 — re-fire OCR. The new /api/extract call invokes
+  // `startOcrRun()` server-side, which:
+  //   1. Stamps a fresh `runId` onto processing.ocr.
+  //   2. Flips status: "failed" / "done" → "running" (clears prior
+  //      error message from the audit trail too).
+  //   3. Clears the OCR-extracted ticket fields so the subsequent
+  //      fill-empty merge can write fresh values without being
+  //      blocked by a previous failed pass's wrong data.
+  //
+  // Any in-flight stale writes from the previous run check the
+  // runId and silently skip, so the user only ever sees this new
+  // run's results.
+  void fetch("/api/extract", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ sessionId, pcnPhoto: photoDataUrl, appealId }),
+  }).catch(() => {});
 }
 
 /**

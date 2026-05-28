@@ -31,6 +31,20 @@ interface Props {
    *  under a settled SubmittedCard (the letter is reference-only at
    *  that point and shouldn't dominate the card). */
   defaultOpen?: boolean;
+  /** True while `body` is actively growing from the SSE chunk loop in
+   *  /api/generate-stream. When set:
+   *    - the fake typewriter is skipped (the body grows naturally on
+   *      every parent re-render, so synthesising a second animation on
+   *      top would double-paint)
+   *    - the disclosure is forced open so the user watches the letter
+   *      being written
+   *    - a typing cursor blinks at the tail
+   *
+   *  On the true → false edge (stream finished) we wait ~1.4 s so the
+   *  customer registers the completed letter, then animate the
+   *  disclosure shut — revealing the blue submit CTA that lives below
+   *  this preview inside PaidSubmitCta. */
+  isStreaming?: boolean;
 }
 
 export function LetterPreview({
@@ -39,6 +53,7 @@ export function LetterPreview({
   body,
   wordCount,
   defaultOpen = true,
+  isStreaming = false,
 }: Props) {
   const seenKey = `parkingrabbit.letterSeen.${appealId}`;
   const initiallySeen = useMemo(() => {
@@ -61,11 +76,57 @@ export function LetterPreview({
   const [revealedChars, setRevealedChars] = useState(body?.length ?? 0);
   const startedRef = useRef(false);
 
+  // Live-stream branch — body is growing on every parent re-render from
+  // SSE chunks. Skip the fake typewriter (it would double-animate on top
+  // of the genuine stream), keep revealedChars locked to the live length
+  // so the visible text tracks the real stream, and pin the disclosure
+  // open so the user sees the letter being written.
+  useEffect(() => {
+    if (!isStreaming) return;
+    startedRef.current = true; // suppress the post-mount typewriter below
+    // The setStates here mirror props that are already React state in the
+    // parent (TicketCard's draftStreamBody / draftStreamActive). The
+    // react-hooks rule's "avoid setState in effect" guidance is aimed at
+    // derived-state-as-effect anti-patterns; in this case we're syncing
+    // internal state to a prop-edge (the streaming flag flipping on),
+    // which is the canonical place to do it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRevealedChars(body?.length ?? 0);
+    setOpen(true);
+  }, [isStreaming, body?.length]);
+
+  // Auto-collapse on the streaming → settled edge. The user just watched
+  // the letter type itself out; we hold the completed letter visible for
+  // ~1.4 s so they register the final state, then animate the disclosure
+  // shut so the blue submit CTA below comes into view. This fires once
+  // per mount — if `isStreaming` was never true (e.g. the user lands on
+  // letter_ready directly, no stream context) the effect is a no-op.
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isStreaming) {
+      wasStreamingRef.current = true;
+      return;
+    }
+    if (!wasStreamingRef.current) return;
+    wasStreamingRef.current = false;
+    try {
+      window.sessionStorage.setItem(seenKey, "1");
+    } catch {
+      /* private mode — non-fatal */
+    }
+    const t = window.setTimeout(() => setOpen(false), 1400);
+    return () => window.clearTimeout(t);
+  }, [isStreaming, seenKey]);
+
   // Run the typewriter exactly once per mount when we have a body and
   // the user hasn't seen this letter before. Total duration scales with
   // word count so short letters don't drag.
   useEffect(() => {
     if (!body || startedRef.current || initiallySeen) return;
+    // Don't synthesise a typewriter while real chunks are arriving —
+    // the streaming branch above already drives revealedChars from the
+    // live body length.
+    if (isStreaming) return;
     startedRef.current = true;
     const totalChars = body.length;
     const words = body.split(/\s+/).filter(Boolean).length || 1;
@@ -73,6 +134,10 @@ export function LetterPreview({
       12_000,
       Math.max(3_500, (words / WORDS_PER_SECOND) * 1000),
     );
+    // Rewind to 0 once at the start of the typewriter pass. The
+    // surrounding effect already gates on `startedRef` + `initiallySeen`
+    // + `!isStreaming` so this fires at most once per appeal mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRevealedChars(0);
     const startedAt = performance.now();
     let raf = 0;
@@ -101,14 +166,19 @@ export function LetterPreview({
       // never inherits a half-painted body.
       setRevealedChars(totalChars);
     };
-  }, [body, initiallySeen, seenKey]);
+  }, [body, initiallySeen, seenKey, isStreaming]);
 
   // Empty-body fallback. Previously this returned `null`, which left the
   // customer with a "Submit £2.99" button and no letter visible above it —
   // the user-reported "there's no body in the appeal letters" symptom.
   // Now we surface a clear failure surface so the customer can re-draft
   // rather than pay for a blank submission.
-  if (!body || body.trim().length === 0) {
+  //
+  // During a live stream the body can legitimately be empty for a moment
+  // (between SSE open and the first chunk landing) — suppress the
+  // failure surface in that case and let the streaming branch below
+  // render its empty preview with the typing cursor.
+  if ((!body || body.trim().length === 0) && !isStreaming) {
     return (
       <section className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4 flex items-start gap-3">
         <span className="size-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
@@ -127,8 +197,16 @@ export function LetterPreview({
       </section>
     );
   }
-  const visible = body.slice(0, revealedChars);
-  const isAnimating = revealedChars < body.length;
+  // `body` is non-null on the failure-fallback path above; on the
+  // streaming path it can briefly be null/empty between SSE open and
+  // the first chunk arriving, hence the `?? ""` guard.
+  const safeBody = body ?? "";
+  const visible = safeBody.slice(0, revealedChars);
+  // Cursor pulses both during the synthetic post-mount typewriter
+  // (revealedChars < body.length) AND while live SSE chunks are still
+  // arriving — the latter keeps a blinking cursor at the tail of the
+  // last-arrived chunk so the surface reads as "still being written".
+  const isAnimating = revealedChars < safeBody.length || isStreaming;
 
   return (
     <section className="rounded-2xl bg-white border border-parkingrabbit-border overflow-hidden">
@@ -143,11 +221,11 @@ export function LetterPreview({
         </span>
         <span className="flex-1 min-w-0">
           <span className="block text-[13px] font-bold text-parkingrabbit-navy leading-tight">
-            Your draft appeal letter
+            {isStreaming ? "Writing your appeal letter…" : "Your draft appeal letter"}
           </span>
           <span className="block text-[11px] text-parkingrabbit-muted mt-0.5 leading-snug truncate">
             {subject ?? "Representation against PCN"}
-            {wordCount != null && (
+            {!isStreaming && wordCount != null && (
               <>
                 <span className="text-parkingrabbit-border mx-1.5">·</span>
                 {wordCount} words

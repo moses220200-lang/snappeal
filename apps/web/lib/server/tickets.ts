@@ -234,6 +234,117 @@ export async function getCachedSnapshot(
   };
 }
 
+/**
+ * 2026-05-27 — Phase 2 of the ticket-normalisation rollout.
+ *
+ * Look up the canonical `tickets` row for a given (council, PCN ref)
+ * pair. Returns the OCR-derived metadata fields ALWAYS (they don't
+ * go stale — they describe the physical PCN) plus the cached portal
+ * snapshot with a freshness flag (the snapshot DOES go stale per
+ * the verdict-aware TTL ladder).
+ *
+ * This is the "cross-user canonical reuse" entry point: when User B
+ * uploads a photo of a PCN that User A has already canonicalised,
+ * /api/extract uses this helper to pre-populate User B's appeal row
+ * from the canonical record — issuer / vehicle reg / contravention
+ * code / issued date / location / amount — without re-running OCR
+ * Pass 2 against the photo (saves ~$0.05 + 8–12s per duplicate
+ * upload). The portal snapshot freshness flag drives whether the
+ * subsequent `enqueueLookupIfAutomated` call short-circuits via
+ * `getCachedSnapshot` too (it already does, but this surfaces the
+ * answer to callers that want to know upfront).
+ *
+ * Differences vs `getCachedSnapshot`:
+ *   - Returns even when the portal snapshot is null (the canonical
+ *     row exists; OCR fields still useful).
+ *   - Returns even when the snapshot is stale (caller may want to
+ *     pre-populate metadata while still triggering a fresh lookup).
+ *   - Carries the OCR-derived metadata fields the snapshot doesn't.
+ *
+ * Returns null when no canonical row exists for that (council,
+ * pcnRef) pair — caller falls back to running the full OCR + lookup
+ * pipeline.
+ */
+export interface CanonicalTicketView {
+  ticketId: string;
+  /** OCR-derived metadata, never stale. Any null field means OCR
+   *  didn't capture it on the canonical row's first promotion. */
+  issuer: string | null;
+  vehicleReg: string;
+  contraventionCode: string | null;
+  contraventionDescription: string | null;
+  /** ISO-8601 string for cross-process safety; serialise from the
+   *  row's `timestamp with time zone` column. */
+  issuedAt: string | null;
+  location: string | null;
+  amountPence: number | null;
+  /** Cached portal lookup result — null when no successful lookup
+   *  has landed yet for this ticket. */
+  snapshot: TicketPortalSnapshot | null;
+  /** When the snapshot is set, true if it's still within its
+   *  verdict-aware TTL window (paid/closed=30d, open=1h, etc).
+   *  False when stale OR when snapshot is null. */
+  snapshotFresh: boolean;
+}
+
+export async function findCanonicalTicket(
+  councilSlug: string,
+  pcnRef: string,
+): Promise<CanonicalTicketView | null> {
+  const db = getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: schema.tickets.id,
+      issuer: schema.tickets.issuer,
+      vehicleReg: schema.tickets.vehicleReg,
+      contraventionCode: schema.tickets.contraventionCode,
+      contraventionDescription: schema.tickets.contraventionDescription,
+      issuedAt: schema.tickets.issuedAt,
+      location: schema.tickets.location,
+      amountPence: schema.tickets.amountPence,
+      portalSnapshot: schema.tickets.portalSnapshot,
+      portalSnapshotAt: schema.tickets.portalSnapshotAt,
+    })
+    .from(schema.tickets)
+    .where(
+      and(
+        eq(schema.tickets.councilSlug, councilSlug),
+        eq(schema.tickets.pcnRef, normalisePcnRef(pcnRef)),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  // Freshness check mirrors getCachedSnapshot's TTL ladder so the two
+  // helpers can never disagree about whether a snapshot is still
+  // usable. snapshot null → snapshotFresh false (caller falls through
+  // to running a real lookup).
+  const snapshot = (row.portalSnapshot as TicketPortalSnapshot | null) ?? null;
+  let snapshotFresh = false;
+  if (snapshot && row.portalSnapshotAt) {
+    const ttl = ttlMsForVerdict(snapshot.verdict);
+    if (ttl > 0) {
+      const ageMs = Date.now() - row.portalSnapshotAt.getTime();
+      snapshotFresh = ageMs <= ttl;
+    }
+  }
+
+  return {
+    ticketId: row.id,
+    issuer: row.issuer,
+    vehicleReg: row.vehicleReg,
+    contraventionCode: row.contraventionCode,
+    contraventionDescription: row.contraventionDescription,
+    issuedAt: row.issuedAt ? row.issuedAt.toISOString() : null,
+    location: row.location,
+    amountPence: row.amountPence,
+    snapshot,
+    snapshotFresh,
+  };
+}
+
 /** Strip per-user lifecycle from a `PortalLookupSnapshot` and UPSERT
  *  into `tickets.portal_snapshot` for the matching identity.
  *

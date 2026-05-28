@@ -190,6 +190,58 @@ export async function getCostBreakdowns(
   return out;
 }
 
+/**
+ * 2026-05-27 — average successful duration (ms) per AI-call stage,
+ * sourced from the recent `ai_calls` rows. Used to populate the
+ * "Usually takes ~Xs" copy under the validating / drafting /
+ * submitting bubbles on the smart ticket card so the user has a
+ * realistic expectation of how long each step takes.
+ *
+ * Filters:
+ *   • `ok = true`  — exclude failures, which often time out long and
+ *                    would skew the average upward.
+ *   • `duration_ms IS NOT NULL` — defensive; older rows from before
+ *                                 the durationMs column landed.
+ *   • `created_at > now() - 14 days` — recent rolling window so the
+ *                                       average tracks current model
+ *                                       performance, not historic
+ *                                       Claude-3 era values.
+ *
+ * Returns an object keyed by `AiCallStage` with the average in
+ * milliseconds, integer-rounded. Stages with zero recent calls are
+ * omitted so callers fall back to their own defaults.
+ */
+export type AvgStageDurations = Partial<Record<AiCallStage, number>>;
+
+const RECENT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+export async function getAvgStageDurationsMs(): Promise<AvgStageDurations> {
+  const db = getDb();
+  if (!db) return {};
+  const since = new Date(Date.now() - RECENT_WINDOW_MS);
+  // Raw SQL via drizzle so we can GROUP BY + AVG in one round-trip.
+  const { sql } = await import("drizzle-orm");
+  const rows = await db.execute(sql`
+    SELECT stage, AVG(duration_ms)::int AS avg_ms
+    FROM ai_calls
+    WHERE ok = true
+      AND duration_ms IS NOT NULL
+      AND created_at >= ${since.toISOString()}
+    GROUP BY stage
+  `);
+  const out: AvgStageDurations = {};
+  // drizzle's execute() returns an object whose `.rows` is the array;
+  // narrow + iterate defensively in case Drizzle changes the wrapper.
+  const arr = (Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows) ?? [];
+  for (const r of arr as Array<{ stage?: unknown; avg_ms?: unknown }>) {
+    const stage = typeof r.stage === "string" ? (r.stage as AiCallStage) : null;
+    const avg = typeof r.avg_ms === "number" ? r.avg_ms : Number(r.avg_ms);
+    if (!stage || !Number.isFinite(avg) || avg <= 0) continue;
+    out[stage] = Math.round(avg);
+  }
+  return out;
+}
+
 /** Convert a USD cost to pence (1 USD ≈ 79 pence at 2026 rates — but
  *  the admin renders in the source USD and shows pence as a hint).
  *  Centralised so we change the FX rate in one place. */

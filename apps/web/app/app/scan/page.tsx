@@ -10,7 +10,12 @@
  *
  *   1. Camera         — `<input capture="environment">` to shoot the PCN
  *   2. Upload picture — `<input>` to pick from the photo library
- *   3. Input manually — link to `/app/manual-entry`
+ *   3. Input manually — creates a fresh draft and lands on the smart
+ *                       card on /app/tickets with the inline editable
+ *                       form pre-expanded (`?inputManual=1`). Replaces
+ *                       the old link to /app/manual-entry (deleted
+ *                       2026-05-27 — duplicate of the form already on
+ *                       the smart ticket).
  *
  * Camera + Upload feed the same `uploadPcn()` pipeline used everywhere
  * else (creates the appeal row, fires background OCR, redirects to
@@ -18,7 +23,6 @@
  * in as OCR settles).
  */
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Camera,
@@ -29,12 +33,13 @@ import {
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { readFileAsDataUrl, uploadPcn } from "@/lib/client/uploadPcn";
+import { ensureCurrentAppeal } from "@/lib/client/draft";
 
 export default function ScanPage() {
   const router = useRouter();
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
-  const [busy, setBusy] = useState<"camera" | "gallery" | null>(null);
+  const [busy, setBusy] = useState<"camera" | "gallery" | "manual" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleFile = async (
@@ -196,24 +201,49 @@ export default function ScanPage() {
             <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
           </button>
 
-          {/* 3. Input manually */}
-          <Link
-            href="/app/manual-entry"
-            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-parkingrabbit-primary/60"
+          {/* 3. Input manually — creates a fresh draft appeal and
+           *  navigates to the smart ticket card on /app/tickets with
+           *  the inline editable form pre-expanded. Replaces the
+           *  earlier link to /app/manual-entry (deleted 2026-05-27)
+           *  so all data entry happens on the smart card. */}
+          <button
+            type="button"
+            onClick={async () => {
+              if (busy) return;
+              setBusy("manual");
+              setError(null);
+              try {
+                const appealId = await ensureCurrentAppeal();
+                router.push(
+                  `/app/tickets?expand=${encodeURIComponent(appealId)}&inputManual=1`,
+                );
+              } catch (err) {
+                setError(
+                  err instanceof Error ? err.message : "Couldn't start manual entry",
+                );
+                setBusy(null);
+              }
+            }}
+            disabled={!!busy}
+            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-parkingrabbit-primary/60 disabled:opacity-60"
           >
             <span className="size-12 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center shrink-0">
-              <Keyboard className="size-5" strokeWidth={2.25} />
+              {busy === "manual" ? (
+                <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
+              ) : (
+                <Keyboard className="size-5" strokeWidth={2.25} />
+              )}
             </span>
             <div className="flex-1 min-w-0 text-left">
               <p className="text-[15px] font-bold leading-tight">
                 Input manually
               </p>
               <p className="text-[12px] text-parkingrabbit-muted mt-0.5 leading-snug">
-                Type in PCN ref, registration, amount and date
+                Type in the council, PCN reference and registration
               </p>
             </div>
             <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
-          </Link>
+          </button>
         </div>
 
         {error && (

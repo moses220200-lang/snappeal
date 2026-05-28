@@ -18,7 +18,7 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Camera, FileText, Images, Loader2, Plus, ShieldCheck } from "lucide-react";
+import { AlertTriangle, FileText, Loader2, Plus, ShieldCheck } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { TicketCard } from "@/components/TicketCard";
 import { getOrCreateSessionId } from "@/lib/client/session";
@@ -100,6 +100,13 @@ export default function TicketsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // 2026-05-27 — read `?inputManual=1` from /app/scan's "Input manually"
+  // tile. When set, the auto-expanded card opens its inline manual-entry
+  // form on first render so the user doesn't need an extra tap. Stripped
+  // from the URL after read so a refresh doesn't re-trigger the expand.
+  const [autoExpandManualEntryFor, setAutoExpandManualEntryFor] = useState<
+    string | null
+  >(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden());
@@ -109,13 +116,13 @@ export default function TicketsPage() {
   // v0.2.16 — track whether we've auto-expanded once per page load. Avoids
   // re-expanding when the user collapses an in-flight card on purpose.
   const autoExpandedRef = useRef<boolean>(false);
-  // Hidden inputs for the top-of-page upload card. Two pickers so the
-  // user can choose to take a new photo OR pick from the library —
-  // matched to the two icon buttons inside the "Got a new ticket?" card.
-  // `capture="environment"` on the camera input opens the device camera
-  // directly; the gallery input omits `capture` so the OS picker shows
-  // photos / files only.
-  const scanCameraRef = useRef<HTMLInputElement | null>(null);
+  // Hidden file input wired to the single "+" button inside the
+  // "Got a new ticket?" card. The previous design exposed two icon
+  // buttons (camera vs gallery) but the camera shortcut was redundant —
+  // the OS picker the gallery input opens already includes "Take Photo"
+  // on iOS/Android, and the dedicated camera button cluttered the entry
+  // point. `accept="image/*"` (no `capture` attribute) lets the OS
+  // decide which source(s) to offer.
   const scanGalleryRef = useRef<HTMLInputElement | null>(null);
   const [scanUploading, setScanUploading] = useState(false);
 
@@ -274,12 +281,18 @@ export default function TicketsPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const target = params.get("expand");
+    const inputManual = params.get("inputManual") === "1";
     if (!target) return;
     autoExpandedRef.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedId(target);
+    if (inputManual) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAutoExpandManualEntryFor(target);
+    }
     const url = new URL(window.location.href);
     url.searchParams.delete("expand");
+    url.searchParams.delete("inputManual");
     window.history.replaceState({}, "", url.toString());
   }, []);
 
@@ -456,21 +469,11 @@ export default function TicketsPage() {
   return (
     <>
       <AppHeader />
-      {/* Hidden file inputs — clicked synchronously from the upload
-       *  card's two icon buttons. Camera input uses `capture="environment"`
-       *  to open the device camera directly; gallery input omits
-       *  `capture` so the OS picker offers photos / files. */}
-      <input
-        ref={scanCameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => {
-          void handleScanFile(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
+      {/* Hidden file input — clicked synchronously from the "+" button
+       *  inside the "Got a new ticket?" card. `accept="image/*"` with
+       *  no `capture` attribute lets the OS picker offer whichever
+       *  sources are available on the device (camera + library on
+       *  iOS/Android, file browser on desktop). */}
       <input
         ref={scanGalleryRef}
         type="file"
@@ -482,37 +485,22 @@ export default function TicketsPage() {
         }}
       />
       <div className="px-5 pb-6 flex flex-col gap-4 pt-1">
-        {/* "Got a new ticket?" entry point at the top of the list. The
-         *  two icon buttons let the user shoot a new PCN photo OR pick
-         *  one from the library, replacing the legacy single "Scan"
-         *  pill that hid the gallery option entirely. */}
+        {/* "Got a new ticket?" entry point at the top of the list.
+         *  Single "+" button opens the OS image picker (camera /
+         *  library / files — whichever the platform offers). The
+         *  legacy two-button camera+gallery layout was collapsed to one
+         *  to keep the entry point uncluttered. */}
         <section className="rounded-2xl bg-parkingrabbit-bg/50 border border-dashed border-parkingrabbit-border p-5 flex items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-parkingrabbit-navy">Got a new ticket?</p>
             <p className="text-[12px] text-parkingrabbit-muted mt-0.5">
-              Scan it now — we&apos;ll save it to your account.
+              Add it now — we&apos;ll handle it for you.
             </p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
             <button
               type="button"
-              aria-label="Take a photo of your ticket"
-              onClick={() => {
-                if (scanUploading) return;
-                scanCameraRef.current?.click();
-              }}
-              disabled={scanUploading}
-              className="size-11 rounded-2xl bg-parkingrabbit-navy text-white flex items-center justify-center hover:bg-parkingrabbit-navy/90 transition disabled:opacity-60 shadow-sm active:scale-95"
-            >
-              {scanUploading ? (
-                <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
-              ) : (
-                <Camera className="size-5" strokeWidth={2.25} />
-              )}
-            </button>
-            <button
-              type="button"
-              aria-label="Choose a photo from your library"
+              aria-label="Add a new ticket"
               onClick={() => {
                 if (scanUploading) return;
                 scanGalleryRef.current?.click();
@@ -520,7 +508,11 @@ export default function TicketsPage() {
               disabled={scanUploading}
               className="size-11 rounded-2xl bg-parkingrabbit-navy text-white flex items-center justify-center hover:bg-parkingrabbit-navy/90 transition disabled:opacity-60 shadow-sm active:scale-95"
             >
-              <Images className="size-5" strokeWidth={2.25} />
+              {scanUploading ? (
+                <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
+              ) : (
+                <Plus className="size-5" strokeWidth={2.5} />
+              )}
             </button>
           </div>
         </section>
@@ -684,6 +676,7 @@ export default function TicketsPage() {
                   onHide={() => hideAppeal(a.id)}
                   onAppealRefresh={updateAppealLocal}
                   now={now}
+                  autoExpandManualEntry={autoExpandManualEntryFor === a.id}
                 />
               </li>
             ))}

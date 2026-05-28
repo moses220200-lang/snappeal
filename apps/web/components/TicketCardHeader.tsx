@@ -49,6 +49,15 @@ interface Props {
    *  amber ribbon next to the status pill when ≤7 days remain.
    *  Hidden when no signal exists or when the ticket is settled. */
   deadlineProximity?: DeadlineProximity | null;
+  /** 2026-05-27 — when true, suppress the PCN ref · Reg line + the
+   *  location line in the header. Used during pending_review (and the
+   *  validating transition that immediately follows the Confirm tap)
+   *  where the inline TicketDetailsForm already shows those fields
+   *  as editable inputs — duplicating them in the header reads as
+   *  "asks twice to confirm". The header keeps the council badge,
+   *  amount, issue date, status pill, and deadline badge so the user
+   *  still has the at-a-glance context. */
+  hideIdentityLine?: boolean;
 }
 
 export function TicketCardHeader({
@@ -65,6 +74,7 @@ export function TicketCardHeader({
   scanning = false,
   reelCouncils,
   deadlineProximity,
+  hideIdentityLine = false,
 }: Props) {
   return (
     <header className="px-5 pt-4 pb-3 flex items-start gap-4">
@@ -118,23 +128,27 @@ export function TicketCardHeader({
             {deadlineProximity && <DeadlineBadge proximity={deadlineProximity} />}
           </div>
         )}
-        <p className="text-[12px] font-semibold text-parkingrabbit-muted mt-2 leading-tight">
-          {pcnRef ?? "Reading PCN…"}
-          {vehicleReg && (
-            <>
-              <span className="text-parkingrabbit-border mx-1.5">·</span>
-              {vehicleReg}
-            </>
-          )}
-        </p>
-        {location && (
-          <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug flex items-start gap-1">
-            <MapPin
-              className="size-3 mt-0.5 shrink-0"
-              strokeWidth={1.75}
-            />
-            <span className="min-w-0">{location}</span>
-          </p>
+        {!hideIdentityLine && (
+          <>
+            <p className="text-[12px] font-semibold text-parkingrabbit-muted mt-2 leading-tight">
+              {pcnRef ?? "Reading PCN…"}
+              {vehicleReg && (
+                <>
+                  <span className="text-parkingrabbit-border mx-1.5">·</span>
+                  {vehicleReg}
+                </>
+              )}
+            </p>
+            {location && (
+              <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug flex items-start gap-1">
+                <MapPin
+                  className="size-3 mt-0.5 shrink-0"
+                  strokeWidth={1.75}
+                />
+                <span className="min-w-0">{location}</span>
+              </p>
+            )}
+          </>
         )}
       </div>
     </header>

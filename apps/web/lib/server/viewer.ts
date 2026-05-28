@@ -82,3 +82,77 @@ export function canViewAppeal(
   }
   return false;
 }
+
+/**
+ * 2026-05-27 — viewer-aware access check that ALSO consults the
+ * appeal_viewers join table. Returns:
+ *   - "owner"   — viewer owns the appeal (full read/write)
+ *   - "shared"  — viewer was linked via the join table (read-only)
+ *   - "none"    — no access
+ *
+ * Admins always return "owner" (full access).
+ *
+ * Used by /api/appeals/[id] and similar routes to gate edit/action
+ * surfaces. The pure-synchronous `canViewAppeal` above is kept for
+ * code paths that only care about "owner or not" — extending those
+ * to support shared-viewer access requires a DB read, which the
+ * caller can avoid when they're inside a transaction or already
+ * fetching the appeal row.
+ */
+export type AccessRole = "owner" | "shared" | "none";
+
+export async function resolveAccess(
+  viewer: Viewer,
+  appeal: OwnableAppeal & { id: string },
+  requestSessionId: string | null,
+): Promise<AccessRole> {
+  if (viewer.role === "admin") return "owner";
+  if (canViewAppeal(viewer, appeal, requestSessionId)) return "owner";
+  // Fall through — check the viewers join table for a shared link.
+  if (!requestSessionId && !viewer.userId) return "none";
+  // Lazy-import to avoid the schema → viewer → db cycle.
+  const { getDb, schema } = await import("./db/client");
+  const { and, eq, or } = await import("drizzle-orm");
+  const db = getDb();
+  if (!db) return "none";
+  const userOrSession = viewer.userId
+    ? or(
+        eq(schema.appealViewers.userId, viewer.userId),
+        requestSessionId
+          ? eq(schema.appealViewers.sessionId, requestSessionId)
+          : undefined,
+      )
+    : requestSessionId
+      ? eq(schema.appealViewers.sessionId, requestSessionId)
+      : undefined;
+  if (!userOrSession) return "none";
+  const rows = await db
+    .select({ appealId: schema.appealViewers.appealId })
+    .from(schema.appealViewers)
+    .where(and(eq(schema.appealViewers.appealId, appeal.id), userOrSession))
+    .limit(1);
+  return rows.length > 0 ? "shared" : "none";
+}
+
+/**
+ * Add a viewer link so a second user/session can READ a shared appeal
+ * without spawning a duplicate row. Idempotent — calling twice for the
+ * same (appealId, sessionId) is a no-op (PK conflict swallowed).
+ */
+export async function linkAsViewer(
+  appealId: string,
+  viewerUserId: string | null,
+  viewerSessionId: string,
+): Promise<void> {
+  const { getDb, schema } = await import("./db/client");
+  const db = getDb();
+  if (!db) return;
+  await db
+    .insert(schema.appealViewers)
+    .values({
+      appealId,
+      userId: viewerUserId,
+      sessionId: viewerSessionId,
+    })
+    .onConflictDoNothing();
+}

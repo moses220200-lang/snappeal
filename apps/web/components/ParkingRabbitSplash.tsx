@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ParkingRabbitMark } from "@/components/Logo";
 
 const SESSION_KEY = "parkingrabbit.splashShown";
 
@@ -108,8 +107,32 @@ export function ParkingRabbitSplash() {
       {/* Wordmark + loading dots — bottom of the screen */}
       <div className="parkingrabbit-splash-wordmark absolute bottom-[18%] inset-x-0 flex flex-col items-center gap-4 px-6 text-center">
         <div className="relative">
-          {/* Canonical ParkingRabbit shield — same mark used everywhere else. */}
-          <ParkingRabbitMark size={72} variant="light" />
+          {/*
+           * Splash-only rendering of the brand mark — inlined as a raw <img>
+           * with an explicit filter chain so we don't fight Tailwind v4's
+           * filter composition. The source PNG is a navy shield with a
+           * white rabbit silhouette on a transparent background.
+           *
+           *   invert(1):    navy #0a1929 → cream #f5e6d6   |   white → black
+           *   contrast(2):  (channel − 0.5) × 2 + 0.5      |   clamps to [0,1]
+           *                 cream → pure white             |   black → pure black
+           *
+           * Net result on the dark splash: pure-white shield with a pure-black
+           * rabbit silhouette in the middle, transparent everywhere else
+           * (CSS filters operate on RGB only — alpha is preserved). The
+           * shared <ParkingRabbitMark> still uses the canonical navy mark
+           * everywhere else in the app; this override is local to the splash.
+           */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="ParkingRabbit"
+            width={72}
+            height={72}
+            draggable={false}
+            className="shrink-0"
+            style={{ filter: "invert(1) contrast(2)" }}
+          />
           {/* Success tick that pops in over the shield in the final beat */}
           <span className="parkingrabbit-splash-tick absolute -bottom-2 -right-2 size-7 rounded-full bg-parkingrabbit-success flex items-center justify-center ring-4 ring-parkingrabbit-navy">
             <svg

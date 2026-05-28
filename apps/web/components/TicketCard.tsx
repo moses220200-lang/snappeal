@@ -46,7 +46,7 @@ import { MCPLiveStrip } from "@/components/MCPLiveStrip";
 import { NotificationPromptGate } from "@/components/NotificationPromptGate";
 import { CouncilPickerSheet } from "@/components/CouncilPickerSheet";
 import { PaymentSheet } from "@/components/PaymentSheet";
-import { ScanningOverlay } from "@/components/ScanningOverlay";
+import { ReadingPCNActive } from "@/components/ticket/ReadingPCNActive";
 import { TicketCardBody } from "@/components/TicketCardBody";
 import { TicketCardHeader } from "@/components/TicketCardHeader";
 // Extracted sub-components — `components/ticket/*` modules own one
@@ -72,6 +72,7 @@ import {
 } from "@/components/TicketLifecycleTimeline";
 import { formatGBP, formatShortDate } from "@/lib/format";
 import { resolveDisplayTicket, assertAmountConsistency } from "@/lib/ticketDisplay";
+import { consumeSSE } from "@/lib/client/sse";
 import {
   deriveCardState,
   EVIDENCE_DONE_STEP,
@@ -139,6 +140,11 @@ export interface TicketCardProps {
   /** Current time in ms — accepted for parity with the list page's
    *  countdown tick; the card itself doesn't render a countdown. */
   now?: number;
+  /** When true, the failure-card's inline TicketDetailsForm starts
+   *  expanded on first render. Set by /app/scan's "Input manually"
+   *  tile (forwards `?inputManual=1` to /app/tickets, the list page
+   *  forwards it to the matching card). Defaults to false. */
+  autoExpandManualEntry?: boolean;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -160,6 +166,7 @@ export function TicketCard({
   onHide,
   onAppealRefresh,
   now: _now,
+  autoExpandManualEntry = false,
 }: TicketCardProps) {
   void _now;
   // Local mirror of the appeal — refreshed by polling/SSE settle. The
@@ -405,6 +412,21 @@ export function TicketCard({
   // effect clears and the flag resets, so a slow-but-successful run
   // never gets mislabelled as a timeout.
   const [ocrTimedOut, setOcrTimedOut] = useState(false);
+
+  // Live SSE accumulator. We tee /api/generate-stream's `chunk` events
+  // into `draftStreamBody` so the LetterPreview inside TicketCardBody's
+  // drafting branch can render the letter as it's being written rather
+  // than waiting for the persisted row to land via the 3 s poll loop.
+  // `draftStreamActive` flips on at fetch start and off in `.finally`,
+  // driving the typing-cursor + auto-collapse behaviour in LetterPreview.
+  const [draftStreamBody, setDraftStreamBody] = useState("");
+  const [draftStreamActive, setDraftStreamActive] = useState(false);
+  // Set true once we've watched at least one stream complete this mount.
+  // Used to pass defaultOpen={false} to the post-stream LetterPreview
+  // inside PaidSubmitCta so the customer sees the blue submit CTA
+  // immediately below the (collapsed) letter.
+  const [draftStreamCompletedThisMount, setDraftStreamCompletedThisMount] =
+    useState(false);
   const [portalTimedOut, setPortalTimedOut] = useState(false);
   useEffect(() => {
     const ocrStatus = appeal.processing?.ocr?.status;
@@ -808,10 +830,12 @@ export function TicketCard({
       // on a refresh after Appeal is tapped.
       clearOcrResult();
       setOcrHandoff(null);
-      // Moment A — Appeal-tap. The Gate consults
-      // /api/users/me/notification-prefs to skip if we already asked
-      // at this moment OR if native permission isn't 'default'.
-      setNotifPromptTriggerAppealTap((n) => n + 1);
+      // 2026-05-27 — notification prompt moved from here (the Appeal
+      // tap = £2.99 commitment) up to the Confirm-validate tap. The
+      // earlier surfacing gives the user time to opt in to push
+      // notifications during the long council-portal lookup wait,
+      // rather than at the £2.99 commit moment when they're about
+      // to navigate to the payment sheet anyway.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't start appeal");
     } finally {
@@ -916,7 +940,12 @@ export function TicketCard({
     draftKickedOffRef.current = appeal.id;
     const pcnPhoto = getPcnPhoto();
     const evidencePhotos = getEvidencePhotos();
-    void fetch("/api/generate-stream", {
+    // Reset the accumulator + flip the streaming flag so the LetterPreview
+    // (rendered by TicketCardBody once the first chunk lands) starts in
+    // its live-streaming mode rather than the post-mount typewriter mode.
+    setDraftStreamBody("");
+    setDraftStreamActive(true);
+    fetch("/api/generate-stream", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -930,6 +959,26 @@ export function TicketCard({
         confirmedTicket: appeal.ticket ?? undefined,
       }),
     })
+      .then(async (res) => {
+        // Consume the SSE chunks. `chunk` events carry the slow-paced
+        // 24-char slices the server emits after `attachDraftToAppeal`
+        // persists the letter — we tee them into `draftStreamBody` so
+        // LetterPreview renders the body as it grows. Other event kinds
+        // (`appeal`, `ticket`, `ground`, `strength`, `done`, `error`)
+        // are no-ops here: the persisted row + the backstop refetch in
+        // `.finally` deliver the same data to the React tree through
+        // `appeal.letterBody` once the stream closes.
+        if (!res.ok || !res.body) {
+          throw new Error(`generate-stream HTTP ${res.status}`);
+        }
+        await consumeSSE(res, (ev) => {
+          if (ev.event !== "chunk") return;
+          const d = ev.data as { text?: string } | null;
+          const text = d && typeof d.text === "string" ? d.text : "";
+          if (!text) return;
+          setDraftStreamBody((prev) => prev + text);
+        });
+      })
       .catch(() => {
         // Soft failure — the drafting-state poll will surface
         // step === "generation_failed" if the server side errors. We let
@@ -937,6 +986,16 @@ export function TicketCard({
         draftKickedOffRef.current = null;
       })
       .finally(() => {
+        // Stream is done (or aborted). Flip off the streaming flag —
+        // LetterPreview's auto-collapse effect picks up the true→false
+        // edge and folds the preview shut after a short pause, revealing
+        // the blue submit CTA below. Also record that *this* mount has
+        // seen a stream complete, so the post-transition LetterPreview
+        // mounted inside PaidSubmitCta starts collapsed too (rather than
+        // re-running the synthetic typewriter on top of a letter the
+        // user already watched type itself out).
+        setDraftStreamActive(false);
+        setDraftStreamCompletedThisMount(true);
         // v0.3.11 — backstop refetch.
         //
         // The fetch promise settles when the server closes the SSE
@@ -1051,6 +1110,15 @@ export function TicketCard({
       // confidence pills back.
       clearOcrResult();
       setOcrHandoff(null);
+      // 2026-05-27 — fire the notification permission prompt the
+      // moment the user kicks off council validation. Previously this
+      // fired later at the Appeal tap (£2.99 commitment); the user
+      // asked us to surface the slide-up here so they can opt in to
+      // notifications BEFORE the long council-portal wait. The
+      // `moment` string stays "appealTap" so the server-side
+      // pushAskedAt skip-once persistence remains backwards-
+      // compatible for users we've already prompted.
+      setNotifPromptTriggerAppealTap((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't confirm details");
     } finally {
@@ -1252,11 +1320,16 @@ export function TicketCard({
     onAgreeTicket: () => void agreeTicket(),
     onEditTicket: () => void editTicket(),
     onOpenPaymentSheet: () => setPaySheetOpen(true),
+    onOpenCouncilPicker: () => setCouncilPickerOpen(true),
     onOverrideLookup: () => void overrideLookup(),
     onConfirmEvidence: (input) => void confirmEvidenceAndDraft(input),
     onRetryDraft: () => void retryDraft(),
     onRescoreWithEvidence: (photos) => void rescoreWithEvidence(photos),
     onEditTicketField: editTicketField,
+    draftStreamBody,
+    draftStreamActive,
+    draftStreamCompletedThisMount,
+    autoExpandManualEntry,
   });
 
   // ─── render ───
@@ -1328,6 +1401,13 @@ export function TicketCard({
           location={displayLocation}
           pill={<StatusPill state={cardState} />}
           deadlineProximity={deadlineProximity}
+          // 2026-05-27 — during pending_review the inline
+          // TicketDetailsForm shows PCN ref + Reg as editable inputs.
+          // Without this guard the header's "LJ39952021 · PN65LBU"
+          // line + the location row display the same data above
+          // the form, reading as "asks twice to confirm". Other
+          // states keep the full header summary.
+          hideIdentityLine={cardState.kind === "pending_review"}
           onCouncilClick={
             councils && councils.length > 0
               ? () => setCouncilPickerOpen(true)
@@ -1415,8 +1495,10 @@ export function TicketCard({
       {/* Footer — Delete only. The wide "View Details" wide button is
        *  gone (the user taps the card itself or the chevron in the
        *  header to expand/collapse). Delete stays as a quiet,
-       *  two-tap-to-confirm row underneath. */}
-      {onHide && (
+       *  two-tap-to-confirm row underneath.
+       *  2026-05-27 — hidden for shared viewers; only the owner can
+       *  remove a row from their list. */}
+      {onHide && !appeal.isViewerOnly && (
         <footer className="px-5 pb-4 pt-1 flex flex-col gap-2">
           <DeleteTicketButton onConfirm={onHide} />
         </footer>
@@ -1506,10 +1588,29 @@ interface BuildStepArgs {
   expanded: boolean;
   busy: boolean;
   submitting: boolean;
+  /** Live SSE letter accumulator + status flags — surfaced inside
+   *  TicketCardBody's drafting branch so the customer watches the
+   *  letter being written, and used to seed the post-stream
+   *  LetterPreview with `defaultOpen={false}`. See the matching props
+   *  on TicketCardBody.Props for the full contract. */
+  draftStreamBody: string;
+  draftStreamActive: boolean;
+  draftStreamCompletedThisMount: boolean;
+  /** When true, the failure-card's inline TicketDetailsForm starts
+   *  expanded on mount. Used by the no-photo "Input manually" entry
+   *  flow so the user lands on a ready editable surface without an
+   *  extra tap. False on the regular OCR-failure path — there the
+   *  user gets the recovery buttons (Retake / Choose another / Enter
+   *  manually) and chooses to expand the form. */
+  autoExpandManualEntry: boolean;
   onStartAppeal: () => void;
   onAgreeTicket: () => void;
   onEditTicket: () => void;
   onOpenPaymentSheet: () => void;
+  /** Opens the council-picker sheet — the sheet itself is mounted at
+   *  the TicketCard scope so the picker state is shared across the
+   *  header logo tile and the inline TicketDetailsForm in the body. */
+  onOpenCouncilPicker: () => void;
   onOverrideLookup: () => void;
   onConfirmEvidence: (input: { grounds: string[]; notes: string }) => void;
   onRetryDraft: () => void;
@@ -1546,11 +1647,16 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
     onAgreeTicket,
     onEditTicket,
     onOpenPaymentSheet,
+    onOpenCouncilPicker,
     onOverrideLookup,
     onConfirmEvidence,
     onRetryDraft,
     onRescoreWithEvidence,
     onEditTicketField,
+    draftStreamBody,
+    draftStreamActive,
+    draftStreamCompletedThisMount,
+    autoExpandManualEntry,
   } = args;
 
   const kind = state.kind;
@@ -1584,6 +1690,7 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
       onAgreeTicket={onAgreeTicket}
       onEditTicket={onEditTicket}
       onOpenPaymentSheet={onOpenPaymentSheet}
+      onOpenCouncilPicker={onOpenCouncilPicker}
       onOverrideLookup={onOverrideLookup}
       onConfirmEvidence={onConfirmEvidence}
       onRetryDraft={onRetryDraft}
@@ -1592,6 +1699,9 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
       pcnImage={pcnImage}
       ocrHandoff={ocrHandoff}
       liveCouncilThought={liveCouncilThought}
+      draftStreamBody={draftStreamBody}
+      draftStreamActive={draftStreamActive}
+      draftStreamCompletedThisMount={draftStreamCompletedThisMount}
       busy={busy || submitting}
     />
   );
@@ -1614,23 +1724,38 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
         ? "active"
         : "done";
   const showScanOverlay = readingStatus === "active";
+  // Pass 1 of /api/extract (`identifyCouncil`) PATCHes the issuer onto
+  // the appeal row within ~1–3 s, well before the full extract returns.
+  // When the issuer is set on a failed row it means we KNOW the photo
+  // is a PCN — we just couldn't pull the PCN ref / vehicle reg from
+  // it. That's a meaningfully different failure mode (partial success
+  // rather than total bust) and the surface morphs accordingly:
+  //   • softer step title ("Couldn't read all details")
+  //   • softer supporting copy ("found the council, but…")
+  //   • ReadingFailureActions surfaces the "Finish this ticket" copy
+  //     + manual-entry as the primary recovery.
+  const issuerKnown = !!appeal.ticket?.issuer && appeal.ticket.issuer.trim().length > 0;
   steps.push({
     id: "reading",
     title:
       readingStatus === "failed"
-        ? kind === "image_issue"
-          ? "Image issue"
-          : kind === "image_unclear"
-            ? "Image unclear"
-            : "Reading failed"
+        ? issuerKnown
+          ? "Couldn't read all details"
+          : kind === "image_issue"
+            ? "Image issue"
+            : kind === "image_unclear"
+              ? "Image unclear"
+              : "Reading failed"
         : "Reading PCN",
     supporting:
       readingStatus === "failed"
-        ? kind === "image_issue"
-          ? "This doesn't look like a parking ticket."
-          : kind === "image_unclear"
-            ? "We couldn't read this PCN clearly."
-            : "Rabbit couldn't finish reading this PCN."
+        ? issuerKnown
+          ? "Rabbit found the council, but couldn't confidently read the PCN details."
+          : kind === "image_issue"
+            ? "This doesn't look like a parking ticket."
+            : kind === "image_unclear"
+              ? "We couldn't read this PCN clearly."
+              : "Rabbit couldn't finish reading this PCN."
         : readingStatus === "active"
           ? "Rabbit is reading the PCN details."
           : "PCN details captured.",
@@ -1644,20 +1769,36 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
     // confirmation form below is where their attention should be.
     children: (() => {
       if (!expanded) return null;
+      // 2026-05-27 — shared viewers see lifecycle status but no
+      // interactive controls. The body switch already renders the
+      // SharedViewerBody; the reading-step children would otherwise
+      // surface Retake / Choose / Manual-entry buttons that 403 on
+      // submit anyway.
+      if (appeal.isViewerOnly) return null;
       if (readingStatus === "failed")
-        return <ReadingFailureActions kind={kind} appealId={appeal.id} />;
-      if (readingStatus !== "active") return null;
-      if (!pcnImage) return null;
-      return (
-        <div className="relative rounded-2xl overflow-hidden border border-parkingrabbit-border bg-parkingrabbit-bg">
-          {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
-          <img
-            src={pcnImage}
-            alt="Your PCN"
-            className="w-full h-auto object-contain max-h-64"
+        return (
+          <ReadingFailureActions
+            kind={kind}
+            appeal={appeal}
+            issuer={appeal.ticket?.issuer ?? null}
+            pcnImage={pcnImage}
+            ocrHandoff={ocrHandoff}
+            onAgree={onAgreeTicket}
+            onEditField={onEditTicketField}
+            autoExpandForm={autoExpandManualEntry}
           />
-          {showScanOverlay && <ScanningOverlay />}
-        </div>
+        );
+      if (readingStatus !== "active") return null;
+      return (
+        <ReadingPCNActive
+          appeal={appeal}
+          pcnImage={pcnImage}
+          showScanOverlay={showScanOverlay}
+          ocrHandoff={ocrHandoff}
+          onAgree={onAgreeTicket}
+          onEditField={onEditTicketField}
+          autoExpandForm={autoExpandManualEntry}
+        />
       );
     })(),
   });

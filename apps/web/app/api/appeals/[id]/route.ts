@@ -10,7 +10,9 @@ import {
   canViewAppeal,
   getRequestSessionId,
   getViewer,
+  resolveAccess,
 } from "@/lib/server/viewer";
+import { redactAppealForViewer } from "@/lib/server/appeals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,13 +48,20 @@ export async function GET(
     }
     const [viewer] = await Promise.all([getViewer()]);
     const sessionId = getRequestSessionId(request);
-    if (!canViewAppeal(viewer, appeal, sessionId)) {
+    const access = await resolveAccess(viewer, appeal, sessionId);
+    if (access === "none") {
       return NextResponse.json(
         jsonError("FORBIDDEN", `Appeal ${id} not accessible to this viewer`),
         { status: 403 },
       );
     }
-    return NextResponse.json({ appeal });
+    // 2026-05-27 — shared viewers (added to appeal_viewers via the
+    // duplicate-upload dedup in /api/extract) get a redacted view:
+    // canonical ticket data + portal verdict only. Letter body,
+    // grounds, notes, and personal scoring stay with the owner.
+    const payload =
+      access === "shared" ? redactAppealForViewer(appeal) : appeal;
+    return NextResponse.json({ appeal: payload });
   } catch (err) {
     if (err instanceof DatabaseNotConfiguredError) {
       return NextResponse.json(jsonError("DATABASE_NOT_CONFIGURED", err.message), { status: 503 });

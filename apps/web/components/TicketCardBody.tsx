@@ -34,6 +34,8 @@ import {
   X,
 } from "lucide-react";
 import { LetterPreview } from "@/components/LetterPreview";
+import { TicketDetailsForm } from "@/components/ticket/TicketDetailsForm";
+import { useAvgDurations, formatEta } from "@/lib/client/avgDurations";
 import type { LucideIcon } from "lucide-react";
 import { EvidenceCarousel } from "@/components/EvidenceCarousel";
 import {
@@ -81,6 +83,11 @@ interface Props {
   onEditTicket: () => void;
   /** Opens the £2.99 PaymentSheet. */
   onOpenPaymentSheet: () => void;
+  /** Opens the council-picker sheet (owned by TicketCard so the sheet
+   *  itself stays mounted once per page). Forwarded into PendingReviewCard
+   *  and the failure-card's inline TicketDetailsForm so the user can pick
+   *  a council from the same surface they're editing on. */
+  onOpenCouncilPicker?: () => void;
   /** Lookup override — only relevant in `terminal` flavored as invalid-verdict. */
   onOverrideLookup?: () => void;
   /** Fired when the user finishes the grounds quiz + dictation in the
@@ -117,6 +124,21 @@ interface Props {
    *  CouncilCheckChip in the gathering_evidence body. NULL when the
    *  lookup isn't running. */
   liveCouncilThought?: string | null;
+  /** Live letter body accumulated from /api/generate-stream's SSE
+   *  `chunk` events. Empty string until the first chunk arrives.
+   *  When non-empty the drafting body renders a streaming LetterPreview
+   *  instead of the generic "Drafting your appeal" status row so the
+   *  customer watches the letter being written. */
+  draftStreamBody?: string;
+  /** True while the SSE response is still open. Drives the typing
+   *  cursor + the post-stream auto-collapse animation in LetterPreview. */
+  draftStreamActive?: boolean;
+  /** Sticky flag — true once any stream has completed during the
+   *  current TicketCard mount. Used to seed the LetterPreview inside
+   *  PaidSubmitCta with `defaultOpen={false}` so the post-stream
+   *  collapse persists across the drafting → letter_ready remount, and
+   *  the blue submit CTA is the next thing the customer sees. */
+  draftStreamCompletedThisMount?: boolean;
   /** Set while a method-pick or submit is in flight. */
   busy?: boolean;
 }
@@ -132,6 +154,7 @@ export function TicketCardBody({
   onAgreeTicket,
   onEditTicket,
   onOpenPaymentSheet,
+  onOpenCouncilPicker,
   onOverrideLookup,
   onConfirmEvidence,
   onRetryDraft,
@@ -140,8 +163,38 @@ export function TicketCardBody({
   pcnImage,
   ocrHandoff,
   liveCouncilThought,
+  draftStreamBody = "",
+  draftStreamActive = false,
+  draftStreamCompletedThisMount = false,
   busy,
 }: Props) {
+  // Default no-op for the council picker callback — keeps the form
+  // render path forgiving if a caller forgot to thread the prop. The
+  // primary mount sites (PendingReviewCard, ReadingFailureActions
+  // inside the failure-card path) always supply a real handler.
+  const openCouncilPicker = onOpenCouncilPicker ?? (() => {});
+  // 2026-05-27 — rolling-14-day avg durations per AI-call stage,
+  // sourced from /api/stats/avg-durations. Drives the "We'll notify
+  // you when it's done. Usually takes ~Xs." line under the
+  // validating / drafting / submitting bubbles so the user has a
+  // realistic expectation of how long each step takes. Module-level
+  // cache means one fetch per tab regardless of how many tickets
+  // are mounted.
+  const avgDurations = useAvgDurations();
+
+  // 2026-05-27 — shared viewer (added to appeal_viewers via the
+  // duplicate-upload dedup in /api/extract) gets a read-only surface.
+  // The lifecycle steps still render in the timeline above this body
+  // (they're public facts about the PCN), but the body shows a clear
+  // "Shared with you" badge + a short summary instead of the
+  // owner's editable / action surfaces. Owner-only fields (letter
+  // body, grounds, notes, scoring) are already redacted server-side
+  // in `redactAppealForViewer`, so nothing sensitive can leak even
+  // if a future code path forgets to gate.
+  if (appeal.isViewerOnly) {
+    return <SharedViewerBody appeal={appeal} state={state} />;
+  }
+
   switch (state.kind) {
     case "processing":
       return (
@@ -156,6 +209,7 @@ export function TicketCardBody({
         <PendingReviewCard
           appeal={appeal}
           ocrHandoff={ocrHandoff ?? null}
+          pcnImage={pcnImage ?? appeal.pcnImageUrl ?? null}
           onAgree={onAgreeTicket}
           onEditField={onEditTicketField}
           busy={busy}
@@ -187,6 +241,7 @@ export function TicketCardBody({
           liveStep={state.caption ?? null}
           onProceedWithoutValidation={undefined}
           busy={busy}
+          eta={formatEta(avgDurations.lookup)}
         />
       );
     }
@@ -196,11 +251,21 @@ export function TicketCardBody({
       //      council-confirmed metadata.
       //   2. Status row — live state (waiting on lookup / Claude streaming /
       //      failed with the actual error + a Retry button).
+      //   3. (v0.3.x) Live LetterPreview — once SSE chunks start arriving
+      //      from /api/generate-stream the status row is replaced with the
+      //      letter being written in real time. Auto-collapses on stream
+      //      end (handled inside LetterPreview).
       const waitingOnLookup =
         appeal.step === EVIDENCE_DONE_STEP &&
         appeal.portalLookup?.status === "pending";
       const failed = appeal.step === "generation_failed";
       const draftError = appeal.processing?.draft?.error ?? null;
+      // The live preview takes over the moment the first chunk lands.
+      // Before that we keep the status row so the customer sees activity
+      // during the 20–60 s Claude generation window (no chunks emitted
+      // until attachDraftToAppeal has persisted).
+      const showLiveLetter =
+        !failed && (draftStreamActive || draftStreamBody.length > 0);
       return (
         <div className="flex flex-col gap-3">
           <CouncilConfirmedDetails appeal={appeal} />
@@ -209,6 +274,14 @@ export function TicketCardBody({
               errorMessage={draftError}
               onRetry={onRetryDraft ?? (() => {})}
               busy={busy}
+            />
+          ) : showLiveLetter ? (
+            <LetterPreview
+              appealId={appeal.id}
+              subject={appeal.letterSubject}
+              body={draftStreamBody}
+              wordCount={null}
+              isStreaming={draftStreamActive}
             />
           ) : (
             <InlineStatusRow
@@ -222,9 +295,13 @@ export function TicketCardBody({
                 waitingOnLookup
                   ? "Rabbit is finishing the council check before drafting your appeal — usually a few more seconds."
                   : state.caption ??
-                    "ParkingRabbit AI is writing your appeal letter — usually 20–30 seconds."
+                    "ParkingRabbit AI is writing your appeal letter."
               }
               tone="info"
+              // Show the "Usually takes ~Xs" line only once we're
+              // actively drafting (not while still waiting on the
+              // lookup, where the lookup ETA would be misleading).
+              eta={waitingOnLookup ? null : formatEta(avgDurations.draft)}
             />
           )}
         </div>
@@ -240,6 +317,7 @@ export function TicketCardBody({
             "ParkingRabbit AI is operating the council portal."
           }
           tone="info"
+          eta={formatEta(avgDurations.submit)}
         />
       );
     case "gathering_evidence":
@@ -258,6 +336,11 @@ export function TicketCardBody({
           busy={busy}
           onOpenPaymentSheet={onOpenPaymentSheet}
           onRescoreWithEvidence={onRescoreWithEvidence}
+          // If a live stream just completed inside this same mount, the
+          // customer already watched the letter type itself out — start
+          // the post-transition LetterPreview collapsed so the blue
+          // submit CTA is the first thing they see.
+          letterDefaultOpen={!draftStreamCompletedThisMount}
         />
       );
     case "submitted":
@@ -311,6 +394,7 @@ export function TicketCardBody({
         <PendingReviewCard
           appeal={appeal}
           ocrHandoff={ocrHandoff ?? null}
+          pcnImage={pcnImage ?? appeal.pcnImageUrl ?? null}
           onAgree={onAgreeTicket}
           onEditField={onEditTicketField}
           busy={busy}
@@ -679,22 +763,117 @@ function ProcessingStepRow({
  * back so the user can land here again to fix typos.
  */
 
+/**
+ * SharedViewerBody — the read-only card body shown when the current
+ * viewer was linked to this appeal via `appeal_viewers` (the dedup
+ * path in /api/extract for second-uploaders of the same PCN). The
+ * owner's letter / grounds / notes are already null on the wire
+ * (redacted in `redactAppealForViewer`); this component renders the
+ * remaining public surface — canonical ticket details + portal
+ * verdict + a clear "Shared with you" badge.
+ */
+function SharedViewerBody({
+  appeal,
+  state,
+}: {
+  appeal: AppealRecord;
+  state: CardState;
+}) {
+  const ticket = appeal.ticket;
+  const verdict = appeal.portalLookup?.verdict ?? null;
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="rounded-2xl bg-parkingrabbit-primary-50/70 border border-parkingrabbit-primary/25 p-3 flex items-start gap-3">
+        <span className="size-9 rounded-xl bg-parkingrabbit-primary text-white flex items-center justify-center shrink-0">
+          <ShieldCheck className="size-4" strokeWidth={2.25} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-bold text-parkingrabbit-navy leading-tight">
+            Shared with you
+          </p>
+          <p className="text-[11.5px] text-parkingrabbit-muted mt-0.5 leading-snug">
+            Another user has already added this PCN. You can see the
+            council&apos;s record, but the appeal letter and decisions
+            stay with the original user.
+          </p>
+        </div>
+      </div>
+
+      {ticket && (ticket.pcnRef || ticket.vehicleReg || ticket.issuer) && (
+        <dl className="rounded-2xl bg-white border border-parkingrabbit-border p-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11.5px]">
+          {ticket.issuer && (
+            <div className="col-span-2">
+              <dt className="text-[10px] uppercase tracking-wide text-parkingrabbit-muted">
+                Council
+              </dt>
+              <dd className="font-bold text-parkingrabbit-navy">
+                {ticket.issuer}
+              </dd>
+            </div>
+          )}
+          {ticket.pcnRef && (
+            <div>
+              <dt className="text-[10px] uppercase tracking-wide text-parkingrabbit-muted">
+                PCN reference
+              </dt>
+              <dd className="font-bold text-parkingrabbit-navy">
+                {ticket.pcnRef}
+              </dd>
+            </div>
+          )}
+          {ticket.vehicleReg && (
+            <div>
+              <dt className="text-[10px] uppercase tracking-wide text-parkingrabbit-muted">
+                Registration
+              </dt>
+              <dd className="font-bold text-parkingrabbit-navy">
+                {ticket.vehicleReg}
+              </dd>
+            </div>
+          )}
+          {verdict && (
+            <div className="col-span-2">
+              <dt className="text-[10px] uppercase tracking-wide text-parkingrabbit-muted">
+                Council verdict
+              </dt>
+              <dd className="font-bold text-parkingrabbit-navy capitalize">
+                {verdict.replace(/_/g, " ")}
+              </dd>
+            </div>
+          )}
+          {state.pillLabel && (
+            <div className="col-span-2">
+              <dt className="text-[10px] uppercase tracking-wide text-parkingrabbit-muted">
+                Status
+              </dt>
+              <dd className="font-bold text-parkingrabbit-navy">
+                {state.pillLabel}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 function PendingReviewCard({
   appeal,
   ocrHandoff,
+  pcnImage,
   onAgree,
   onEditField,
   busy,
 }: {
   appeal: AppealRecord;
   ocrHandoff: OcrHandoff | null;
-  /** Fired when the user taps "Agree to continue". Parent PATCHes
-   *  step=TICKET_CONFIRMED_STEP so the card flips into needs_decision
-   *  on the next derive pass. */
+  /** PCN photo URL — surfaced at the top of the inline form. */
+  pcnImage: string | null;
+  /** Fired when the user taps "Confirm & validate with council". Parent
+   *  PATCHes step=TICKET_CONFIRMED_STEP + POSTs /lookup so the card
+   *  flips into validating on the next derive pass. */
   onAgree: () => void;
-  /** v0.2.17 — debounced PATCH of a single ticket field. Numeric
-   *  (amountPence) and date (issuedAt) values are forwarded as strings;
-   *  the parent handler coerces / persists them appropriately. */
+  /** Debounced PATCH of a single ticket field. */
   onEditField?: (
     field:
       | "pcnRef"
@@ -707,297 +886,26 @@ function PendingReviewCard({
   ) => void;
   busy?: boolean;
 }) {
-  const ticket = appeal.ticket;
-  const coach = ocrHandoff?.photoCoach ?? null;
-  // Optimistic local state so typing feels instant even on a slow PATCH.
-  // PCN reference + registration are always editable. v0.3.6 adds
-  // conditional Amount + Issue-date inputs: they ONLY appear when OCR
-  // couldn't read those fields (amountPence === 0 / issuedAt === "").
-  // When OCR did read them, the council's record is treated as
-  // authoritative post-lookup and we keep the inputs hidden to avoid
-  // inviting second-guessing.
-  const [pcnRefLocal, setPcnRefLocal] = useState<string>(ticket?.pcnRef ?? "");
-  const [vehicleRegLocal, setVehicleRegLocal] = useState<string>(
-    ticket?.vehicleReg ?? "",
-  );
-  // Amount: stored as pounds string (e.g. "160" or "160.50") for the
-  // text input. Converted to integer pence when forwarded via onEditField
-  // (the parent's editTicketField helper expects amountPence in pence).
-  const [amountLocal, setAmountLocal] = useState<string>(() =>
-    ticket?.amountPence ? String(ticket.amountPence / 100) : "",
-  );
-  // Issue date: stored as yyyy-MM-dd for the native date input.
-  // Server side stores an ISO string; we slice on render and pass back
-  // the date-only value (parent persists as-is).
-  const [issuedAtLocal, setIssuedAtLocal] = useState<string>(
-    ticket?.issuedAt ? ticket.issuedAt.slice(0, 10) : "",
-  );
-  // Sync local state when the appeal row refreshes (e.g. from a
-  // reconciliation poll). All setStates are external-sync (prop->state).
-  //
-  // NOTE: amountPence + issuedAt are INTENTIONALLY excluded from the dep
-  // array. Those fields go through a lossy round-trip (pounds string ↔
-  // integer pence; date string ↔ ISO timestamp) where every keystroke
-  // updates the parent and the parent update re-triggers this effect,
-  // overwriting in-progress typing — e.g. "1." collapses to "1" before
-  // the user can type the decimal. The text fields below (PCN + reg)
-  // are 1:1 strings so the round-trip is lossless and safe.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    setPcnRefLocal(ticket?.pcnRef ?? "");
-    setVehicleRegLocal(ticket?.vehicleReg ?? "");
-  }, [ticket?.pcnRef, ticket?.vehicleReg]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // OCR-missing flags. The input must STAY MOUNTED while the user
-  // edits even after their first keystroke lifts amountPence above
-  // zero — earlier behaviour unmounted on the first character and
-  // looked like the field "ate" the input. But pure latch-on-mount
-  // is also wrong: if the council lookup later fills in the amount
-  // and the user never touched the field, the empty input should
-  // disappear because the data is now displayed elsewhere.
-  //
-  // Solution: render-time predicate that's true whenever EITHER (a)
-  // OCR is still empty, OR (b) the user has touched the field this
-  // session. Touched is tracked in refs so it never re-renders the
-  // tree — only the derived `needsAmount` value changes.
-  const amountTouchedRef = useRef(false);
-  const dateTouchedRef = useRef(false);
-  const needsAmount =
-    amountTouchedRef.current ||
-    !ticket?.amountPence ||
-    ticket.amountPence === 0;
-  const needsDate =
-    dateTouchedRef.current ||
-    !ticket?.issuedAt ||
-    ticket.issuedAt.trim().length === 0;
-
-  // Inline-validate: PCN ref + vehicle reg + council are the minimum
-  // we need to fire the council lookup. Plus: any field whose input
-  // we're showing here must also be filled before Agree is enabled.
-  const councilSlug = appeal.councilSlug ?? appeal.ticket?.councilSlug ?? null;
-  const amountValid = !needsAmount || (() => {
-    const n = Number(amountLocal);
-    return Number.isFinite(n) && n > 0;
-  })();
-  const dateValid = !needsDate || issuedAtLocal.length > 0;
-  const fieldsFilled =
-    pcnRefLocal.trim().length > 0 &&
-    vehicleRegLocal.trim().length > 0 &&
-    !!councilSlug &&
-    amountValid &&
-    dateValid;
-
+  // 2026-05-27 — the editable block lives in <TicketDetailsForm> now.
+  // The form is intentionally minimal per user directive: image at top
+  // + (optional) photo-coach badge + PCN ref + Reg + Confirm button.
+  // Council is picked via the header's badge tile (one source of
+  // truth, no duplicate input row on the form).
   return (
-    // No outer rounded card wrapper, no duplicate header — the parent
-    // lifecycle step provides the section framing. Editable fields
-    // stacked on top, then the three Pay/Appeal tiles, then a tiny
-    // T&Cs footer. One card, one decision.
-    <section className="flex flex-col gap-2.5 relative">
-      <EditableFieldRow
-        label="PCN reference"
-        value={pcnRefLocal}
-        onChange={(v) => {
-          const upper = v.toUpperCase();
-          setPcnRefLocal(upper);
-          onEditField?.("pcnRef", upper);
-        }}
-        placeholder="WC12345678"
-        autoCapitalize="characters"
-      />
-      <EditableFieldRow
-        label="Registration"
-        value={vehicleRegLocal}
-        onChange={(v) => {
-          const upper = v.toUpperCase();
-          setVehicleRegLocal(upper);
-          onEditField?.("vehicleReg", upper);
-        }}
-        placeholder="AB12 CDE"
-        autoCapitalize="characters"
-      />
-      {/* v0.3.6 — Amount + Issue-date inputs ONLY appear when OCR
-       *  couldn't read them. Otherwise the OCR's figures are treated
-       *  as the preview value and the council's record is
-       *  authoritative once verified. The amount is entered in
-       *  pounds and converted to integer pence at the boundary
-       *  before forwarding to the parent (which stores amountPence). */}
-      {needsAmount && (
-        <EditableFieldRow
-          label="Amount"
-          value={amountLocal}
-          onChange={(v) => {
-            // Allow only digits + a single decimal point.
-            const cleaned = v.replace(/[^\d.]/g, "");
-            // Touched — `needsAmount` will stay true even if the
-            // council lookup later fills in amountPence; the input
-            // can't be yanked out from under the user mid-edit.
-            amountTouchedRef.current = true;
-            setAmountLocal(cleaned);
-            const n = Number(cleaned);
-            if (Number.isFinite(n) && n > 0) {
-              onEditField?.("amountPence", String(Math.round(n * 100)));
-            }
-          }}
-          placeholder="160"
-          prefix="£"
-          inputMode="decimal"
-        />
-      )}
-      {needsDate && (
-        <EditableFieldRow
-          label="Issue date"
-          value={issuedAtLocal}
-          onChange={(v) => {
-            dateTouchedRef.current = true;
-            setIssuedAtLocal(v);
-            if (v.length > 0) {
-              onEditField?.("issuedAt", v);
-            }
-          }}
-          type="date"
-        />
-      )}
-      {/* Issuing council lives on the council logo tile in the
-       *  ticket header — tapping the square logo opens the picker. */}
-
-      {/* Photo-coach hint (only when not "good"). Surfaces above the
-       *  decision tiles so the user has a chance to scan again before
-       *  committing to either Pay or Appeal. */}
-      {coach && coach.quality !== "good" && coach.advice && (
-        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2.5">
-          <AlertTriangle
-            className="size-3.5 text-amber-700 mt-0.5 shrink-0"
-            strokeWidth={2.25}
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-[11.5px] font-bold text-amber-900">
-              {coach.quality === "ok" ? "Photo could be sharper" : "Photo looks rough"}
-            </p>
-            <p className="text-[11px] text-amber-900/80 mt-0.5 leading-snug">
-              {coach.advice}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* v0.3.9 — Confirm & validate with council. The customer's
-       *  explicit eyeball on PCN ref + VRM before we burn MCP tokens
-       *  ($0.30/run) on a council-portal lookup. PATCHes
-       *  step=TICKET_CONFIRMED_STEP AND fires the pcn_lookup job;
-       *  card flips into the validating gate while the agent reads
-       *  the portal. Disabled until PCN ref + registration + council
-       *  are all set. */}
-      <button
-        type="button"
-        onClick={() => {
-          if (busy || !fieldsFilled) return;
-          onAgree();
-        }}
-        disabled={busy || !fieldsFilled}
-        className="rounded-2xl bg-parkingrabbit-primary text-white font-bold py-3.5 hover:bg-parkingrabbit-primary-600 transition disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-parkingrabbit-primary/30 active:scale-[0.99]"
-      >
-        {busy ? (
-          <>
-            <Loader2 className="size-4 animate-spin" />
-            Saving…
-          </>
-        ) : (
-          <>
-            <ShieldCheck className="size-4" strokeWidth={2.25} />
-            Confirm &amp; validate with council
-          </>
-        )}
-      </button>
-
-      <p className="text-[10.5px] text-parkingrabbit-muted text-center leading-snug">
-        Tapping Confirm locks in the PCN reference and reg above so we can
-        check them against the council&apos;s portal. You only pay if you
-        choose Appeal.
-      </p>
-
-    </section>
+    <TicketDetailsForm
+      appeal={appeal}
+      pcnImage={pcnImage}
+      ocrHandoff={ocrHandoff}
+      onAgree={onAgree}
+      onEditField={onEditField}
+      busy={busy}
+    />
   );
 }
 
-/** Inline-editable field row. Used for every extracted detail on the
- *  Confirm-your-ticket surface (PCN ref, vehicle reg, amount, issue
- *  date, location). The row IS the input — no extra pencil affordance;
- *  the focus ring on tap signals editability. */
-function EditableFieldRow({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  prefix,
-  inputMode,
-  autoCapitalize,
-  tight = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  placeholder?: string;
-  type?: "text" | "date";
-  /** Static prefix glyph shown left of the input (e.g. "£"). */
-  prefix?: string;
-  inputMode?: "decimal" | "numeric" | "text";
-  autoCapitalize?: "characters" | "off";
-  /** Half-width compact mode: nowrap label, responsive value font,
-   *  ellipsis on overflow. Used by the PCN ref + Registration row,
-   *  which has to fit two columns on the narrowest mobile widths. */
-  tight?: boolean;
-}) {
-  // For tight rows, scale the value font down once content gets long
-  // (>10 chars) so a 12-char PCN ref stops pushing the input wider
-  // than its column. Negative letter-spacing closes the visual gap.
-  const valueShrink = tight && value.length > 10;
-  const valueStyle: React.CSSProperties | undefined = tight
-    ? {
-        fontSize: valueShrink ? "clamp(14px, 3.6vw, 18px)" : "clamp(15px, 4vw, 20px)",
-        letterSpacing: valueShrink ? "-0.02em" : undefined,
-      }
-    : undefined;
-  return (
-    <label
-      className={`rounded-xl border border-parkingrabbit-border flex flex-col gap-0.5 focus-within:border-parkingrabbit-primary focus-within:ring-2 focus-within:ring-parkingrabbit-primary/15 transition min-w-0 ${
-        tight ? "p-3 max-[380px]:p-2.5" : "p-3"
-      }`}
-    >
-      <span
-        className="text-[11px] uppercase text-parkingrabbit-muted whitespace-nowrap overflow-hidden text-ellipsis"
-        style={{ letterSpacing: "0.04em" }}
-      >
-        {label}
-      </span>
-      <div className="flex items-center gap-1.5 min-w-0">
-        {prefix && (
-          <span
-            className={`font-bold text-parkingrabbit-navy shrink-0 ${
-              tight ? "text-[16px]" : "text-[14px]"
-            }`}
-          >
-            {prefix}
-          </span>
-        )}
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          inputMode={inputMode}
-          autoCapitalize={autoCapitalize ?? "off"}
-          spellCheck={false}
-          style={valueStyle}
-          className={`flex-1 min-w-0 bg-transparent font-bold text-parkingrabbit-navy focus:outline-none placeholder:text-parkingrabbit-muted/60 overflow-hidden text-ellipsis whitespace-nowrap ${
-            tight ? "" : "text-[14px]"
-          }`}
-        />
-      </div>
-    </label>
-  );
-}
+/* `EditableFieldRow` moved to components/ticket/TicketDetailsForm.tsx
+ * alongside the shared form (2026-05-27 refactor — single editable
+ * surface across pending_review + failure-card paths). */
 
 /* ──────────── shared inline status row (replaces PassiveStatusBanner) ──────────── */
 
@@ -1006,11 +914,18 @@ function InlineStatusRow({
   title,
   body,
   tone,
+  eta,
 }: {
   icon: LucideIcon;
   title: string;
   body: string;
   tone: "info" | "warn" | "positive";
+  /** 2026-05-27 — when present, render a small "Usually takes ~Xs.
+   *  We'll notify you when it's done." footer under the body. Source:
+   *  rolling-14-day avg of successful ai_calls.duration_ms for the
+   *  matching stage. Caller passes null when the stage has no recent
+   *  data so the footer is suppressed. */
+  eta?: string | null;
 }) {
   const palette =
     tone === "info"
@@ -1032,6 +947,12 @@ function InlineStatusRow({
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-parkingrabbit-navy">{title}</p>
         <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug">{body}</p>
+        {eta && (
+          <p className="text-[11px] text-parkingrabbit-primary/80 mt-1.5 leading-snug font-semibold inline-flex items-center gap-1">
+            <Loader2 className="size-3 animate-spin" strokeWidth={2.5} />
+            We&apos;ll notify you when it&apos;s done. Usually takes {eta}.
+          </p>
+        )}
       </div>
     </section>
   );
@@ -1950,6 +1871,7 @@ function PaidSubmitCta({
   busy,
   onOpenPaymentSheet,
   onRescoreWithEvidence,
+  letterDefaultOpen = true,
 }: {
   appeal: AppealRecord;
   busy?: boolean;
@@ -1958,6 +1880,12 @@ function PaidSubmitCta({
    *  Surfaced inside the weak-appeal warning so adding evidence updates
    *  the score in place. */
   onRescoreWithEvidence?: (photos: string[]) => Promise<void> | void;
+  /** Whether the embedded LetterPreview starts expanded. The parent
+   *  passes `false` immediately after a live stream completes so the
+   *  blue submit CTA is the first surface in view; defaults to `true`
+   *  for direct visits to `letter_ready` (e.g. returning to the ticket
+   *  later) so the customer reads the letter before paying. */
+  letterDefaultOpen?: boolean;
 }) {
   const score = appeal.strengthScore;
   const rationale = appeal.strengthRationale;
@@ -1998,12 +1926,16 @@ function PaidSubmitCta({
     <section className="flex flex-col gap-3">
       {/* Letter preview — collapsible with a typewriter reveal on first
        *  sight. Sits above the warning + CTA so the user can read what
-       *  they're about to submit before deciding. */}
+       *  they're about to submit before deciding. When `letterDefaultOpen`
+       *  is false (we just finished a live stream and auto-collapsed
+       *  the previous instance) this mount starts folded so the blue
+       *  submit CTA below dominates the viewport. */}
       <LetterPreview
         appealId={appeal.id}
         subject={appeal.letterSubject}
         body={appeal.letterBody}
         wordCount={appeal.letterWordCount}
+        defaultOpen={letterDefaultOpen}
       />
       {/* Weak-appeal warning — rendered above the CTA so the user reads
        *  it BEFORE tapping the £2.99 button. While the warning is up

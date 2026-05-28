@@ -181,6 +181,11 @@ export interface AppealRecord {
   strengthRationale: string | null;
   strengthImprovements: string[] | null;
   knowledgePackUsed: KnowledgePackAudit | null;
+  /** 2026-05-27 — true when the current viewer is a SHARED viewer
+   *  (via appeal_viewers) rather than the owner. The UI gates all
+   *  edit/action surfaces behind !isViewerOnly so a viewer can
+   *  read the canonical ticket state but not edit or submit. */
+  isViewerOnly: boolean;
 }
 
 type CouncilDisplay = { logoUrl: string | null; logoBg: string | null };
@@ -247,26 +252,36 @@ function toRecord(
   council?: CouncilDisplay | null,
   activeJob?: ActiveJob | null,
   canonicalTicket?: CanonicalTicketView | null,
+  /** 2026-05-27 — true when the current viewer is a shared viewer
+   *  (via appeal_viewers) and NOT the owner. Drives client-side
+   *  edit-button gating + server-side redaction of owner-only fields
+   *  (letter body, grounds, notes, evidence) below. */
+  isViewerOnly = false,
 ): AppealRecord {
+  // For shared viewers, redact owner-only fields so the wire response
+  // never leaks letter body / grounds / personal notes. Canonical
+  // ticket data (issuer, pcnRef, vehicle reg, etc) and portal verdicts
+  // stay visible — they're public facts about the PCN, not personal.
+  const ticket = (row.ticket as AppealView["ticket"]) ?? null;
   return {
     id: row.id,
     sessionId: row.sessionId,
     userId: row.userId,
-    replyEmail: row.replyEmail,
+    replyEmail: isViewerOnly ? "" : row.replyEmail,
     status: row.status as AppealView["status"],
     step: row.step,
-    ticket: (row.ticket as AppealView["ticket"]) ?? null,
-    grounds: (row.grounds as string[]) ?? [],
-    notes: row.notes,
+    ticket,
+    grounds: isViewerOnly ? [] : ((row.grounds as string[]) ?? []),
+    notes: isViewerOnly ? null : row.notes,
     portalLookup: (row.portalLookup as PortalLookupSnapshot | null) ?? null,
     preferredMethod:
       row.preferredMethod === "email" || row.preferredMethod === "portal"
         ? row.preferredMethod
         : null,
-    letterSubject: row.letterSubject,
-    letterBody: row.letterBody,
-    letterWordCount: row.letterWordCount,
-    letterAddressedTo: row.letterAddressedTo,
+    letterSubject: isViewerOnly ? null : row.letterSubject,
+    letterBody: isViewerOnly ? null : row.letterBody,
+    letterWordCount: isViewerOnly ? null : row.letterWordCount,
+    letterAddressedTo: isViewerOnly ? null : row.letterAddressedTo,
     timeline: (row.timeline as AppealView["timeline"]) ?? DEFAULT_TIMELINE,
     councilSlug: row.councilSlug,
     councilLogoUrl: council?.logoUrl ?? null,
@@ -275,14 +290,118 @@ function toRecord(
     canonicalTicket: canonicalTicket ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    activeJobId: activeJob?.id ?? null,
-    activeJobKind: activeJob?.kind ?? null,
+    activeJobId: isViewerOnly ? null : (activeJob?.id ?? null),
+    activeJobKind: isViewerOnly ? null : (activeJob?.kind ?? null),
     processing: (row.processing as ProcessingStatus | null) ?? null,
     pcnImageUrl: row.pcnImageUrl,
-    strengthScore: row.strengthScore,
-    strengthRationale: row.strengthRationale,
-    strengthImprovements: (row.strengthImprovements as string[] | null) ?? null,
-    knowledgePackUsed: (row.knowledgePackUsed as KnowledgePackAudit | null) ?? null,
+    strengthScore: isViewerOnly ? null : row.strengthScore,
+    strengthRationale: isViewerOnly ? null : row.strengthRationale,
+    strengthImprovements: isViewerOnly
+      ? null
+      : ((row.strengthImprovements as string[] | null) ?? null),
+    knowledgePackUsed: isViewerOnly
+      ? null
+      : ((row.knowledgePackUsed as KnowledgePackAudit | null) ?? null),
+    isViewerOnly,
+  };
+}
+
+/**
+ * 2026-05-27 — cross-user dedup at upload time.
+ *
+ * When User B uploads a PCN that already has an appeals row from
+ * another user (signed-in or guest), this helper:
+ *   1. Finds the OLDEST other appeals row referencing the same
+ *      canonical ticket (the "owner" row).
+ *   2. Adds B as a viewer of that owner row via `linkAsViewer`.
+ *   3. DELETES B's just-created appeals row (the FK cascade also
+ *      drops any appeal_photos / jobs already attached to it — at
+ *      this point in /api/extract that's nothing meaningful).
+ *   4. Returns `{ mergedInto: ownerId }` so the client re-points its
+ *      session pointer at the owner appeal.
+ *
+ * Returns null when no other-user appeal exists OR when the only
+ * other appeal is owned by the SAME user/session (that's the
+ * same-user case `mergeDuplicateDraftIfAny` already handles).
+ */
+export async function dedupAsCrossUserViewer(
+  newAppealId: string,
+  canonicalTicketId: string,
+): Promise<{ mergedInto: string } | null> {
+  const fresh = await db()
+    .select({
+      id: schema.appeals.id,
+      userId: schema.appeals.userId,
+      sessionId: schema.appeals.sessionId,
+    })
+    .from(schema.appeals)
+    .where(eq(schema.appeals.id, newAppealId))
+    .limit(1);
+  const newAppeal = fresh[0];
+  if (!newAppeal) return null;
+
+  // Find the OLDEST other appeals row pointing at this canonical
+  // ticket. Oldest wins so the "first user to upload" is the
+  // de-facto owner — predictable behaviour, no jockeying when two
+  // users upload nearly simultaneously.
+  const candidates = await db()
+    .select({
+      id: schema.appeals.id,
+      userId: schema.appeals.userId,
+      sessionId: schema.appeals.sessionId,
+    })
+    .from(schema.appeals)
+    .where(
+      and(
+        eq(schema.appeals.ticketId, canonicalTicketId),
+        ne(schema.appeals.id, newAppealId),
+      ),
+    )
+    .orderBy(asc(schema.appeals.createdAt))
+    .limit(1);
+  const owner = candidates[0];
+  if (!owner) return null;
+
+  // Skip when the only other appeal belongs to the SAME user/session
+  // — that's the case `mergeDuplicateDraftIfAny` was designed for.
+  const sameOwner =
+    (newAppeal.userId && owner.userId === newAppeal.userId) ||
+    (!newAppeal.userId && owner.sessionId === newAppeal.sessionId);
+  if (sameOwner) return null;
+
+  // Cross-user dedup: link the new user as a viewer of the owner,
+  // then drop the new appeals row entirely.
+  const { linkAsViewer } = await import("./viewer");
+  await linkAsViewer(owner.id, newAppeal.userId, newAppeal.sessionId);
+  await db().delete(schema.appeals).where(eq(schema.appeals.id, newAppealId));
+  return { mergedInto: owner.id };
+}
+
+/**
+ * 2026-05-27 — redact owner-only fields from an already-loaded
+ * AppealRecord so a shared viewer (resolved via appeal_viewers) can
+ * read the canonical state without seeing the owner's personal
+ * letter / grounds / notes. Same redaction logic as toRecord's
+ * isViewerOnly branch — exposed here so API routes that load via
+ * getAppealById can apply it without an extra DB round-trip.
+ */
+export function redactAppealForViewer(record: AppealRecord): AppealRecord {
+  return {
+    ...record,
+    isViewerOnly: true,
+    replyEmail: "",
+    grounds: [],
+    notes: null,
+    letterSubject: null,
+    letterBody: null,
+    letterWordCount: null,
+    letterAddressedTo: null,
+    activeJobId: null,
+    activeJobKind: null,
+    strengthScore: null,
+    strengthRationale: null,
+    strengthImprovements: null,
+    knowledgePackUsed: null,
   };
 }
 
@@ -387,30 +506,68 @@ export async function listAppealsForViewer(opts: {
    *  drives the 15s reconciliation poll on the tickets list. */
   since?: Date | null;
 }): Promise<AppealRecord[]> {
-  const baseConditions = opts.userId
+  // OWNED — appeals where the viewer is the owner (full read/write).
+  // (Matches `canViewAppeal` exactly: signed-in user matches userId, OR
+  // the session matches sessionId.)
+  const ownedConditions = opts.userId
     ? or(eq(schema.appeals.userId, opts.userId), eq(schema.appeals.sessionId, opts.sessionId))!
     : eq(schema.appeals.sessionId, opts.sessionId);
-  const conditions = opts.since
-    ? and(baseConditions, gt(schema.appeals.updatedAt, opts.since))!
-    : baseConditions;
-  const rows = await db()
+  const ownedWhere = opts.since
+    ? and(ownedConditions, gt(schema.appeals.updatedAt, opts.since))!
+    : ownedConditions;
+  const ownedRows = await db()
     .select()
     .from(schema.appeals)
-    .where(conditions)
-    .orderBy(desc(schema.appeals.createdAt));
+    .where(ownedWhere);
+
+  // SHARED — appeals where the viewer was linked via appeal_viewers
+  // (2026-05-27, dedup-on-upload). Read-only access; the
+  // letter/grounds/notes/etc are redacted in `toRecord` below.
+  const sharedJoin = await db()
+    .select({ appeal: schema.appeals })
+    .from(schema.appealViewers)
+    .innerJoin(
+      schema.appeals,
+      eq(schema.appealViewers.appealId, schema.appeals.id),
+    )
+    .where(
+      opts.userId
+        ? or(
+            eq(schema.appealViewers.userId, opts.userId),
+            eq(schema.appealViewers.sessionId, opts.sessionId),
+          )!
+        : eq(schema.appealViewers.sessionId, opts.sessionId),
+    );
+  const ownedIds = new Set(ownedRows.map((r) => r.id));
+  const sharedRows = sharedJoin
+    .map((r) => r.appeal)
+    // De-dup: if a row appears in BOTH owned and shared (would only
+    // happen if a user got linked as a viewer of their own appeal —
+    // shouldn't, but defensive), owned wins so the row isn't redacted.
+    .filter((r) => !ownedIds.has(r.id))
+    // Apply the same `since` filter so the reconciliation poll
+    // continues to work for shared rows.
+    .filter((r) => (opts.since ? r.updatedAt > opts.since : true));
+
+  const allRows = [...ownedRows, ...sharedRows].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
+
   const [councilMap, jobMap, ticketMap] = await Promise.all([
-    loadCouncilDisplayMap(rows.map((r) => r.councilSlug)),
-    loadActiveJobMap(rows.map((r) => r.id)),
-    loadTicketMap(rows.map((r) => r.ticketId)),
+    loadCouncilDisplayMap(allRows.map((r) => r.councilSlug)),
+    loadActiveJobMap(allRows.map((r) => r.id)),
+    loadTicketMap(allRows.map((r) => r.ticketId)),
   ]);
-  return rows.map((r) =>
-    toRecord(
+  return allRows.map((r) => {
+    const isViewerOnly = !ownedIds.has(r.id);
+    return toRecord(
       r,
       r.councilSlug ? councilMap.get(r.councilSlug) : null,
       jobMap.get(r.id) ?? null,
-      r.ticketId ? ticketMap.get(r.ticketId) ?? null : null,
-    ),
-  );
+      r.ticketId ? (ticketMap.get(r.ticketId) ?? null) : null,
+      isViewerOnly,
+    );
+  });
 }
 
 export async function attachDraftToAppeal(
@@ -501,9 +658,17 @@ export async function setProcessingStep(
     .from(schema.appeals)
     .where(eq(schema.appeals.id, appealId));
   const current = (existing[0]?.processing as ProcessingStatus | null) ?? {};
+  // For the OCR step we MUST preserve `runId` across status flips —
+  // it's the race-guard key checked by `applyOcrFinalIfFresh` /
+  // `applyOcrPartialIfFresh`. Wiping it on a generic status update
+  // would let any subsequent OCR write land regardless of which run
+  // generated it. Other steps (analysis, draft) don't use the race
+  // guard yet, so they shed their previous state cleanly.
+  const carry = step === "ocr" ? { runId: current.ocr?.runId } : {};
   const next: ProcessingStatus = {
     ...current,
     [step]: {
+      ...carry,
       status,
       error: error ?? undefined,
       completedAt: status === "done" || status === "failed" ? new Date().toISOString() : undefined,
@@ -513,6 +678,227 @@ export async function setProcessingStep(
     .update(schema.appeals)
     .set({ processing: next, updatedAt: new Date() })
     .where(eq(schema.appeals.id, appealId));
+}
+
+/**
+ * Begin a new OCR run for an appeal — generates a unique `runId`,
+ * stamps `processing.ocr = { status: "running", runId }` on the row,
+ * and returns the id for the caller (typically /api/extract) to
+ * thread through all subsequent partial + final writes.
+ *
+ * The runId is the basis of the stale-write race guard: any later
+ * write (Pass 1's councilSlug+issuer partial, Pass 2's full ticket
+ * commit, or the failure-catch status flip) must consult the row's
+ * CURRENT `processing.ocr.runId` and bail if it no longer matches.
+ * A newer upload's `startOcrRun` overwrites the runId, so older runs'
+ * delayed writes silently no-op.
+ *
+ * Scenarios this closes:
+ *   1. User uploads photo A → Run A starts (runId=A).
+ *      User taps "Choose another photo" → Run B starts (runId=B).
+ *      Run A's Pass 2 finally returns + tries to PATCH ticket / flip
+ *      status to "done" or "failed". Each write site checks runId
+ *      first, sees B, bails — no clobber of Run B's in-flight or
+ *      already-landed state.
+ *
+ *   2. A success response with all 3 required fields (issuer, pcnRef,
+ *      vehicleReg) is written. Then an earlier run's "failed" write
+ *      lands. The "failed" write checks runId, bails, success stays.
+ */
+function generateRunId(): string {
+  // Compact, opaque, sortable-ish. The `Date.now()` prefix is for
+  // human eyeballability in logs; the random suffix collides-safe.
+  return `ocr-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
+/** Ticket fields that OCR populates — cleared at the top of every
+ *  fresh OCR run so the subsequent fill-empty merge can write a
+ *  complete result instead of being blocked by stale (and possibly
+ *  wrong) values from an earlier failed pass. Fields NOT in this
+ *  list are left alone (today there are none on the ticket jsonb;
+ *  if a future schema adds metadata that survives a re-shoot, list
+ *  it here only if you want it cleared on every run). */
+const OCR_EXTRACTED_TICKET_FIELDS = [
+  "issuer",
+  "councilSlug",
+  "pcnRef",
+  "vehicleReg",
+  "contraventionCode",
+  "contraventionDescription",
+  "issuedAt",
+  "location",
+  "amountPence",
+] as const;
+
+export async function startOcrRun(appealId: string): Promise<string> {
+  const runId = generateRunId();
+  const existing = await db()
+    .select({
+      processing: schema.appeals.processing,
+      ticket: schema.appeals.ticket,
+    })
+    .from(schema.appeals)
+    .where(eq(schema.appeals.id, appealId));
+  const current = (existing[0]?.processing as ProcessingStatus | null) ?? {};
+  const next: ProcessingStatus = {
+    ...current,
+    ocr: {
+      status: "running",
+      runId,
+      // Clear any prior failure error so the running row doesn't
+      // carry stale text into the next attempt's audit trail.
+      error: undefined,
+      completedAt: undefined,
+    },
+  };
+  // Clear the OCR-extracted ticket fields so the next fill-empty
+  // merge can write fresh values. This is the load-bearing piece
+  // that lets retries CORRECT a previous wrong council/pcnRef —
+  // without it the fill-empty merge in `applyOcr*IfFresh` would
+  // preserve the failed run's bad data. Safe because /api/extract
+  // (the only caller of startOcrRun) is only invoked from
+  // `uploadPcn` (fresh row, ticket is empty anyway) and
+  // `retryOcrWithPhoto` (explicit retry — the user has signalled
+  // they want fresh extraction). Fields outside this list are
+  // preserved.
+  const existingTicket = (existing[0]?.ticket ?? {}) as Record<string, unknown>;
+  const clearedTicket: Record<string, unknown> = { ...existingTicket };
+  for (const field of OCR_EXTRACTED_TICKET_FIELDS) {
+    delete clearedTicket[field];
+  }
+  await db()
+    .update(schema.appeals)
+    .set({
+      processing: next,
+      ticket: clearedTicket as AppealView["ticket"],
+      // Drop the hoisted council_slug column too, so deriveCardState's
+      // pending_review check (which looks at ticket.councilSlug) sees
+      // a true empty state until the new OCR run lands. Otherwise a
+      // stale council slug would keep the issuer-detected pill
+      // showing through the entire new pass.
+      councilSlug: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.appeals.id, appealId));
+  return runId;
+}
+
+/**
+ * Apply Pass 1's partial extraction (councilSlug + issuer) IF the
+ * supplied runId still matches the row's active OCR run. Bails
+ * silently when superseded by a newer upload.
+ *
+ * Uses the "fill empty only" merge rule: if `issuer` / `councilSlug`
+ * is already set on the existing ticket (from a previous Pass 1, a
+ * manual-entry submission, or an inline edit), the incoming value
+ * is dropped. This protects user edits from being clobbered by a
+ * delayed OCR response. The explicit retry path
+ * (`retryOcrWithPhoto`) clears these fields client-side before
+ * re-firing OCR, so retries can correct a wrong council.
+ *
+ * Returns true when the write went through (or there was nothing to
+ * write but the run was still fresh); false when the run was stale.
+ */
+export async function applyOcrPartialIfFresh(
+  appealId: string,
+  runId: string,
+  partial: { councilSlug?: string | null; issuer?: string | null },
+): Promise<boolean> {
+  const rows = await db()
+    .select({
+      ticket: schema.appeals.ticket,
+      processing: schema.appeals.processing,
+    })
+    .from(schema.appeals)
+    .where(eq(schema.appeals.id, appealId));
+  if (!rows[0]) return false;
+  const proc = (rows[0].processing as ProcessingStatus | null) ?? {};
+  if (proc.ocr?.runId !== runId) return false; // stale run — bail
+
+  const existing = (rows[0].ticket ?? {}) as Record<string, unknown>;
+  const delta: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(partial)) {
+    if (v == null) continue;
+    if (typeof v === "string" && v.trim() === "") continue;
+    const ex = existing[k];
+    const exMeaningful =
+      ex != null && !(typeof ex === "string" && ex.trim() === "");
+    if (exMeaningful) continue;
+    delta[k] = v;
+  }
+  if (Object.keys(delta).length === 0) return true;
+
+  await patchAppealDraft(appealId, { ticket: delta as Partial<AppealView["ticket"]> });
+  return true;
+}
+
+/**
+ * Apply Pass 2's final extraction (full ticket) AND flip
+ * `processing.ocr.status` in one atomic-ish operation, gated by the
+ * runId race guard.
+ *
+ * Behaviour:
+ *   • Stale run → bail (no ticket write, no status flip).
+ *   • Fresh run, `ok: true` → fill-empty merge of the incoming ticket
+ *     onto the existing row, then set ocr status="done".
+ *   • Fresh run, `ok: false` → no ticket write; set ocr status="failed"
+ *     with the supplied error message.
+ *
+ * "Fill empty only" is the safe-merge rule the spec asks for:
+ * "Only fill empty fields. Do not replace user-edited fields."
+ * The explicit retry path clears the ticket client-side so a retry
+ * with a new photo CAN overwrite the old (wrong) data.
+ */
+export async function applyOcrFinalIfFresh(
+  appealId: string,
+  runId: string,
+  result:
+    | { ok: true; ticket: Partial<AppealView["ticket"]> }
+    | { ok: false; error: string },
+): Promise<boolean> {
+  const rows = await db()
+    .select({
+      ticket: schema.appeals.ticket,
+      processing: schema.appeals.processing,
+    })
+    .from(schema.appeals)
+    .where(eq(schema.appeals.id, appealId));
+  if (!rows[0]) return false;
+  const proc = (rows[0].processing as ProcessingStatus | null) ?? {};
+  if (proc.ocr?.runId !== runId) return false; // stale run — bail
+
+  if (result.ok) {
+    const existing = (rows[0].ticket ?? {}) as Record<string, unknown>;
+    const incoming = (result.ticket ?? {}) as Record<string, unknown>;
+    const delta: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(incoming)) {
+      if (v == null) continue;
+      if (typeof v === "string" && v.trim() === "") continue;
+      // amountPence === 0 is meaningful only as "no fine" which OCR
+      // shouldn't be writing anyway — treat zero numbers as empty
+      // too, so a hallucinated "0" doesn't overwrite a real amount.
+      if (typeof v === "number" && v === 0) continue;
+      const ex = existing[k];
+      const exMeaningful =
+        ex != null &&
+        !(typeof ex === "string" && ex.trim() === "") &&
+        !(typeof ex === "number" && ex === 0);
+      if (exMeaningful) continue;
+      delta[k] = v;
+    }
+    if (Object.keys(delta).length > 0) {
+      await patchAppealDraft(appealId, {
+        ticket: delta as Partial<AppealView["ticket"]>,
+      });
+    }
+    await setProcessingStep(appealId, "ocr", "done");
+    return true;
+  }
+
+  await setProcessingStep(appealId, "ocr", "failed", result.error);
+  return true;
 }
 
 export async function markAppealNotes(appealId: string, notes: string | null): Promise<void> {

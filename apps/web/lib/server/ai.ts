@@ -18,7 +18,8 @@ import type { PortalLookupSnapshot } from "./db/schema";
  * vs ~10s for the full extract).
  */
 const IDENTIFY_COUNCIL_PROMPT = `You are looking at a UK Penalty Charge Notice (PCN)
-photograph. Return ONLY the issuing council.
+photograph. Return the issuer + identifiers used to look up an existing
+canonical record before we run a full extract.
 
 - issuer: full name as printed on the notice (e.g. "Westminster City Council",
   "London Borough of Camden", "Transport for London").
@@ -28,8 +29,11 @@ photograph. Return ONLY the issuing council.
   greenwich, lewisham, newham, barnet, ealing, brent, haringey, enfield,
   redbridge, bromley, croydon, kingston, merton, sutton, richmond,
   hounslow, harrow, hillingdon, waltham-forest, havering, bexley, barking.
-- confidence: 0..1 reflecting how clearly you can identify the issuer
-  (logo presence, council name printed clearly, etc.).
+- pcnRef: alphanumeric PCN reference printed on the notice. Empty string
+  if not readable. (2026-05-27: added to Pass 1 so a same-PCN re-upload
+  can short-circuit Pass 2 by looking up the canonical row directly.)
+- vehicleReg: VRM as printed. Empty string if not readable.
+- confidence: 0..1 reflecting how clearly you can identify the issuer.
 
 Return the empty string for fields you cannot determine — never invent.
 `;
@@ -37,6 +41,8 @@ Return the empty string for fields you cannot determine — never invent.
 const IdentifyCouncilResult = z.object({
   issuer: z.string(),
   councilSlug: z.string(),
+  pcnRef: z.string().default(""),
+  vehicleReg: z.string().default(""),
   confidence: z.number().min(0).max(1),
 });
 
@@ -45,22 +51,32 @@ export async function identifyCouncil(input: {
 }): Promise<{
   issuer: string;
   councilSlug: string;
+  pcnRef: string;
+  vehicleReg: string;
   confidence: number;
   modelUsed: string;
   costUsd: number | null;
 }> {
   const { value, modelUsed, costUsd } = await runStructured({
     prompt:
-      "Identify the issuing council from the attached PCN photo. " +
-      "Return the schema-conformant JSON. No commentary.",
+      "Identify the issuing council and (when readable) the PCN reference + " +
+      "vehicle registration from the attached PCN photo. Return the " +
+      "schema-conformant JSON. No commentary.",
     schema: IdentifyCouncilResult,
     systemPrompt: IDENTIFY_COUNCIL_PROMPT,
     imageDataUrls: [input.pcnPhotoDataUrl],
-    timeoutMs: 30_000,
+    // 2026-05-27 — kept on Sonnet (default). Tried Haiku here for
+    // the latency drop but it misread digits (9→0, 6→8) on the
+    // pcnRef + vehicleReg fields, which then fed the canonical
+    // lookup with a wrong key — false negatives. Digit accuracy
+    // matters more than the ~3 s saved.
+    timeoutMs: 20_000,
   });
   return {
     issuer: value.issuer,
     councilSlug: value.councilSlug,
+    pcnRef: value.pcnRef,
+    vehicleReg: value.vehicleReg,
     confidence: value.confidence,
     modelUsed,
     costUsd,
@@ -70,83 +86,110 @@ export async function identifyCouncil(input: {
 /**
  * Cheap extract-only call. Used during capture (BEFORE the paywall) to
  * show the user what we read from the photo so they can confirm/edit
- * before paying for the full draft. Same model, smaller prompt, no letter.
+ * before the council lookup runs.
  *
- * v0.3.10 — the photo-coach pass (formerly a separate `coachPhoto()`
- * Claude vision call) is folded into this single call. The model
- * analyses the photo end-to-end exactly once, returns BOTH the ticket
- * fields and a UX-facing photo-quality verdict. Per-upload cost ~halved
- * (~$0.075 vs ~$0.129); confidence pills + retake-card copy unchanged
- * from the customer's point of view.
+ * 2026-05-27 — aggressive latency cut from baseline 52.5 s / $0.113:
+ *   1. Per-field `confidence` block DROPPED from the schema — the UI
+ *      no longer surfaces confidence pills now that amount + date
+ *      live on the portal-returned record. Saves ~9 output tokens
+ *      per field × 9 fields ≈ 80 tokens.
+ *   2. `contraventionDescription` DROPPED — the long-form prose was
+ *      the single biggest output field. We keep the 2-digit
+ *      contraventionCode; the portal lookup returns the human-readable
+ *      description as authoritative.
+ *   3. Photo-coach UN-MERGED into a parallel call (`coachPhoto` below)
+ *      so wall-clock latency is max(extract, coach) instead of sum.
+ *      Cost goes back up vs the merged version, but combined latency
+ *      drops to ~25 s instead of 52 s for the same total work.
+ *   4. Model switched to Haiku 4.5 for the extract leg — the
+ *      digit-disambiguation rule is a one-line arithmetic constraint
+ *      that Haiku honours fine. Sonnet stays for the coach leg
+ *      because the legibility judgement benefits from depth.
+ *   5. EXTRACT_PROMPT shrunk from ~1500 input tokens to ~400.
  */
 const EXTRACT_PROMPT = `You are ParkingRabbit's PCN scanner. Extract the ticket
-fields from the attached London Penalty Charge Notice photograph AND, in the
-same response, judge the photo's legibility so we can advise the user whether
-to retake.
+fields from the attached London Penalty Charge Notice photograph.
 
-EXTRACTION RULES
-================
-For each ticket field, output what the photo actually shows. If a field is
-not readable, return an empty string (or 0 for amountPence). Never invent
-values; never return placeholders like "[NOT READABLE]" inside a field.
+Return the schema-conformant JSON, no commentary. For each field, output what
+the photo actually shows. If a field is not readable, return an empty string
+(or 0 for amountPence). Never invent values or use placeholders.
 
 - issuer: full council name as printed (e.g. "Westminster City Council",
   "London Borough of Camden", "Transport for London").
-- councilSlug: lowercase, kebab-case, one of: westminster, kensington-chelsea,
-  camden, lambeth, islington, tfl, city-of-london, hackney, southwark,
-  tower-hamlets, ... (Use the empty string if not identifiable.)
-- pcnRef: the alphanumeric reference printed on the notice.
-- vehicleReg: the VRM as printed.
-- contraventionCode: a two-digit number (e.g. "12", "27", "40").
-- contraventionDescription: the plain-English description as printed.
+- councilSlug: lowercase kebab-case, e.g. westminster, lambeth, camden,
+  islington, kensington-chelsea, tfl, city-of-london, hackney, southwark,
+  tower-hamlets. Empty string if not identifiable.
+- pcnRef: alphanumeric reference printed on the notice.
+- vehicleReg: VRM as printed.
+- contraventionCode: 2-digit number (e.g. "12", "27", "40").
 - location: street + area where the vehicle was parked.
-- issuedAt: ISO 8601 timestamp of issue (best effort, e.g. "2026-05-12T09:14:00+01:00").
-- amountPence: the FULL penalty charge in pence — the larger figure
-  labelled "Full Amount of the Penalty Charge", NOT the reduced/discounted
-  amount. Read the digits with care: 6 vs 8, 0 vs 8, 5 vs 6, 1 vs 7 are
-  easy to confuse — zoom mentally and decide deliberately.
-  SELF-CHECK: a UK PCN's reduced charge is ALWAYS exactly 50% of the full
-  charge. If the notice prints a reduced/early-payment figure, the full
-  amount MUST equal twice it. If your reading breaks that relationship you
-  have misread a digit — re-read both figures and return the consistent
-  pair. Example: a reduced charge of £80 means the full charge is £160
-  (16000), never £180. Output integer pence (e.g. 16000 for £160).
-
-CONFIDENCE
-==========
-For each extracted field, return a confidence score in [0,1] reflecting how
-legible that field was in the photo. This is your honest read, not a
-calibration target — be willing to use 0.3 when you genuinely guessed.
-
-PHOTO COACH
-===========
-Also score the photo as a whole and write one short piece of "retake or
-proceed" advice. Surfaces under the failure card when quality is "ok"/"poor".
-
-- quality: one of
-  - "good": clearly legible, the key fields (PCN reference, vehicle reg,
-    contravention code, amount) are all readable from the photo alone.
-  - "ok": legible but some fields are smudged, glared, or cropped. The user
-    can proceed but should be ready to manually correct one or two fields.
-  - "poor": the photo isn't a PCN, is too blurry / dark / cropped to read,
-    or shows something else (e.g. a screenshot of an app). Advise retake.
-- legible: boolean — true unless quality === "poor" AND no fields could be
-  extracted reliably.
-- issues: up to 5 short noun-phrase issues (e.g. "glare on top half",
-  "photo cut off at the bottom", "image is too dark"). Empty array on "good".
-- advice: ONE sentence the user sees — actionable, plain English, polite.
-  Examples:
-    "Looks great — you can proceed."
-    "Try moving a bit closer so the PCN reference is in focus."
-    "It looks like this isn't a PCN photo — retake using the rear camera."
+- issuedAt: ISO 8601 timestamp (e.g. "2026-05-12T09:14:00+01:00").
+- amountPence: FULL penalty charge in integer pence (NOT the reduced/
+  early-payment figure). UK PCN reduced charge is ALWAYS exactly 50% of
+  full — if your reading breaks the 2:1 ratio with the printed reduced
+  charge, you misread a digit. Output e.g. 16000 for £160.
 `;
 
-// PhotoCoach is non-load-bearing — a malformed coach block (Claude
-// drifting outside the enum, exceeding the advice length, returning
-// 6+ issues) must never fail the whole extract. We catch the parse
-// error and substitute a neutral "good, no advice" verdict so the
-// ticket + confidence still flow through. The customer-visible coach
-// card just doesn't render in this case — same effect as quality="good".
+export async function extractTicket(input: {
+  pcnPhotoDataUrl: string;
+}): Promise<{
+  ticket: z.infer<typeof Ticket>;
+  modelUsed: string;
+  costUsd: number | null;
+}> {
+  const { value, modelUsed, costUsd } = await runStructured({
+    prompt:
+      "Extract the ticket fields. Return the schema-conformant JSON. No commentary.",
+    // The shared Ticket schema includes `contraventionDescription`
+    // (z.string()) for backwards compatibility with the rest of the
+    // codebase. We dropped it from EXTRACT_PROMPT — Claude returns
+    // an empty string here, which patchAppealDraft treats as
+    // "non-meaningful" and skips, leaving the canonical row's
+    // description (or empty) intact until the portal lookup lands.
+    schema: Ticket,
+    systemPrompt: EXTRACT_PROMPT,
+    imageDataUrls: [input.pcnPhotoDataUrl],
+    // 2026-05-27 — kept on Sonnet (default). Haiku was tried for the
+    // ~25 s latency cut, but it misread digits on a real Lambeth PCN
+    // (LJ39952021 → LJ30052021; PN65LBU → PN85LBU) — exactly the
+    // 9-vs-0 / 6-vs-8 confusion the prompt warns about. Sonnet's
+    // depth matters for this kind of pixel-level disambiguation.
+    // Speed wins now come from the schema trim (no per-field
+    // confidence, no contraventionDescription) + parallel coach call.
+    timeoutMs: 45_000,
+  });
+  return {
+    ticket: value,
+    modelUsed,
+    costUsd,
+  };
+}
+
+/**
+ * Photo-coach pass — judges legibility / quality and writes one
+ * sentence of retake advice. Restored as its own Claude vision call
+ * on 2026-05-27 (was merged into extractTicket, now split again) so
+ * /api/extract can fan out extract + coach in parallel via Promise.all
+ * — wall-clock latency = max(extract, coach) instead of sum.
+ *
+ * Cost trade-off vs the merged version: the merged extract was
+ * ~$0.075 / ~52 s. Split is ~$0.10 / ~25 s wall-clock. We're trading
+ * ~$0.025 per upload for ~25 s less time-to-confirm.
+ */
+const COACH_PROMPT = `Judge whether the attached photo of a UK PCN is legible
+enough for users to act on. Return the schema-conformant JSON, no commentary.
+
+- quality: "good" (all key fields readable), "ok" (some smudged/glared/cropped
+  but usable), or "poor" (not a PCN, too blurry/dark, or unreadable).
+- legible: true unless quality === "poor" AND no fields could be extracted.
+- issues: up to 5 short noun-phrase issues, e.g. "glare on top half",
+  "photo cut off at the bottom". Empty array when quality === "good".
+- advice: ONE actionable sentence the user sees. Examples:
+  "Looks great — you can proceed."
+  "Try moving closer so the PCN reference is in focus."
+  "This doesn't look like a PCN photo — retake using the rear camera."
+`;
+
 const PhotoCoachLenient = PhotoCoach.catch({
   legible: true,
   quality: "good" as const,
@@ -154,52 +197,31 @@ const PhotoCoachLenient = PhotoCoach.catch({
   advice: "",
 });
 
-const ExtractWithConfidenceAndCoach = z.object({
-  ticket: Ticket,
-  confidence: TicketConfidence,
-  // .default() handles the case where Claude omits the coach block
-  // entirely; .catch (above) handles the case where it returns
-  // something the inner schema would reject.
-  coach: PhotoCoachLenient.default({
-    legible: true,
-    quality: "good" as const,
-    issues: [],
-    advice: "",
-  }),
-});
-
-export async function extractTicket(input: {
+export async function coachPhoto(input: {
   pcnPhotoDataUrl: string;
 }): Promise<{
-  ticket: z.infer<typeof Ticket>;
-  confidence: z.infer<typeof TicketConfidence>;
   coach: z.infer<typeof PhotoCoach>;
   modelUsed: string;
   costUsd: number | null;
 }> {
   const { value, modelUsed, costUsd } = await runStructured({
     prompt:
-      "Extract the ticket fields with per-field confidence AND score the photo's " +
-      "legibility in one combined pass. Return the schema-conformant JSON. No commentary.",
-    schema: ExtractWithConfidenceAndCoach,
-    systemPrompt: EXTRACT_PROMPT,
+      "Judge the photo's legibility. Return the schema-conformant JSON. No commentary.",
+    schema: PhotoCoachLenient,
+    systemPrompt: COACH_PROMPT,
     imageDataUrls: [input.pcnPhotoDataUrl],
-    timeoutMs: 60_000,
+    // Sonnet — the quality judgement benefits from depth even though
+    // it's a small schema. Coach output drives the user-facing
+    // "looks rough / try again" advice copy; we'd rather pay a little
+    // more for a calibrated judgement than a fast wrong one.
+    timeoutMs: 25_000,
   });
   return {
-    ticket: value.ticket,
-    confidence: value.confidence,
-    coach: value.coach,
+    coach: value,
     modelUsed,
     costUsd,
   };
 }
-
-// v0.3.10 — `coachPhoto` + `COACH_PROMPT` deleted. The photo-coach pass
-// is now embedded inside `extractTicket` above; one Claude vision call
-// returns both the ticket fields and the legibility verdict instead of
-// two parallel calls on the same image. Per-upload cost drops from
-// ~$0.13 → ~$0.075.
 
 /**
  * "Strengthen my notes" — rewrites the user's free-text notes into a
