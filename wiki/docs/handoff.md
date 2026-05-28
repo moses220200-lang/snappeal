@@ -142,15 +142,17 @@ The client used to fire `void fetch('/api/generate-stream')` and discard the res
 
 `ParkingRabbitSplash` uses an inline `<img>` with `filter: invert(1) contrast(2)` to convert the navy-shield-on-transparent PNG into a pure-white shield + black rabbit + transparent background, all in CSS. The shared `<ParkingRabbitMark>` still uses the canonical navy mark everywhere else.
 
-#### Strand J — Open admin-detail work
+#### Strand J — Admin appeal-detail redesign (closed 2026-05-28)
 
-Three admin-side tasks were opened during the session and remain pending (no code yet — exploration of the admin codebase not done):
+The three admin-side tasks opened during the v0.3.13 session landed as one redesign of `app/admin/appeals/[id]/page.tsx` (~185 → ~1,130 lines, server-only via native `<details>`). Verified by minting an admin JWT, fetching the page over HTTP, and screenshotting the rendered DOM (no error markers, 200 OK on both a Lambeth and a Westminster appeal).
 
-1. **Admin appeal-detail: MCP screenshots gallery** — surface the screenshots Playwright captured during council lookup + submit runs.
-2. **Admin appeal-detail: per-call activity/thinking log** — the streaming reasoning output from each AI call.
-3. **Admin appeal-detail: rich metadata + categorised image gallery** — uploaded PCN photo, warden photos, evidence photos, MCP screenshots grouped by category.
+1. ~~**MCP screenshots gallery**~~ — slotted into the new categorised gallery as the "MCP screenshots" section. Source: `jobs.progress` events with `kind='screenshot'`, grouped by `jobId`, sorted by `step`, each captioned with `step N · <caption>`.
+2. ~~**Per-call activity/thinking log**~~ — every `ai_calls` row is now a `<details>`-expandable summary. Expanded view shows `errorKind`/`errorMessage` for failures, cache read/write tokens, the linked `jobId`, and for MCP calls the windowed slice of `jobs.progress` events (Status / Steps / Thinking / Metadata captured). One-shot calls (extract/draft) get an explicit empty-state — we don't persist a thinking transcript for those today. The window is `[ai_calls.createdAt − 500ms, +durationMs + 2000ms]`, which works for the typical 1-ai_call-per-job MCP pattern but would double-count if a job retried; tighten if retries become common.
+3. ~~**Rich metadata + categorised image gallery**~~ — the chrome the other two slot into. Top-to-bottom: header (id / status / tier / step / method / owner email / timestamps), 5 KPI tiles (Claude spend, agent wall-clock, portal verdict, strength, image count), identity grid (canonical ticket panel reading from `tickets` row with `appeals.ticket` jsonb fallback; ownership panel listing owner + shared `appeal_viewers` joined to `users.email`, grounds, payments), council verdict panel, processing-state + letter row (with strength callout when score < 80), categorised gallery (PCN / Warden ∪ tickets.portalSnapshot / Evidence / MCP / Submission), expandable ai_calls table, jobs/submissions/inbound lists, and a "Raw" footer with collapsed `ticket` / `timeline` / `processing` / `knowledgePackUsed` JSON dumps.
 
-All three share the same surface (`app/admin/appeals/[id]/page.tsx`) and probably want to land as one batch. None of them block the consumer flow.
+Dev affordance shipped alongside: `scripts/fetch-admin-page.ts` mints a 1-hour admin JWT from `AUTH_SECRET`, fetches an admin page over HTTP (with `--screenshot` to save a full-page PNG via Playwright, with the splash overlay pre-skipped via sessionStorage). Useful for smoke-testing admin server components without a sign-in flow.
+
+None of this blocks the consumer flow. Strand B's "Open product questions" from this milestone (viewer notification routing, opt-out, terminal-state behavior) remain open.
 
 #### Open product question carried forward
 
