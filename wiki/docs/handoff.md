@@ -1,6 +1,6 @@
 # Context handoff
 
-**Read this first if you're picking up ParkingRabbit cold.** Last refreshed **2026-05-28 (v0.3.13)**.
+**Read this first if you're picking up ParkingRabbit cold.** Last refreshed **2026-05-29 (v0.3.14)**.
 
 A web app + PWA that helps Londoners challenge a Penalty Charge Notice in a few taps. The customer scans the ticket; the AI reads it + the council portal; for £2.99 a paid appeal is drafted and submitted end-to-end with live transparency. This page is the consolidated current-state snapshot. Long-form session-by-session entries from v0.2.x → v0.3.7 live in [`archive.md`](archive.md). For the story behind a specific decision, `git log -- wiki/docs/handoff.md`.
 
@@ -69,6 +69,122 @@ Full enumeration + the derive ladder lives in `lib/deriveCardState.ts`. Per-kind
 `claude-sonnet-4-6` is the default for every stage (council_id, ocr, lookup MCP, draft, strength, submission MCP, strengthen_notes). Override via `CLAUDE_MODEL`. All calls go through `lib/server/claude-cli.ts` — single entry point. Per-call attribution lands in `ai_calls.model` so a future model split per stage is a config change, not a code one.
 
 ## Recent milestones (newest first)
+
+### v0.3.14 (2026-05-28 → 2026-05-29)
+
+A long iterative UX session driven entirely off mobile screenshots. Branch: `feat/post-v0313-ux-pass`. Touched ~20 files; the bulk is presentational polish on the ticket card + drafting + post-submit surfaces, plus one critical correctness fix in the date parser and a Whisper→Web-Speech swap on voice dictation. No DB migrations, no API changes (one route — `/api/users/me/notification-prefs` — gets an opt-in PATCH from a new fire-and-forget client call; the route itself was already there).
+
+#### Strand A — Critical: London-local UK date parsing (`lib/parseUkDate.ts`)
+
+Customer-reported off-by-one-day on the "Issued At" date: the council portal showed `Tue, 26 May 2026 23:47` but the app's header rendered `Issued 27 May`.
+
+Root cause: every wall-clock branch in `parseUkDate` built dates via `Date.UTC(...)` (for `dd/mm/yyyy HH:MM` inputs) or fell through to the native parser (which interprets unzoned strings as either UTC or local depending on the server TZ). On a UTC-deployed Node process (Vercel default), `26 May 2026 23:47 BST` was stored as `2026-05-26T23:47Z`, which a BST browser then rendered as `27 May 00:47`. The original comment even called the concern out — *"BST/UTC servers would emit different ISO strings for the same council source"* — but the fix it chose (UTC) was the wrong-deterministic-answer.
+
+The rewrite:
+- New `londonOffsetMsAt(utcMs)` returns the Europe/London offset at a given UTC instant by `Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", ... }).formatToParts()` — runtime-correct across BST/GMT without shipping a hand-rolled DST calendar.
+- New `londonWallToUtc(year, month0, day, hour, minute, second)` two-passes the conversion: a guessed UTC, then an offset refinement at the corrected instant, so DST-edge wall clocks settle on the right side of the spring-forward / fall-back transitions.
+- Five regex branches in `parseUkDate` now: `dd/mm/yyyy [HH:MM[:ss]]`, explicit-TZ ISO (Z or `±HH:MM`), ISO wall-clock without TZ, RFC-2822-like (`Tue, 26 May 2026 23:47` / `26 May 2026`), and a native-parse fallback. Every wall-clock branch routes through `londonWallToUtc`; the explicit-TZ branch trusts the source.
+- Date-only inputs (`11/06/2026`, `11 Jun 2026`) still UTC-midnight — calendar date is TZ-agnostic.
+- **Test suite added**: `scripts/test-parse-uk-date.ts` — 12 cases (BST inputs, GMT inputs, explicit-offset, date-only, day-first ambiguity, garbage in). All pass. Run with `npx tsx scripts/test-parse-uk-date.ts`.
+
+**Fix-forward only** per user direction — existing DB rows are still 1 h off but the next portal lookup or OCR write overwrites with the corrected ISO; no backfill script shipped.
+
+#### Strand B — Voice input: Whisper → Web Speech API (`components/VoiceNoteButton.tsx`)
+
+The MediaRecorder + `POST /api/transcribe` (OpenAI Whisper) flow swapped for `window.SpeechRecognition ?? window.webkitSpeechRecognition`. Free, real-time, no network round-trip, no Whisper bill. The `/api/transcribe` route is preserved as a fallback in case a future caller wants Whisper-grade accuracy.
+
+- `continuous=true, interimResults=true, lang="en-GB"`. Single language pinned (UK-only product; no language picker exists).
+- Final transcript accumulates across pause/resume + Chrome's ~60 s `continuous` cap (detected via `onend` + an `intentRecordingRef`; we silently spin up a fresh `SpeechRecognition` so the take never truncates).
+- One-shot `onTranscript(text, { mode })` callback contract preserved so `DictationPanel` doesn't change.
+- Pause = `recognition.stop()` + paused flag; Resume = bounded poll for the previous `onend` to clear, then a fresh recognition.
+- Friendly error mapping for `not-allowed` / `service-not-allowed` / `audio-capture` / `network` / `aborted`. `no-speech` is suppressed (Chrome fires it on brief silences; the auto-restart loop handles it).
+- Unmount cleanup `aborts()` the recognition + clears refs.
+- Minimal local TypeScript declarations for `SpeechRecognition` / `SpeechRecognitionEvent` / `SpeechRecognitionErrorEvent` (the project's `lib.dom.d.ts` doesn't yet have them as top-level globals).
+
+#### Strand C — Ticket card hierarchy + density (entire `<TicketCard>` chain)
+
+A multi-pass restructuring driven off live mobile screenshots, ending in a fintech-density layout.
+
+**Header (`components/TicketCardHeader.tsx`)** — right column is now four neatly grouped rows with optical centring:
+1. **Headline**: `£old struck-through + £current bold` (mobile `text-[22px]`, sm+ `text-[30px]`) `justify-between` with the status pill. Pill optically nudged up `-translate-y-[2px] sm:-translate-y-[3px]` so its centre aligns with the price's x-height, not its geometric centre.
+2. **Identity**: `pcnRef · vehicleReg`, `truncate` (long refs ellipsise rather than wrap the row vertically).
+3. **Schedule**: `Issued <date>` + `DeadlineBadge` (only when proximity is in the warning band).
+4. **Location**: `📍 address`, `flex items-center min-w-0` with `<span class="truncate">` — guaranteed single line, ellipsised when too long.
+- Parent `<header>` switched from `items-start` to `items-center` (so the metadata stack vertically centres against the issuer tile next to it) and `pt-4 pb-3` → `py-4`. Padding left was further trimmed `pl-4 pr-5` to nudge the issuer tile 4 px left.
+- Inter-row gap tightened to `gap-1.5` so all four rows fit inside the issuer tile height.
+- `formatLetterPreamble(appeal, councilName)` exposed alongside (boilerplate paragraph composer for the typewriter; see Strand E).
+
+**Issuer tile (`components/IssuerLogoReel.tsx`)** — 112 px → 96 px (`size-28` → `size-24`, ~14 % smaller). Internal cell-height defaults updated to match. The "ISSUER" label moved from a separate row below the tile to an overlay badge anchored to the tile's bottom edge (`absolute bottom-1.5 left-1/2 -translate-x-1/2 bg-white/85 backdrop-blur-sm`). When `pending_review` (and only then), the badge becomes a blue pill "EDIT" with a pencil glyph; for every other state, neutral "ISSUER" caption. `onCouncilClick` is now only wired during pending_review — the tile is non-tappable display in every other stage.
+
+**Status pill (`components/ticket/StatusPill.tsx`)** — text bumped from `text-[9.5px]/text-[10.5px]` to `text-[10.5px]/text-[11.5px]`, sm+ horizontal padding `px-2.5` → `px-3`, mobile icon `size-2.5` → `size-3`, sm+ icon `size-3` → `size-3.5`, dot `size-1` → `size-1.5`. Mobile padding stays compact (`px-2 py-0.5`) so the bigger font still fits on the price row at iPhone-mini widths.
+
+**Pill label unification (`lib/deriveCardState.ts`)** — every in-progress label flattened to **`Appeal`**:
+- `gathering_evidence`: "Tell us more" → "Appealing" → "Appeal".
+- `drafting`: "Drafting" → "Appeal".
+- `letter_ready`: "Ready to submit" → "Appeal".
+- `submitting`: "Submitting" → "Appeal".
+- `submitted`: "Submitted" → "Appealed" (9 → 8 chars to fit the same row as the strike-through + bold price pair on narrower screens).
+
+Underlying `kind` + `pillTone` values unchanged — pure label change. Palette already telegraphs sub-progress (info-blue → positive-green → success-green).
+
+**Chevron** (in `TicketCard.tsx`) — went through three forms:
+1. Original: small circular button at `top-3 right-3`.
+2. v1 mid-session: straddling the header/timeline boundary with `translate-y-1/2`, white circle + border + shadow. Looked nice but forced `<article>` to drop `overflow-hidden`, which broke the in-flight progress bar's rounded corners (CSS corner-overlap clamps a 2 px-tall wrapper's 24 px radius down to ~2 px).
+3. Final: stripped to just the icon — `text-parkingrabbit-muted/70 hover:text-parkingrabbit-navy`, no background / border / shadow. `bottom-2 right-4`, fully inside the card silhouette. `<article>`'s `overflow-hidden` is restored, the progress bar now clips to the card's rounded top corners exactly.
+
+**Collapsible details** (`TicketCard.tsx`) — wrapped the entire timeline + supplementary surfaces + delete footer in a `grid grid-rows-[1fr|0fr]` container (same pattern as `LetterPreview`). When the chevron toggles `expanded`, the whole stack animates to zero height; the header stays visible. Detail pages still pin `expanded` true so it never collapses there. Delete button no longer hidden for shared-viewer rows (the previous `!appeal.isViewerOnly` guard was overly cautious — `onHide` is a localStorage-only hide).
+
+**Strikethrough price** — `<TicketCardHeader scannedAmountPence={…}>` prop replaces the old `amountNote` (which was an orange text-line under the price reading "Council records show £55 — you scanned £110"). Now both prices render inline in row 1, same font size, struck-through grey on the left, bold navy on the right. `TicketCard.tsx` derives `scannedAmountPence` from `display.amountChangedByCouncil && display.ocrAmountPence`.
+
+#### Strand D — Drafting / "stay in the loop" surface
+
+**Collapsed drafting surface**: the green `CouncilConfirmedDetails` PCN-fields grid, the blue `InlineStatusRow` ("Drafting your appeal — usually takes ~2 min"), and the `CouncilCheckChip` at the top of `GatheringEvidenceCard` were all removed from their respective stages. The only thing on the drafting case body is now the `<LetterPreview>` typewriter + the `<StayInTheLoopPanel>` underneath (when the post-preamble wait kicks in). `isStreaming={true}` is hard-coded on the `LetterPreview` because the drafting state itself IS the streaming signal — the parent only routes to that case while actively drafting.
+
+**Preamble typewriter** (`components/LetterPreview.tsx`) — a deterministic boilerplate paragraph (composed by `formatLetterPreamble` from the council-confirmed or user-typed ticket fields) types out over **25 s** (halved from 50 s — the wait window was too long) BEFORE Claude's body chunks land. Linear pace (~12 chars/sec for a typical 300-char preamble), not eased — eased felt "raced ahead and froze" over the longer window. When the preamble fully reveals AND the AI body still hasn't arrived (no `Ground N — …` heading seen in `safeBody`), the cursor swaps to three pulsing dots (`thinking` phase) for 1.5 s, then the disclosure box collapses (`setOpen(false)`) and a `onWaitForBody(true)` callback fires. When AI chunks DO arrive, the box re-opens and the typewriter chains into the body. Server route `/api/generate-stream` untouched — the typewriter slices the `Ground` marker out client-side.
+
+**Phase-machine bug fixed**: original implementation had `phase` in the dep array of the same effect that called `setPhase("thinking") + setTimeout(...)`. React's cleanup-before-rerun semantics meant the dep change from `setPhase` ran the cleanup BEFORE the new run — and the cleanup was `clearTimeout()`. The timer was killed before it could fire; dots pulsed forever; box never collapsed. Fix: split into two effects — Effect 1 (`[preambleSettledNoBody, phase]`) just flips the phase state; Effect 2 (`[phase]`) owns the timer. Cleanup now only runs when phase actually transitions out of `thinking`, which is when we want the timer cleared anyway.
+
+**`<StayInTheLoopPanel>`** (in `TicketCardBody.tsx`) — three-tile row (`grid-cols-3 gap-2`): **Notify me** (Bell, requests `Notification.requestPermission()` directly, reflects `asking` / `on` / `blocked` / `unsupported`), **Email me** (Mail, fires-and-forgets `PATCH /api/users/me/notification-prefs` with `{ emailOnLetterReady: true }`), **Sign up** (UserPlus, `<Link href="/sign-up">`). Labels intentionally one or two words to fit at iPhone-mini widths; long-form labels preserved as `aria-label`s.
+
+**`GatheringEvidenceCard` (Build appeal)** — `paddingBottom: calc(120px + safe-area-inset-bottom)` removed (the standalone-page clearance that had become a 150-px empty gap when the card was embedded as a timeline step's body). The `CouncilCheckChip` deleted from the top of this surface — the lookup verdict has done its job by the time the user reaches it. Companion dead-code cleanup: `getTicketDiscrepancies` import, `liveCouncilThought` prop+threading on `GatheringEvidenceCard`, the `CouncilCheckChip` function definition itself, and the `PortalLookupSnapshot` import all dropped.
+
+#### Strand E — Post-submit surface (the long arc)
+
+Iterated four times based on screenshots. Final shape:
+
+- `case "submitted"` in `TicketCardBody.tsx` renders nothing on the **Appeal ready** (drafting) step. The whole post-submit surface lives under **Appeal submitted** (submit step):
+  1. **Green-toned `<LetterPreview>`** — new `tone="submitted"` prop on `LetterPreview`. Green bg + green border + `bg-green-600 text-white` check-glyph circle + `text-green-900` title + `text-green-800/80` subtitle + `text-green-700` chevron. Default tone untouched. The card IS the "filed with the council" confirmation now — no separate `SubmittedCard` green box stacked above it.
+  2. **Grey caption** below the card as a plain `<p>`: **"We'll let you know when the council replies."**
+  3. **`<LetterActions>`** — Rate us / Share tiles below the caption.
+
+  The `SubmittedCard` component is kept for the **cancelled** branch (so the "🎉 PCN cancelled by the council" celebratory copy survives) — in that case the body still stacks `SubmittedCard` + neutral-white `LetterPreview`.
+
+- **`<LetterActions>` (`components/LetterActions.tsx`)** — rewritten end-to-end.
+  - Left tile was **Copy** (`navigator.clipboard.writeText(letterBody)` with a tactile "Copied!" beat); now **Rate us** — `<a target="_blank" href="${NEXT_PUBLIC_APP_URL}/?rate=1">` with a filled `<Star fill="currentColor">` glyph. The `?rate=1` is a hook for a future review modal / App Store deeplink.
+  - Right tile was **Share** with the letter body payload; now **Share** with `{title: "ParkingRabbit", text: "...give it a try.", url: appUrl}` so the native iOS / Android share sheet (frosted-glass modal) opens with the homepage URL pre-filled. Fallback when `navigator.share` is unavailable: copy URL to clipboard, then `window.prompt` as a final fallback.
+  - Props removed — `<LetterActions />` now takes no arguments. `renderLetterActions(appeal)` in `TicketCard.tsx` still gates on `appeal.letterBody` (nothing to celebrate / share before a letter exists).
+- **`<TicketCard>` lifecycle steps** — drafting step's `submitted` branch fall-through changed `renderLetterActions(appeal)` → `renderBody()` (mid-session) → `null` (final), and submit step's `submitted` branch changed `renderBody()` → `renderLetterActions(appeal)` (mid-session) → `<div><>{renderBody()}{renderLetterActions(appeal)}</></div>` (final). Net: Appeal ready collapses; everything sits under Appeal submitted.
+
+#### Strand F — Copy / IA polish (many small files)
+
+- **Pay/appeal tiles** (`components/PayAppealTiles.tsx`):
+  - "Pay yourself" description: "Pay directly on the council website: no extra fees." → "Pay directly on the council website."
+  - "Apple Pay" subtitle stripped to "Pay instantly and securely." (the "Confirm once and you're done" subtitle removed).
+- **Appeal tile** copy: "We draft and submit the appeal for you." → "We draft and submit it for you."
+- **Start-appeal footer** (`components/ReviewRecommendation.tsx`): "By tapping Start appeal you agree to our Terms & Conditions and Privacy Policy." with an explicit `<br>` after "our". The "Edit details" pencil-link removed entirely (the editing window is closed by the time the user reaches the pay/appeal tiles; the council lookup has confirmed the fields).
+- **Confirm footer** (`components/ticket/TicketDetailsForm.tsx`): button label trimmed to **"Confirm"** (was "Confirm & validate with council"), and the same T&C + Privacy footer added below it — the user agrees there, so the corresponding footer on the Start-appeal surface above became redundant noise.
+- **Sign-up footer** (`app/sign-up/page.tsx`): "Terms" → "Terms & Conditions" for consistency.
+- **Common reasons** chip: "My car broke down" → "Car broke down" (`components/TicketCardBody.tsx → COMMON_REASONS`).
+- **Scan PCN page** (`app/app/scan/page.tsx`): big `<h1>Scan PCN</h1>` + subtitle removed (the dark glass preview card already explains itself); three buttons (stacked icon + title + description + chevron) collapsed to a single row of icon-over-label tiles (`grid-cols-3`).
+- **Home tile** (`app/app/page.tsx`): "Scan PCN" hero now points at `/app/scan` (was `/app/tickets?scan=1`).
+- **Filter pill** (`app/app/tickets/page.tsx`): "Challenging" → "Appeals". `id: "appealed"` underlying value unchanged. Playwright test (`tests/app.spec.ts`) updated to match.
+- **`<PaidSubmitCta>` "letter ready" headline** (`components/TicketCardBody.tsx`): "Your appeal letter is ready" → "Your appeal is ready". Subtitle compressed from 4 lines to 2: "Pay £2.99 and Rabbit files it for you — live, end-to-end." `mt-3 mb-3` added to the gradient `<section>` so the floating `READY TO SUBMIT` badge has clearance from `LetterPreview` above and the `Submit appeal` timeline row below.
+
+#### Strand G — Evidence flow streamlined (`components/TicketCardBody.tsx` + `components/EvidenceCarousel.tsx`)
+
+"Add more evidence" CTA in the weak-score warning used to open an intermediate card ("Add your own evidence") with a small `+` Add tile that THEN opened the OS picker — two taps for one action. New flow: the CTA opens the OS picker directly via a hidden `<input type="file">` mounted on `TicketCardBody` (had to be there, not on the carousel, so the click fires inside the user gesture iOS Safari demands). After at least one file lands, the `EvidenceCarousel` mounts with the populated thumbnails + the standard "+" tile for adding more. Cancelled picker = no state change, CTA stays visible.
+
+`MAX_BYTES` and `MAX_EVIDENCE` exported from `EvidenceCarousel` so the new picker path stays in sync with the carousel's own. Per-file size error renders as a small red inline toast under the CTA.
 
 ### v0.3.13 (2026-05-27 → 2026-05-28)
 

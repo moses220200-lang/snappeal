@@ -35,7 +35,7 @@ type Filter = "all" | "due" | "appealed" | "resolved";
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "due", label: "To Pay" },
-  { id: "appealed", label: "Challenging" },
+  { id: "appealed", label: "Appeals" },
   { id: "resolved", label: "Resolved" },
 ];
 

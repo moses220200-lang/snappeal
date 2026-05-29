@@ -4,8 +4,14 @@ import { useRef, useState } from "react";
 import { Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { getEvidencePhotos, setEvidencePhotos } from "@/lib/client/session";
 
-const MAX_BYTES = 8 * 1024 * 1024;
-const MAX_EVIDENCE = 6;
+/** Per-file size cap for evidence photos. Mirrors `/api/extract`'s limit
+ *  so we reject locally instead of failing on upload. Exported so other
+ *  callers that drive the same picker (e.g. the "Add more evidence" tap
+ *  in TicketCardBody) stay in sync. */
+export const MAX_BYTES = 8 * 1024 * 1024;
+/** Hard cap on total evidence photos per appeal. Anything beyond this
+ *  is trimmed off the tail in `handleFiles` below. */
+export const MAX_EVIDENCE = 6;
 
 /**
  * User-evidence photo grid — lifted out of `/app/capture/page.tsx` so the

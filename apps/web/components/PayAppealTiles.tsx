@@ -112,7 +112,7 @@ export function PayAppealTiles({
               </span>
             </p>
             <p className="text-[12px] text-parkingrabbit-muted mt-1 leading-snug">
-              We draft and submit the appeal for you.
+              We draft and submit it for you.
               {daysLeftToAppeal != null && (
                 <>
                   {" "}
@@ -154,7 +154,7 @@ export function PayAppealTiles({
               </span>
             </p>
             <p className="text-[12px] text-parkingrabbit-muted mt-1 leading-snug">
-              Pay directly on the council website: no extra fees.
+              Pay directly on the council website.
             </p>
           </div>
           <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
@@ -198,10 +198,6 @@ export function PayAppealTiles({
           </p>
           <p className="text-[12px] text-parkingrabbit-muted mt-1 leading-snug">
             Pay instantly and securely.
-            <br />
-            <span className="text-parkingrabbit-navy/70 font-medium">
-              Confirm once and you&apos;re done
-            </span>
           </p>
         </div>
       </div>

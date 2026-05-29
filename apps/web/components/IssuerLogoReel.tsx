@@ -5,7 +5,7 @@
  *
  * Two lives in one component:
  *   1. Idle  — renders the normal static council logo tile (the same
- *      112px square the card always showed). Tappable when `onCouncilClick`
+ *      96px square the card always shows). Tappable when `onCouncilClick`
  *      is supplied so the user can change the issuer via the picker sheet.
  *   2. Scanning — while a freshly uploaded PCN is being read (`scanning`
  *      true) it turns into a vertical "slot machine" that cycles through
@@ -198,7 +198,7 @@ function IdleTile({
 }) {
   const tile = (
     <span
-      className="size-28 rounded-2xl border border-parkingrabbit-border shrink-0 flex items-center justify-center overflow-hidden"
+      className="size-24 rounded-2xl border border-parkingrabbit-border shrink-0 flex items-center justify-center overflow-hidden"
       style={{ background: council?.logoBg || "#ffffff" }}
       aria-hidden
     >
@@ -244,14 +244,14 @@ function SpinningReel({
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   const [cells, setCells] = useState<ReelCouncil[]>([]);
-  const [cellH, setCellH] = useState(112);
+  const [cellH, setCellH] = useState(96);
   const [landed, setLanded] = useState(false);
   const [finalFace, setFinalFace] = useState<ReelCouncil | null>(null);
 
   // Mutable engine state — kept in refs so the timeout loop reads the
   // latest values without re-subscribing.
   const cellsRef = useRef<ReelCouncil[]>([]);
-  const cellHRef = useRef(112);
+  const cellHRef = useRef(96);
   const idxRef = useRef(0);
   const startRef = useRef(0);
   const settlingRef = useRef(false);
@@ -426,7 +426,7 @@ function SpinningReel({
   return (
     <div
       ref={viewportRef}
-      className="size-28 rounded-2xl border border-parkingrabbit-border shrink-0 relative overflow-hidden bg-white"
+      className="size-24 rounded-2xl border border-parkingrabbit-border shrink-0 relative overflow-hidden bg-white"
       role="img"
       aria-label="Identifying the issuing council"
     >

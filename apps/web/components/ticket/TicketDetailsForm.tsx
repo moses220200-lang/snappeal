@@ -38,6 +38,7 @@
  * pending_review — a single continuous surface without navigation.
  */
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Loader2, ShieldCheck } from "lucide-react";
 import type { AppealRecord } from "@/lib/server/appeals";
 import type { OcrHandoff } from "@/lib/client/session";
@@ -183,10 +184,38 @@ export function TicketDetailsForm({
         ) : (
           <>
             <ShieldCheck className="size-4" strokeWidth={2.25} />
-            Confirm &amp; validate with council
+            Confirm
           </>
         )}
       </button>
+
+      {/* Legal footer — same copy + link styling as the "Start appeal"
+       *  footer in <ReviewRecommendation>, kept in sync so the user
+       *  sees the same agreement language at every irreversible step
+       *  (confirming the ticket triggers the council-portal lookup,
+       *  which is when our processing of their data really starts). */}
+      <p className="text-[10.5px] text-parkingrabbit-muted text-center leading-snug">
+        By tapping Confirm you agree to our
+        <br />
+        <Link
+          href="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 hover:text-parkingrabbit-navy"
+        >
+          Terms &amp; Conditions
+        </Link>{" "}
+        and{" "}
+        <Link
+          href="/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 hover:text-parkingrabbit-navy"
+        >
+          Privacy Policy
+        </Link>
+        .
+      </p>
 
       {!councilSlug && (
         <p className="text-[10.5px] text-amber-800 text-center leading-snug">

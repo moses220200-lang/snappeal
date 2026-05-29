@@ -1,26 +1,67 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Pause, Play, Square } from "lucide-react";
+import { Mic, Pause, Play, Square } from "lucide-react";
 import { haptic } from "@/lib/client/haptics";
 
 /** Mode the caller chooses for how the transcript merges into its notes. */
 export type TranscriptMode = "append" | "replace";
 
+/* ─────────────── Web Speech API minimal types ───────────────
+ *
+ * TypeScript's `lib.dom.d.ts` (the version this project ships) defines
+ * `SpeechRecognitionResult` but stops short of the top-level
+ * `SpeechRecognition` / `SpeechRecognitionEvent` / `SpeechRecognitionErrorEvent`
+ * types — they're still considered "experimental Web Speech API". We
+ * declare the minimal shape we actually use rather than `any`, so the
+ * call sites below stay type-checked. If a future TS version adds
+ * these to lib.dom, these locals become harmless duplicates and can
+ * be deleted. */
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message?: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  onstart: (() => void) | null;
+}
+
 /**
  * Voice-note capture button.
  *
- * Tap to start recording, tap to stop. Live mm:ss timer while recording;
- * pause/resume support via MediaRecorder.pause/resume. On stop we POST
- * the audio to `/api/transcribe` (Whisper-compatible) and call back with
- * the text the API returned.
+ * Tap to start recording, tap to stop. Live mm:ss timer while
+ * recording; pause/resume support.
  *
- * The caller chooses whether the new transcript should `replace` or
- * `append` to its existing notes — the dictation panel uses `append`
- * so multiple takes accumulate; one-shot notes inputs use `replace`.
+ * 2026-05-28 — switched from MediaRecorder + Whisper (POST /api/transcribe)
+ * to the browser-native Web Speech API. The previous flow recorded audio
+ * for the full take, blob-posted it on stop, and waited 1–3 s for Whisper
+ * to come back; the new flow streams the transcript in real time and is
+ * effectively free (no network, no Whisper bill, no audio upload). The
+ * old `/api/transcribe` route is left in place as a fallback / for any
+ * future caller that prefers Whisper accuracy — see
+ * `apps/web/app/api/transcribe/route.ts`.
  *
- * Renders nothing when MediaRecorder / getUserMedia is unavailable
- * (locked-down iframes, ancient Safari).
+ * The caller-facing contract is unchanged: pass `onTranscript` and we
+ * fire it once on stop with the full text. Callers picking
+ * `mode="append"` get accumulation, `mode="replace"` overwrites.
+ *
+ * Renders nothing when SpeechRecognition is unavailable (Firefox without
+ * the dom.webspeech flag, locked-down iframes, ancient Safari).
  */
 export function VoiceNoteButton({
   onTranscript,
@@ -33,17 +74,32 @@ export function VoiceNoteButton({
   const [supported, setSupported] = useState(true);
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  /** Wall-clock anchor for the timer. Bumped forward on resume so paused
-   *  time doesn't accumulate. */
+
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // True between user-tapped Start and user-tapped Stop. The `onend`
+  // handler reads this to decide whether an end was user-initiated
+  // (pause/stop) or a platform-internal timeout — Chrome silently caps
+  // `continuous=true` sessions around the ~60 s mark and fires `onend`
+  // even though the user is still talking. When this flag is true we
+  // restart a fresh recognition so the take feels truly continuous.
+  const intentRecordingRef = useRef(false);
+  const pausedRef = useRef(false);
+  // Final transcripts accumulated across this whole take (survives
+  // pause/resume + auto-restart).
+  const finalTextRef = useRef("");
+  // The last interim string from the in-flight result batch — kept on
+  // a ref so the `stop` closure reads the latest value without forcing
+  // a re-render for every word the user speaks. We emit `final +
+  // interim` on stop because Web Speech occasionally drops the trailing
+  // segment without flipping `isFinal`.
+  const interimTextRef = useRef("");
+  /** Wall-clock anchor for the mm:ss timer. Bumped forward on resume
+   *  so paused time doesn't accumulate. */
   const startedAtRef = useRef<number>(0);
 
-  // mm:ss tick while actively recording (not while paused or transcribing).
+  // mm:ss tick while actively recording (not while paused).
   useEffect(() => {
     if (!recording || paused) return;
     const id = window.setInterval(() => {
@@ -52,90 +108,188 @@ export function VoiceNoteButton({
     return () => window.clearInterval(id);
   }, [recording, paused]);
 
-  // Safety net — release the mic stream if the component unmounts mid-record.
+  // Safety net — abort recognition and clear refs on unmount so a
+  // mid-take navigation doesn't leak a live mic.
   useEffect(() => {
     return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      intentRecordingRef.current = false;
+      pausedRef.current = false;
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        /* already torn down */
+      }
+      recognitionRef.current = null;
     };
   }, []);
 
-  const start = async () => {
+  const createRecognition = (): SpeechRecognition | null => {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) return null;
+    const r = new Ctor();
+    r.continuous = true;
+    r.interimResults = true;
+    // UK-only PCN app — pin to British English. The brief listed a
+    // multi-language wishlist (it, fr, es, de, pt, ar, auto) but we
+    // intentionally skipped that scope: there's no language picker
+    // anywhere in the product yet, and faking auto-detect from
+    // navigator.language would mis-fire for ESL users dictating an
+    // appeal in English. When a picker lands, wire it here.
+    r.lang = "en-GB";
+    r.maxAlternatives = 1;
+    r.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0]?.transcript ?? "";
+        if (result.isFinal) {
+          // Single space between segments; trim avoids leading-space
+          // artefacts when this is the first chunk of the take.
+          finalTextRef.current = (finalTextRef.current + " " + text).trim();
+        } else {
+          interim += text;
+        }
+      }
+      interimTextRef.current = interim;
+    };
+    r.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // `no-speech` is benign — Chrome fires it after a brief silence
+      // and we want to keep listening. The `onend` auto-restart loop
+      // takes over from here, so we just suppress the toast and let
+      // the user carry on.
+      if (event.error === "no-speech") return;
+      setError(mapRecognitionError(event.error));
+      intentRecordingRef.current = false;
+      pausedRef.current = false;
+      setRecording(false);
+      setPaused(false);
+      haptic("error");
+    };
+    r.onend = () => {
+      recognitionRef.current = null;
+      // Surprise end while the user still intends to be recording.
+      // Spin up a fresh recognition so the timer + transcript keep
+      // accumulating without the user noticing. Wrapped in try/catch
+      // because rapid pause → resume can race against this restart.
+      if (intentRecordingRef.current && !pausedRef.current) {
+        const next = createRecognition();
+        if (next) {
+          recognitionRef.current = next;
+          try {
+            next.start();
+          } catch {
+            /* race with another call — ignore */
+          }
+        }
+      }
+    };
+    return r;
+  };
+
+  const start = () => {
     setError(null);
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      setSupported(false);
+      setError(
+        "Voice input isn't supported in this browser. Try Chrome, or type your note instead.",
+      );
+      haptic("error");
+      return;
+    }
+    finalTextRef.current = "";
+    interimTextRef.current = "";
+    intentRecordingRef.current = true;
+    pausedRef.current = false;
+    const r = createRecognition();
+    if (!r) {
       setSupported(false);
       return;
     }
+    recognitionRef.current = r;
+    startedAtRef.current = Date.now();
+    setElapsedMs(0);
+    setRecording(true);
+    setPaused(false);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const rec = new MediaRecorder(stream);
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => chunksRef.current.push(e.data);
-      rec.onstop = () => stream.getTracks().forEach((t) => t.stop());
-      rec.start();
-      recRef.current = rec;
-      startedAtRef.current = Date.now();
-      setElapsedMs(0);
-      setRecording(true);
-      setPaused(false);
+      r.start();
       haptic("tap");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't start recording");
+      intentRecordingRef.current = false;
+      setRecording(false);
       haptic("error");
     }
   };
 
   const pause = () => {
-    const rec = recRef.current;
-    if (!rec || rec.state !== "recording") return;
-    rec.pause();
+    if (paused || !recording) return;
+    pausedRef.current = true;
     setPaused(true);
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* already stopped */
+    }
     haptic("tap");
   };
 
   const resume = () => {
-    const rec = recRef.current;
-    if (!rec || rec.state !== "paused") return;
+    if (!paused) return;
+    pausedRef.current = false;
     // Re-anchor the timer so paused time is excluded.
     startedAtRef.current = Date.now() - elapsedMs;
-    rec.resume();
     setPaused(false);
+    // The previous session's `onend` may not have fired yet (it's
+    // async). Wait for `recognitionRef` to clear, then start fresh.
+    // Bounded so a hung end event doesn't strand the user — after
+    // ~1 s we just give up rather than spin forever.
+    let attempts = 0;
+    const tryStart = () => {
+      if (recognitionRef.current) {
+        if (attempts++ < 40) {
+          window.setTimeout(tryStart, 25);
+        }
+        return;
+      }
+      const r = createRecognition();
+      if (!r) return;
+      recognitionRef.current = r;
+      try {
+        r.start();
+      } catch {
+        /* race — ignore */
+      }
+    };
+    tryStart();
     haptic("tap");
   };
 
-  const stop = async () => {
-    const rec = recRef.current;
-    if (!rec) return;
-    rec.stop();
+  const stop = () => {
+    intentRecordingRef.current = false;
+    pausedRef.current = false;
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* already stopped */
+    }
     setRecording(false);
     setPaused(false);
-    setTranscribing(true);
     haptic("tap");
-
-    // Wait one event loop for the final ondataavailable to fire.
-    await new Promise((r) => setTimeout(r, 100));
-    const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
-    chunksRef.current = [];
-    recRef.current = null;
-    streamRef.current = null;
-
-    try {
-      const form = new FormData();
-      form.append("audio", blob);
-      const res = await fetch("/api/transcribe", { method: "POST", body: form });
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json?.error?.message ?? `Transcribe failed (${res.status})`);
-      }
-      if (json.text) onTranscript(String(json.text).trim(), { mode });
+    // Emit whatever we've accumulated. Any interim text that hadn't
+    // been finalised at the moment of stop is still meaningful — Web
+    // Speech sometimes drops the trailing segment without flipping
+    // `isFinal`, so glueing the interim on guards against losing it.
+    const fullText = `${finalTextRef.current} ${interimTextRef.current}`
+      .replace(/\s+/g, " ")
+      .trim();
+    if (fullText) {
+      onTranscript(fullText, { mode });
       haptic("success");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Transcribe failed");
-      haptic("error");
-    } finally {
-      setTranscribing(false);
-      setElapsedMs(0);
     }
+    setElapsedMs(0);
+    finalTextRef.current = "";
+    interimTextRef.current = "";
   };
 
   if (!supported) return null;
@@ -149,20 +303,10 @@ export function VoiceNoteButton({
           <button
             type="button"
             onClick={start}
-            disabled={transcribing}
-            className="self-start inline-flex items-center gap-2 rounded-full text-xs font-bold px-4 py-2 transition disabled:opacity-60 bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700 hover:bg-parkingrabbit-primary-50"
+            className="self-start inline-flex items-center gap-2 rounded-full text-xs font-bold px-4 py-2 transition bg-parkingrabbit-primary-100 text-parkingrabbit-primary-700 hover:bg-parkingrabbit-primary-50"
           >
-            {transcribing ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                Transcribing…
-              </>
-            ) : (
-              <>
-                <Mic className="size-3.5" />
-                Record voice note
-              </>
-            )}
+            <Mic className="size-3.5" />
+            Record voice note
           </button>
         )}
 
@@ -217,6 +361,42 @@ export function VoiceNoteButton({
       )}
     </div>
   );
+}
+
+/** SSR-safe lookup for the Web Speech API constructor. Chromium ships
+ *  it as `webkitSpeechRecognition`; Safari aliases both names; Firefox
+ *  exposes neither unless `dom.webspeech.recognition.enable` is on. */
+function getSpeechRecognitionCtor():
+  | (new () => SpeechRecognition)
+  | null {
+  if (typeof window === "undefined") return null;
+  const w = window as Window & {
+    SpeechRecognition?: new () => SpeechRecognition;
+    webkitSpeechRecognition?: new () => SpeechRecognition;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+/** Map a SpeechRecognition error code to a friendly toast. Codes are
+ *  defined in the Web Speech spec; we only surface ones a user can
+ *  reasonably act on. `no-speech` is intentionally handled at the
+ *  call site (non-fatal, auto-recovers via `onend` restart). */
+function mapRecognitionError(code: string): string {
+  switch (code) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "Microphone access was blocked. Please allow microphone access and try again.";
+    case "audio-capture":
+      return "No microphone was found.";
+    case "network":
+      return "Network error during voice recognition. Please check your connection.";
+    case "aborted":
+      return "Recording was interrupted.";
+    case "language-not-supported":
+      return "English voice input isn't available on this device.";
+    default:
+      return "Voice recognition failed. Please try again.";
+  }
 }
 
 function formatElapsed(ms: number): string {

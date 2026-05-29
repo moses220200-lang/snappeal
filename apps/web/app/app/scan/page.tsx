@@ -26,7 +26,6 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Camera,
-  ChevronRight,
   Image as ImageIcon,
   Keyboard,
   Loader2,
@@ -85,16 +84,6 @@ export default function ScanPage() {
       />
 
       <div className="px-5 pt-2 pb-32 flex flex-col gap-5">
-        {/* Header copy */}
-        <div>
-          <h1 className="text-[24px] font-extrabold text-parkingrabbit-navy leading-tight">
-            Scan PCN
-          </h1>
-          <p className="text-[13px] text-parkingrabbit-muted mt-1 leading-snug">
-            Take a photo of your parking ticket or choose another method.
-          </p>
-        </div>
-
         {/* Scanner preview area — dark glass card with corner brackets
          *  and an animated scan line. Visual only; the actual scan
          *  fires when the user taps one of the buttons below. */}
@@ -145,8 +134,15 @@ export default function ScanPage() {
           </div>
         </div>
 
-        {/* Three action buttons */}
-        <div className="flex flex-col gap-3">
+        {/* Three action tiles — collapsed to a single row of equal-width
+         *  icon-over-label cards. The verbose per-row descriptions that
+         *  the stacked layout used to carry are dropped here; the dark
+         *  scanner card above already explains what the PCN scan does,
+         *  and the icon + label is enough at tile size. Camera stays the
+         *  primary visual (blue fill, white icon glyph) so it still
+         *  reads as the recommended action even without sitting at the
+         *  top of a vertical list. */}
+        <div className="grid grid-cols-3 gap-3">
           {/* 1. Camera — primary action */}
           <button
             type="button"
@@ -155,22 +151,18 @@ export default function ScanPage() {
               cameraInputRef.current?.click();
             }}
             disabled={!!busy}
-            className="rounded-2xl bg-parkingrabbit-primary text-white px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:bg-parkingrabbit-primary-600 disabled:opacity-60 shadow-lg shadow-parkingrabbit-primary/30"
+            className="rounded-2xl bg-parkingrabbit-primary text-white px-3 py-4 flex flex-col items-center gap-2 transition active:scale-[0.97] hover:bg-parkingrabbit-primary-600 disabled:opacity-60 shadow-lg shadow-parkingrabbit-primary/30"
           >
-            <span className="size-12 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+            <span className="size-11 rounded-xl bg-white/15 flex items-center justify-center">
               {busy === "camera" ? (
                 <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
               ) : (
                 <Camera className="size-5" strokeWidth={2.25} />
               )}
             </span>
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-[15px] font-bold leading-tight">Camera</p>
-              <p className="text-[12px] text-white/80 mt-0.5 leading-snug">
-                Take a photo of the PCN
-              </p>
-            </div>
-            <ChevronRight className="size-4 text-white/80 shrink-0" />
+            <p className="text-[13px] font-bold leading-tight text-center">
+              Camera
+            </p>
           </button>
 
           {/* 2. Upload picture */}
@@ -181,24 +173,18 @@ export default function ScanPage() {
               galleryInputRef.current?.click();
             }}
             disabled={!!busy}
-            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-parkingrabbit-primary/60 disabled:opacity-60"
+            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-3 py-4 flex flex-col items-center gap-2 transition active:scale-[0.97] hover:border-parkingrabbit-primary/60 disabled:opacity-60"
           >
-            <span className="size-12 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center shrink-0">
+            <span className="size-11 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center">
               {busy === "gallery" ? (
                 <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
               ) : (
                 <ImageIcon className="size-5" strokeWidth={2.25} />
               )}
             </span>
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-[15px] font-bold leading-tight">
-                Upload picture
-              </p>
-              <p className="text-[12px] text-parkingrabbit-muted mt-0.5 leading-snug">
-                Choose an existing photo from your library
-              </p>
-            </div>
-            <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
+            <p className="text-[13px] font-bold leading-tight text-center">
+              Upload
+            </p>
           </button>
 
           {/* 3. Input manually — creates a fresh draft appeal and
@@ -225,24 +211,18 @@ export default function ScanPage() {
               }
             }}
             disabled={!!busy}
-            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-5 py-4 flex items-center gap-3 transition active:scale-[0.99] hover:border-parkingrabbit-primary/60 disabled:opacity-60"
+            className="rounded-2xl bg-white border border-parkingrabbit-border text-parkingrabbit-navy px-3 py-4 flex flex-col items-center gap-2 transition active:scale-[0.97] hover:border-parkingrabbit-primary/60 disabled:opacity-60"
           >
-            <span className="size-12 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center shrink-0">
+            <span className="size-11 rounded-xl bg-parkingrabbit-bg text-parkingrabbit-navy flex items-center justify-center">
               {busy === "manual" ? (
                 <Loader2 className="size-5 animate-spin" strokeWidth={2.25} />
               ) : (
                 <Keyboard className="size-5" strokeWidth={2.25} />
               )}
             </span>
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-[15px] font-bold leading-tight">
-                Input manually
-              </p>
-              <p className="text-[12px] text-parkingrabbit-muted mt-0.5 leading-snug">
-                Type in the council, PCN reference and registration
-              </p>
-            </div>
-            <ChevronRight className="size-4 text-parkingrabbit-muted shrink-0" />
+            <p className="text-[13px] font-bold leading-tight text-center">
+              Manual
+            </p>
           </button>
         </div>
 

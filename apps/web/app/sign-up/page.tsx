@@ -200,7 +200,7 @@ function SignUpInner() {
             <p className="text-[11px] text-parkingrabbit-muted text-center mt-1">
               By creating an account you agree to our{" "}
               <Link href="/terms" className="underline">
-                Terms
+                Terms &amp; Conditions
               </Link>{" "}
               and{" "}
               <Link href="/privacy" className="underline">

@@ -44,9 +44,10 @@ test.describe("In-app /app", () => {
     await expect(page).toHaveURL(/\/app\/tickets$/);
     // Filter pills are the primary landmark — there's no page-title CTA.
     // Reviewing rolled into Challenging (one customer journey) post-audit
-    // 2026-05-21. Names use `exact: false` because filter chips embed a
-    // count badge (e.g. "All 4") when appeals exist.
-    for (const label of ["All", "To Pay", "Challenging", "Resolved"]) {
+    // 2026-05-21; renamed to "Appeals" 2026-05-28. Names use
+    // `exact: false` because filter chips embed a count badge
+    // (e.g. "All 4") when appeals exist.
+    for (const label of ["All", "To Pay", "Appeals", "Resolved"]) {
       await expect(
         page.getByRole("button", { name: label, exact: false }),
       ).toBeVisible();

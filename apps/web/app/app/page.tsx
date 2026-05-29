@@ -42,7 +42,7 @@ export default function AppHome() {
           title="Scan PCN"
           subtitle="Scan your parking ticket and review your best options."
           ctaLabel="Start now"
-          href="/app/tickets?scan=1"
+          href="/app/scan"
           illustration={<ScanIllustration />}
         />
         <ActionHero

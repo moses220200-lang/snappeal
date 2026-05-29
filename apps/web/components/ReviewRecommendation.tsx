@@ -18,20 +18,11 @@
  * appeal IS the product. Email submission remains internally as a
  * portal-automation fallback but is not a customer choice.
  */
-import Link from "next/link";
-import { Pencil } from "lucide-react";
 import { AppealExpiredBanner, PayAppealTiles } from "./PayAppealTiles";
 
 interface Props {
   /** Paid AI appeal workflow — kicks off drafting + £2.99 PaymentSheet. */
   onStartAppeal: () => void;
-  /** v0.3.6 — fired when the user taps "Edit details" to return to the
-   *  pending_review surface (e.g. correct a misread PCN ref). Parent
-   *  PATCHes step back to the default so deriveCardState routes the
-   *  card back to pending_review. Optional — when not provided the
-   *  link is hidden (e.g. on post-lookup/expired flavors where editing
-   *  the ticket no longer makes sense). */
-  onEditTicket?: () => void;
   /** Direct council payment URL — opened in a new tab. NULL disables the
    *  Pay yourself action and shows a "Pick your council first" hint. */
   payUrl: string | null;
@@ -52,7 +43,6 @@ interface Props {
 
 export function ReviewRecommendation({
   onStartAppeal,
-  onEditTicket,
   payUrl,
   councilName,
   canAppeal,
@@ -77,35 +67,15 @@ export function ReviewRecommendation({
         busy={busy}
       />
 
-      {/* v0.3.6 — Edit details link. Lives under the tiles on the
-       *  needs_decision surface so the user can pop back to the
-       *  pending_review confirm card if they spot a misread PCN ref /
-       *  registration after agreeing. */}
-      {onEditTicket && (
-        <button
-          type="button"
-          onClick={onEditTicket}
-          className="self-center inline-flex items-center gap-1.5 text-[11.5px] text-parkingrabbit-muted hover:text-parkingrabbit-navy font-semibold transition"
-        >
-          <Pencil className="size-3" strokeWidth={2.25} />
-          Edit details
-        </button>
-      )}
-
-      {canAppeal && (
-        <p className="text-[10.5px] text-parkingrabbit-muted text-center leading-snug">
-          By tapping Start appeal you agree to our{" "}
-          <Link
-            href="/terms"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-parkingrabbit-navy"
-          >
-            Terms &amp; Conditions
-          </Link>
-          .
-        </p>
-      )}
+      {/* 2026-05-28 — "Edit details" link + T&C/Privacy footer both
+       *  removed from this surface. The user already agreed to those
+       *  terms one step earlier when they tapped Confirm on
+       *  TicketDetailsForm (see the same footer rendered there); a
+       *  second agreement pitch immediately afterwards just adds
+       *  noise. Likewise the "Edit details" affordance — by the time
+       *  the customer reaches the pay/appeal tiles, the PCN ref + reg
+       *  have already been verified by the council lookup, so the
+       *  rewind-and-edit path isn't meaningful anymore. */}
     </section>
   );
 }

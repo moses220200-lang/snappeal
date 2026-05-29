@@ -223,7 +223,14 @@ export function deriveCardState(
   ) {
     return finalize({
       kind: "submitting",
-      pillLabel: "Submitting",
+      // 2026-05-28 — unified "Appeal" label across every in-progress
+      // stage (gathering_evidence → drafting → letter_ready →
+      // submitting). The pill only swaps to "Submitted" once the
+      // appeal is actually filed; the customer doesn't need to track
+      // which sub-step we're on at-a-glance — the timeline below the
+      // header narrates that. See the matching change at the
+      // drafting + letter_ready branches.
+      pillLabel: "Appeal",
       pillTone: "info",
       caption:
         liveProgress?.latestThought ??
@@ -248,7 +255,14 @@ export function deriveCardState(
   ) {
     return finalize({
       kind: "submitted",
-      pillLabel: "Submitted",
+      // 2026-05-28 — was "Submitted" → "Appealed". "SUBMITTED" (9
+      // chars) plus the check-icon prefix was wrapping the pill onto
+      // a second row alongside the strike-through + bold price pair
+      // on iPhone-mini-class widths. "APPEALED" (8 chars) shaves
+      // just enough to keep the pill on the same line as £110 £55
+      // while still reading as the natural post-submit state ("we
+      // appealed it for you, now we wait").
+      pillLabel: "Appealed",
       pillTone: "positive",
       caption: "We'll notify you when the council replies.",
       progress: null,
@@ -589,7 +603,14 @@ export function deriveCardState(
   ) {
     return finalize({
       kind: "gathering_evidence",
-      pillLabel: "Tell us more",
+      // 2026-05-28 — was "Tell us more" → "Appealing" → "Appeal".
+      // Each step shortened to keep the pill on the same row as the
+      // £ amount on small screens; "APPEALING" still wrapped to a
+      // second line on iPhone-mini-class widths once the strike-through
+      // old price + new price + pill all had to fit. "APPEAL" reads
+      // as the ticket's current track (user chose Appeal, draft is
+      // being built) without burning a second line.
+      pillLabel: "Appeal",
       pillTone: "info",
       caption: "Two quick questions, then Rabbit drafts your appeal.",
       progress: null,
@@ -611,7 +632,10 @@ export function deriveCardState(
   ) {
     return finalize({
       kind: "drafting",
-      pillLabel: "Drafting",
+      // 2026-05-28 — see the comment on the submitting branch above:
+      // every in-progress stage now reads "Appeal" so the pill stays
+      // stable in the header.
+      pillLabel: "Appeal",
       pillTone: "info",
       caption:
         liveProgress?.latestThought ??
@@ -634,7 +658,10 @@ export function deriveCardState(
   ) {
     return finalize({
       kind: "letter_ready",
-      pillLabel: "Ready to submit",
+      // 2026-05-28 — see the comment on the submitting branch above:
+      // every in-progress stage now reads "Appeal" so the pill stays
+      // stable in the header.
+      pillLabel: "Appeal",
       pillTone: "positive",
       caption: "Your appeal letter is ready — submit when you're ready.",
       progress: null,

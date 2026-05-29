@@ -642,15 +642,16 @@ export function TicketCard({
   const displayLocation = display.location;
   const displayIssuedAt = display.issuedAt;
   const displayAmountPence = display.amountPence;
-  // When the council's verified amount differs from what was scanned,
-  // explain it rather than swapping the number silently.
-  const amountNote =
-    display.amountChangedByCouncil && display.verifiedAmountPence != null
-      ? `Council records show ${formatGBP(display.verifiedAmountPence)}${
-          display.ocrAmountPence != null
-            ? ` — you scanned ${formatGBP(display.ocrAmountPence)}`
-            : ""
-        }`
+  // 2026-05-28 — when the council's verified amount differs from
+  // what was OCR-scanned we now render the scanned figure as a
+  // struck-through grey price next to the bold current figure inside
+  // TicketCardHeader (replaces the previous orange text-note line —
+  // the visual diff is clearer and tightens the right column). NULL
+  // pre-verification / when the two amounts match, in which case the
+  // header only renders the single price.
+  const scannedAmountPence =
+    display.amountChangedByCouncil && display.ocrAmountPence != null
+      ? display.ocrAmountPence
       : null;
 
   const council = useMemo(() => {
@@ -1340,7 +1341,17 @@ export function TicketCard({
         cardState.inFlight ? "border-parkingrabbit-primary/40 shadow-lg shadow-parkingrabbit-primary/10" : "border-parkingrabbit-border"
       } overflow-hidden transition-all duration-300`}
     >
-      {/* Top-of-card progress bar — extra-thin, only when in-flight. */}
+      {/* Top-of-card progress bar — extra-thin, only when in-flight.
+       *  2026-05-28 — restored to its simple inline form. An earlier
+       *  attempt wrapped this in its own `rounded-t-3xl overflow-hidden`
+       *  shell, but at h-0.5 the CSS corner-overlap rule scales the
+       *  24 px vertical radii down to ~2 px (the wrapper is only 2 px
+       *  tall), so the rounded corners flattened out and the bar still
+       *  cut straight across the card silhouette. Putting the bar
+       *  back inside the article — which now has `overflow-hidden`
+       *  again — clips it to the article's actual 24 px rounded
+       *  shape, so the top corners of the bar follow the card's top
+       *  corners exactly. */}
       {cardState.inFlight && cardState.progress != null && (
         <div className="h-0.5 bg-parkingrabbit-primary/15 relative overflow-hidden">
           <div
@@ -1362,7 +1373,16 @@ export function TicketCard({
       {/* Header — tappable to expand/collapse on list pages. The
        *  wide "View Details" footer button has been removed; tapping
        *  anywhere on the header (or the chevron) toggles the card. On
-       *  detail pages there's no toggle. */}
+       *  detail pages there's no toggle.
+       *
+       *  2026-05-28 — chevron handle moved to the BOTTOM-right of the
+       *  header, translated down by half its own height so it sits
+       *  right on the header/timeline boundary. Reads as a "tab
+       *  divider" between the always-visible summary and the
+       *  collapsible details below. The card's `overflow-hidden`
+       *  ancestor doesn't clip it because the chevron sits inside the
+       *  card bounds either way (only its visual centre rides the
+       *  boundary line). */}
       <div
         role={!isDetail && onToggle ? "button" : undefined}
         tabIndex={!isDetail && onToggle ? 0 : undefined}
@@ -1394,7 +1414,7 @@ export function TicketCard({
           }
           councilName={councilName}
           amountPence={displayAmountPence}
-          amountNote={amountNote}
+          scannedAmountPence={scannedAmountPence}
           pcnRef={displayPcnRef}
           vehicleReg={displayVehicleReg}
           issuedAt={displayIssuedAt}
@@ -1408,8 +1428,17 @@ export function TicketCard({
           // the form, reading as "asks twice to confirm". Other
           // states keep the full header summary.
           hideIdentityLine={cardState.kind === "pending_review"}
+          // 2026-05-28 — only wire the picker during pending_review (the
+          // user is still confirming PCN fields and might need to fix
+          // the issuer). After that stage — pay/appeal, drafting,
+          // letter ready, submitted — the council is locked in and the
+          // tile is display-only, so we don't pass a click handler.
+          // The header derives the tile's "Edit" vs "Issuer" caption +
+          // tappability from the presence of this prop.
           onCouncilClick={
-            councils && councils.length > 0
+            cardState.kind === "pending_review" &&
+            councils &&
+            councils.length > 0
               ? () => setCouncilPickerOpen(true)
               : undefined
           }
@@ -1442,67 +1471,108 @@ export function TicketCard({
         {!isDetail && onToggle && (
           <button
             type="button"
-            aria-label={expanded ? "Collapse ticket" : "Expand ticket"}
+            aria-label={expanded ? "Collapse ticket details" : "Expand ticket details"}
+            aria-expanded={expanded}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleWithScroll();
             }}
-            className="absolute top-3 right-3 size-7 rounded-full bg-parkingrabbit-bg/80 hover:bg-parkingrabbit-bg text-parkingrabbit-muted hover:text-parkingrabbit-navy flex items-center justify-center transition"
+            // 2026-05-28 — chevron stripped down to the icon only.
+            // The previous circular white pill with border + shadow
+            // read as a floating button competing with the card's
+            // own surface; since the whole card is already clickable,
+            // the chevron just needs to advertise the toggle. Low
+            // visual weight (`text-parkingrabbit-muted/70`) +
+            // hover-darken to navy keeps it discoverable without
+            // pulling the eye. Right margin preserved at `right-4`
+            // so the glyph anchors to exactly where the old pill
+            // sat; `bottom-2` instead of `bottom-1` because there's
+            // no longer a 32-px button frame absorbing the spacing.
+            className="absolute bottom-2 right-4 z-10 p-1 text-parkingrabbit-muted/70 hover:text-parkingrabbit-navy transition"
           >
             <ChevronDown
-              className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+              className={`size-4 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
               strokeWidth={2.5}
             />
           </button>
         )}
       </div>
 
-      {/* Location now lives inside the header (under "Issued 20 May",
-       *  next to the council logo). The standalone "Checking with the
-       *  council..." live caption row that used to sit here has been
-       *  removed — the active "Checking council" lifecycle step below
-       *  already says the same thing, with a real spinner. */}
+      {/* ─── Collapsible details section ───
+       *  2026-05-28 — wraps the lifecycle timeline + supplementary
+       *  surfaces + footer so the chevron handle above can shrink the
+       *  whole stack down to the header alone. Uses the `grid-rows-
+       *  [0fr|1fr]` animation trick (same pattern as LetterPreview)
+       *  so the transition is smooth across variable content heights
+       *  without measuring scrollHeight by hand. The inner
+       *  `overflow-hidden` keeps content clipped during the animation.
+       *
+       *  Previously the timeline always rendered (the old design
+       *  rationale was "even a collapsed card should show *where* the
+       *  ticket is at a glance"); the brief now overrides that — the
+       *  status pill in the header carries enough "where it is"
+       *  signal, and collapsing the whole stack lets a long list of
+       *  tickets stay scannable.
+       *
+       *  On detail pages `expanded` is pinned true (see line 189) so
+       *  the timeline never collapses there. */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          {/* ─── ONE unified lifecycle timeline ───
+           *  Replaces the legacy trio (TicketJourney 3-step + the
+           *  inline ProcessingCard rows + the Progress Timeline
+           *  section). Every state, milestone, loader, and expanded
+           *  action surface lives in here as a single vertical
+           *  journey. Per-step interactive content is still gated on
+           *  the outer `expanded` flag inside lifecycleSteps; when
+           *  the card is collapsed the wrapper above hides the whole
+           *  timeline anyway, so those guards are belt-and-braces. */}
+          <div className="px-5 pt-4 pb-4">
+            <TicketLifecycleTimeline steps={lifecycleSteps} />
+          </div>
 
-      {/* ─── ONE unified lifecycle timeline ───
-       *  Replaces the legacy trio (TicketJourney 3-step + the inline
-       *  ProcessingCard rows + the Progress Timeline section). Every
-       *  state, milestone, loader, and expanded action surface lives in
-       *  here as a single vertical journey. Collapsed cards still show
-       *  the timeline so the user can see *where* the ticket is at a
-       *  glance; expanded cards mount each step's interactive content
-       *  inline under the relevant step. */}
-      <div className="px-5 pb-4">
-        <TicketLifecycleTimeline steps={lifecycleSteps} />
-      </div>
-
-      {/* Body — supplementary surfaces that don't belong to any single
-       *  lifecycle step (stuck-submission notice + error toast). The
-       *  MCP live agent panel now lives inside the "Checking council"
-       *  timeline step itself. */}
-      {expanded && (cardState.kind === "submitting" || error) && (
-        <div className="px-5 pb-4 flex flex-col gap-4">
-          {cardState.kind === "submitting" && isSubmissionStuck(appeal) && (
-            <StuckSubmittingNotice />
+          {/* Body — supplementary surfaces that don't belong to any
+           *  single lifecycle step (stuck-submission notice + error
+           *  toast). The MCP live agent panel now lives inside the
+           *  "Checking council" timeline step itself. */}
+          {(cardState.kind === "submitting" || error) && (
+            <div className="px-5 pb-4 flex flex-col gap-4">
+              {cardState.kind === "submitting" && isSubmissionStuck(appeal) && (
+                <StuckSubmittingNotice />
+              )}
+              {error && (
+                <p className="text-[11.5px] text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                  {error}
+                </p>
+              )}
+            </div>
           )}
-          {error && (
-            <p className="text-[11.5px] text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-              {error}
-            </p>
+
+          {/* Footer — Delete only. The wide "View Details" wide
+           *  button is gone (the user taps the card itself or the
+           *  chevron handle on the header divider to expand/collapse).
+           *  Delete stays as a quiet, two-tap-to-confirm row
+           *  underneath.
+           *
+           *  2026-05-28 — always shown, including for shared-viewer
+           *  rows and any state that's stuck without a forward-
+           *  action surface. `onHide` is a client-side localStorage
+           *  hide (see /app/tickets/page.tsx → hideAppeal); it
+           *  doesn't touch the owner's appeal row, so letting a
+           *  viewer dismiss a "Shared with you" tile from their own
+           *  list is safe and lines up with the user expectation
+           *  that any PCN in their account can be removed. */}
+          {onHide && (
+            <footer className="px-5 pb-4 pt-1 flex flex-col gap-2">
+              <DeleteTicketButton onConfirm={onHide} />
+            </footer>
           )}
         </div>
-      )}
-
-      {/* Footer — Delete only. The wide "View Details" wide button is
-       *  gone (the user taps the card itself or the chevron in the
-       *  header to expand/collapse). Delete stays as a quiet,
-       *  two-tap-to-confirm row underneath.
-       *  2026-05-27 — hidden for shared viewers; only the owner can
-       *  remove a row from their list. */}
-      {onHide && !appeal.isViewerOnly && (
-        <footer className="px-5 pb-4 pt-1 flex flex-col gap-2">
-          <DeleteTicketButton onConfirm={onHide} />
-        </footer>
-      )}
+      </div>{/* /collapsible details */}
 
       <PaymentSheet
         open={paySheetOpen}
@@ -2028,14 +2098,21 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
       // block while the AI writes, so the user sees what their letter
       // is being drafted from. Previously the body was only mounted
       // once a letterBody existed (letter_ready / submitting).
+      // 2026-05-28 (v2) — once the appeal is `submitted`, the
+      // "Appeal ready" step has nothing further to show: the green
+      // success card + grey "we'll let you know" caption have moved
+      // DOWN under "Appeal submitted" alongside Rate us / Share, so
+      // every post-submit surface lives in one place. This step just
+      // displays its timeline-row checkmark + "Letter ready."
+      // supporting text. drafting / letter_ready / submitting still
+      // mount the body for the usual reasons (the drafting
+      // typewriter, the £2.99 CTA, etc).
       children:
         expanded && kind === "drafting"
           ? renderBody()
           : expanded && hasLetter && (kind === "letter_ready" || kind === "submitting")
             ? renderBody()
-            : expanded && hasLetter
-              ? renderLetterActions(appeal)
-              : null,
+            : null,
     });
   }
 
@@ -2068,9 +2145,19 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
             : "After you submit, Rabbit files this directly with the council.",
       status: submitStatus,
       busy: submitStatus === "active",
-      children: expanded && submitStatus === "done" && kind === "submitted"
-        ? renderBody()
-        : null,
+      // 2026-05-28 (v2) — "Appeal submitted" is now the single home
+      // for every post-submit surface: the green letter card +
+      // "we'll let you know" caption (from `renderBody()` on the
+      // submitted state) AND the Rate us / Share tiles. The drafting
+      // step above ("Appeal ready") collapses to its timeline row
+      // when submitted because there's nothing left there to show.
+      children:
+        expanded && submitStatus === "done" && kind === "submitted" ? (
+          <div className="flex flex-col gap-3">
+            {renderBody()}
+            {renderLetterActions(appeal)}
+          </div>
+        ) : null,
     });
   }
 
@@ -2113,13 +2200,13 @@ function buildLifecycleSteps(args: BuildStepArgs): LifecycleStep[] {
  *   → components/ticket/FailureActions.tsx                         */
 
 function renderLetterActions(appeal: AppealRecord): React.ReactElement | null {
+  // 2026-05-28 — LetterActions takes no props now (the Copy/Share
+  // letter pair was replaced with app-level Rate us / Share Rabbit
+  // tiles). We still gate on `letterBody` so the action row only
+  // appears once a letter exists — there's nothing to celebrate /
+  // rate before the appeal is actually drafted.
   if (!appeal.letterBody) return null;
-  return (
-    <LetterActions
-      letterBody={appeal.letterBody}
-      letterSubject={appeal.letterSubject ?? "ParkingRabbit appeal letter"}
-    />
-  );
+  return <LetterActions />;
 }
 
 /* OutstandingDetail, isSubmissionStuck, StuckSubmittingNotice, STUCK_THRESHOLD_MS

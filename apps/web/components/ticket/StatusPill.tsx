@@ -20,19 +20,28 @@ export function StatusPill({ state }: { state: CardState }) {
     state.kind === "drafting" ||
     state.kind === "submitting" ||
     state.kind === "scanning";
+  // 2026-05-28 — pill scale bumped a step (was 9.5/10.5 px →
+  // 10.5/11.5 px) so the badge reads more clearly without dominating
+  // the price. To keep the longest in-flight labels ("APPEAL",
+  // "OPEN", etc.) on the same row as the strike-through + bold £
+  // pair on iPhone-mini-class widths, mobile padding stays compact
+  // (`px-2 py-0.5`) and the inter-glyph gap stays `gap-1`. The
+  // companion change in `TicketCardHeader` nudges mobile price font
+  // from 24 px to 22 px to free up the few extra pixels this pill
+  // needs.
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide whitespace-nowrap transition-colors duration-500 ${palette}`}
+      className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-full px-2 sm:px-3 py-0.5 sm:py-1 text-[10.5px] sm:text-[11.5px] font-bold uppercase tracking-wide whitespace-nowrap transition-colors duration-500 ${palette}`}
     >
       {showLoader ? (
-        <Loader2 className="size-3 animate-spin" strokeWidth={2.5} />
+        <Loader2 className="size-3 sm:size-3.5 animate-spin" strokeWidth={2.5} />
       ) : state.kind === "letter_ready" ? (
-        <Sparkles className="size-3" strokeWidth={2.5} fill="currentColor" />
+        <Sparkles className="size-3 sm:size-3.5" strokeWidth={2.5} fill="currentColor" />
       ) : state.kind === "submitted" || state.kind === "terminal" ? (
         state.pillTone === "success" ? (
-          <CheckCircle2 className="size-3" strokeWidth={2.5} />
+          <CheckCircle2 className="size-3 sm:size-3.5" strokeWidth={2.5} />
         ) : (
-          <Check className="size-3" strokeWidth={2.5} />
+          <Check className="size-3 sm:size-3.5" strokeWidth={2.5} />
         )
       ) : (
         <span className="size-1.5 rounded-full bg-current parkingrabbit-mcp-tick-dot" />

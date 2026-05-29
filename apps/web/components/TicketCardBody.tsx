@@ -20,6 +20,7 @@ import {
   AlertOctagon,
   AlertTriangle,
   ArrowRight,
+  Bell,
   Calendar,
   Camera,
   Check,
@@ -27,10 +28,12 @@ import {
   ChevronDown,
   Loader2,
   Lock,
+  Mail,
   Mic,
   Plus,
   ShieldCheck,
   Sparkles,
+  UserPlus,
   X,
 } from "lucide-react";
 import { LetterPreview } from "@/components/LetterPreview";
@@ -43,13 +46,12 @@ import {
   setEvidencePhotos,
   type OcrHandoff,
 } from "@/lib/client/session";
-import { getTicketDiscrepancies } from "@/lib/ticketDisplay";
 import { ReviewRecommendation } from "@/components/ReviewRecommendation";
 import { ValidatingCardBody } from "@/components/ValidatingCardBody";
+import { MAX_BYTES, MAX_EVIDENCE } from "@/components/EvidenceCarousel";
 import type { AppealRecord } from "@/lib/server/appeals";
-import { EVIDENCE_DONE_STEP, type CardState } from "@/lib/deriveCardState";
+import type { CardState } from "@/lib/deriveCardState";
 import type { TicketStatusSnapshot } from "@/lib/server/connectors/types";
-import type { PortalLookupSnapshot } from "@/lib/server/db/schema";
 
 interface CouncilOption {
   slug: string;
@@ -152,7 +154,9 @@ export function TicketCardBody({
   statusSnapshot,
   onStartAppeal,
   onAgreeTicket,
-  onEditTicket,
+  // onEditTicket — still on Props for call-site compatibility; unused
+  // here since 2026-05-28 (the "Edit details" link in
+  // ReviewRecommendation that consumed it has been removed).
   onOpenPaymentSheet,
   onOpenCouncilPicker,
   onOverrideLookup,
@@ -164,7 +168,10 @@ export function TicketCardBody({
   ocrHandoff,
   liveCouncilThought,
   draftStreamBody = "",
-  draftStreamActive = false,
+  // draftStreamActive — still on the props interface for TicketCard
+  // call-site compatibility, but no longer consumed here since 2026-05-28
+  // (the drafting case now pins `isStreaming={true}` on LetterPreview;
+  // the drafting case itself IS the streaming signal).
   draftStreamCompletedThisMount = false,
   busy,
 }: Props) {
@@ -181,6 +188,14 @@ export function TicketCardBody({
   // cache means one fetch per tab regardless of how many tickets
   // are mounted.
   const avgDurations = useAvgDurations();
+
+  // 2026-05-28 — when the LetterPreview's preamble typewriter has
+  // finished but Claude hasn't shipped any AI body chunks yet, the
+  // preview signals here via `onWaitForBody`. We then surface a small
+  // "stay in the loop" panel below it so the user has something to do
+  // (turn on notifications / opt in to an email) instead of staring at
+  // a collapsed letter box.
+  const [waitingForLetterBody, setWaitingForLetterBody] = useState(false);
 
   // 2026-05-27 — shared viewer (added to appeal_viewers via the
   // duplicate-upload dedup in /api/extract) gets a read-only surface.
@@ -246,63 +261,49 @@ export function TicketCardBody({
       );
     }
     case "drafting": {
-      // v0.3.6 — drafting renders THREE possible surfaces:
-      //   1. CouncilConfirmedDetails — full structured listing of the
-      //      council-confirmed metadata.
-      //   2. Status row — live state (waiting on lookup / Claude streaming /
-      //      failed with the actual error + a Retry button).
-      //   3. (v0.3.x) Live LetterPreview — once SSE chunks start arriving
-      //      from /api/generate-stream the status row is replaced with the
-      //      letter being written in real time. Auto-collapses on stream
-      //      end (handled inside LetterPreview).
-      const waitingOnLookup =
-        appeal.step === EVIDENCE_DONE_STEP &&
-        appeal.portalLookup?.status === "pending";
+      // 2026-05-28 — drafting surface is now just the typewriter +
+      // (post-preamble) the "stay in the loop" panel. The green
+      // CouncilConfirmedDetails grid and the blue "Drafting your
+      // appeal" InlineStatusRow that lived here before have been
+      // removed: at this stage the customer doesn't need to re-read
+      // their PCN metadata (it's locked in for the draft), and the
+      // status-row activity indicator is redundant once the
+      // typewriter is animating the preamble. The DraftingFailedRow
+      // is the only escape hatch retained — it surfaces the actual
+      // error + a Retry button.
+      //
+      // `isStreaming` is hard-coded to true here (rather than
+      // following `draftStreamActive`) because "drafting state IS the
+      // streaming signal" — the parent only routes to this case while
+      // the appeal is actively drafting, so any moment we're in this
+      // branch we want the preview to behave as live. Forces the
+      // preamble typewriter to start immediately even in the brief
+      // window between entering drafting and the SSE actually opening
+      // (otherwise the pane would sit empty for those few hundred ms).
       const failed = appeal.step === "generation_failed";
       const draftError = appeal.processing?.draft?.error ?? null;
-      // The live preview takes over the moment the first chunk lands.
-      // Before that we keep the status row so the customer sees activity
-      // during the 20–60 s Claude generation window (no chunks emitted
-      // until attachDraftToAppeal has persisted).
-      const showLiveLetter =
-        !failed && (draftStreamActive || draftStreamBody.length > 0);
+      const letterPreamble = formatLetterPreamble(appeal, councilName);
       return (
         <div className="flex flex-col gap-3">
-          <CouncilConfirmedDetails appeal={appeal} />
           {failed ? (
             <DraftingFailedRow
               errorMessage={draftError}
               onRetry={onRetryDraft ?? (() => {})}
               busy={busy}
             />
-          ) : showLiveLetter ? (
-            <LetterPreview
-              appealId={appeal.id}
-              subject={appeal.letterSubject}
-              body={draftStreamBody}
-              wordCount={null}
-              isStreaming={draftStreamActive}
-            />
           ) : (
-            <InlineStatusRow
-              icon={Sparkles}
-              title={
-                waitingOnLookup
-                  ? "Waiting for council confirmation"
-                  : "Drafting your appeal"
-              }
-              body={
-                waitingOnLookup
-                  ? "Rabbit is finishing the council check before drafting your appeal — usually a few more seconds."
-                  : state.caption ??
-                    "ParkingRabbit AI is writing your appeal letter."
-              }
-              tone="info"
-              // Show the "Usually takes ~Xs" line only once we're
-              // actively drafting (not while still waiting on the
-              // lookup, where the lookup ETA would be misleading).
-              eta={waitingOnLookup ? null : formatEta(avgDurations.draft)}
-            />
+            <>
+              <LetterPreview
+                appealId={appeal.id}
+                subject={appeal.letterSubject}
+                body={draftStreamBody}
+                wordCount={null}
+                isStreaming={true}
+                preamble={letterPreamble}
+                onWaitForBody={setWaitingForLetterBody}
+              />
+              {waitingForLetterBody && <StayInTheLoopPanel />}
+            </>
           )}
         </div>
       );
@@ -326,7 +327,6 @@ export function TicketCardBody({
           appeal={appeal}
           busy={busy}
           onConfirm={onConfirmEvidence ?? (() => {})}
-          liveCouncilThought={liveCouncilThought ?? null}
         />
       );
     case "letter_ready":
@@ -344,9 +344,33 @@ export function TicketCardBody({
         />
       );
     case "submitted":
+      // 2026-05-28 — collapsed to a single card. The previous
+      // arrangement was: green SubmittedCard ("Filed with the
+      // council") + grey caption + neutral-white LetterPreview.
+      // The user noted those were too many surfaces; the LetterPreview
+      // now wears the green tone with a check glyph itself (it IS
+      // the "filed with the council" confirmation now), and the grey
+      // "we'll let you know" caption sits just below as plain text.
+      // The cancelled fallback still flows through `SubmittedCard`
+      // below so the celebratory copy survives that branch.
+      if (appeal.status === "cancelled") {
+        return (
+          <div className="flex flex-col gap-3">
+            <SubmittedCard appeal={appeal} />
+            {appeal.letterBody && (
+              <LetterPreview
+                appealId={appeal.id}
+                subject={appeal.letterSubject}
+                body={appeal.letterBody}
+                wordCount={appeal.letterWordCount}
+                defaultOpen={false}
+              />
+            )}
+          </div>
+        );
+      }
       return (
-        <div className="flex flex-col gap-3">
-          <SubmittedCard appeal={appeal} />
+        <div className="flex flex-col gap-2">
           {appeal.letterBody && (
             <LetterPreview
               appealId={appeal.id}
@@ -354,8 +378,12 @@ export function TicketCardBody({
               body={appeal.letterBody}
               wordCount={appeal.letterWordCount}
               defaultOpen={false}
+              tone="submitted"
             />
           )}
+          <p className="text-[12px] text-parkingrabbit-muted leading-snug px-1">
+            We&apos;ll let you know when the council replies.
+          </p>
         </div>
       );
     case "terminal":
@@ -376,7 +404,6 @@ export function TicketCardBody({
       return (
         <ReviewRecommendation
           onStartAppeal={onStartAppeal}
-          onEditTicket={onEditTicket}
           payUrl={payUrl}
           councilName={councilName}
           canAppeal={state.canAppeal && !!appeal.councilSlug}
@@ -1012,8 +1039,8 @@ interface CommonReason {
 const COMMON_REASONS: CommonReason[] = [
   {
     id: "broke-down",
-    label: "My car broke down",
-    title: "My car broke down",
+    label: "Car broke down",
+    title: "Car broke down",
     explanation:
       "Your vehicle became immobilised through no fault of your own, so it couldn't be moved.",
     evidence: [
@@ -1168,199 +1195,270 @@ const COMMON_REASONS: CommonReason[] = [
   },
 ];
 
-const MAX_EVIDENCE = 6;
+// MAX_EVIDENCE now imported from EvidenceCarousel — single source of truth
+// so the dictation flow's quiz-stage trimming uses the same hard cap as
+// the carousel's "Add" tile.
 const MAX_NOTES = 2000;
 
-/** Council-check ambient status chip (v0.3.6). Single surface that
- *  narrates the lazy lookup AND, when verified, surfaces any fields
- *  the council's record changed vs. what the user/OCR had.
- *
- *    - pending: muted blue pill, spinning dot, "Checking with the
- *      council in the background…" (chip stays compact).
- *    - verified + no diffs: green pill, "Council confirmed".
- *    - verified + diffs: grows into a green CARD listing each field
- *      the council overrode (Amount: £160 → £130, etc.).
- *    - overridden / skipped: green pill, "Council confirmed".
- *    - error: amber pill, "Couldn't reach the council — we'll try
- *      again before submitting."
- *    - null / no lookup yet: nothing rendered.
- *
- *  Invalid verdicts (paid/closed/not_found) never render here — the
- *  appeal_not_possible CardKind takes over the surface upstream. */
-function CouncilCheckChip({
-  status,
-  discrepancies = [],
-  liveThought = null,
-}: {
-  status: PortalLookupSnapshot["status"] | null;
-  /** v0.3.6 — when the chip is in `verified` state and these are
-   *  non-empty, the chip expands into a small card listing the
-   *  field-level diffs (old → new). Comes from
-   *  `getTicketDiscrepancies(appeal)` upstream. */
-  discrepancies?: Array<{
-    field: string;
-    label: string;
-    userValue: string;
-    councilValue: string;
-  }>;
-  /** v0.3.6 — live MCP agent thought during the lookup (e.g. "Filling
-   *  in PCN ref", "Navigating to the ticket-details page"). When
-   *  present AND status is "pending", the chip prints this instead of
-   *  the generic "Checking with the council…" placeholder so the user
-   *  can see what the agent is actually doing. NULL between thoughts. */
-  liveThought?: string | null;
-}) {
-  if (!status) return null;
-  if (status === "pending") {
-    const thought = liveThought?.trim();
-    return (
-      <div className="inline-flex items-start gap-2 self-start rounded-2xl bg-parkingrabbit-primary-50 border border-parkingrabbit-primary/20 px-3 py-1.5 text-[11.5px] font-semibold text-parkingrabbit-primary max-w-full">
-        <span className="relative size-2 shrink-0 mt-1.5">
-          <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary animate-ping opacity-75" />
-          <span className="absolute inset-0 rounded-full bg-parkingrabbit-primary" />
-        </span>
-        <span className="leading-snug">
-          {thought ? thought : "Checking with the council in the background…"}
-        </span>
-      </div>
-    );
-  }
-  if (
-    status === "verified" ||
-    status === "overridden" ||
-    status === "skipped"
-  ) {
-    const hasDiffs = status === "verified" && discrepancies.length > 0;
-    if (!hasDiffs) {
-      return (
-        <div className="inline-flex items-center gap-2 self-start rounded-full bg-green-50 border border-green-200 px-3 py-1.5 text-[11.5px] font-semibold text-green-800">
-          <CheckCircle2 className="size-3.5" strokeWidth={2.5} />
-          Council confirmed
-        </div>
-      );
-    }
-    return (
-      <div className="rounded-2xl bg-green-50 border border-green-200 p-3 flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <CheckCircle2
-            className="size-3.5 text-green-700 shrink-0"
-            strokeWidth={2.5}
-          />
-          <p className="text-[11.5px] font-bold text-green-900">
-            Council confirmed — updated{" "}
-            {discrepancies.length === 1
-              ? "1 detail"
-              : `${discrepancies.length} details`}
-          </p>
-        </div>
-        <ul className="flex flex-col gap-1 text-[11px] text-green-900/85 leading-snug pl-5">
-          {discrepancies.map((d) => (
-            <li key={d.field} className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="font-semibold text-green-900">{d.label}:</span>
-              <span className="line-through text-green-900/55">
-                {d.userValue}
-              </span>
-              <span aria-hidden>→</span>
-              <span className="font-semibold">{d.councilValue}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-  if (status === "error") {
-    return (
-      <div className="inline-flex items-center gap-2 self-start rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-[11.5px] font-semibold text-amber-900">
-        <AlertTriangle className="size-3.5" strokeWidth={2.5} />
-        Couldn&apos;t reach the council — we&apos;ll try again before submitting.
-      </div>
-    );
-  }
-  // "invalid" — appeal_not_possible upstream handles this; nothing
-  // sensible to show here.
-  return null;
-}
+/* 2026-05-28 — `CouncilCheckChip` removed. The chip used to live at
+ *  the top of the Build-appeal surface, but its only remaining
+ *  user-visible job by that stage was the green "Council confirmed —
+ *  updated N details" card (the verified-with-diffs branch), which
+ *  was clutter on a surface the user wants focused on writing their
+ *  grounds. Pending narration still surfaces upstream through the
+ *  lifecycle timeline and the ambient `liveThought` reaches
+ *  ValidatingCardBody on the validating surface — no other call site
+ *  consumed this chip. */
 
-/** v0.3.6 — "Council confirms" details block. Rendered during the
- *  drafting state so the user can read exactly what record the AI is
- *  drafting against. Lists every field the council's portal returned
- *  in a clean key/value grid:
- *    PCN Ref, Vehicle Reg, Contravention Code, Location, Issued At,
- *    Amount, Discount Until, Full Charge From.
- *  Hidden when there's no verified lookup (e.g. lookup errored or was
- *  overridden — the user knows there's no council confirmation to show).
- */
-function CouncilConfirmedDetails({ appeal }: { appeal: AppealRecord }) {
-  const lookup = appeal.portalLookup;
-  if (!lookup) return null;
-  if (lookup.status !== "verified") return null;
-  const m = lookup.metadata;
-  if (!m) return null;
+/** 2026-05-28 — boilerplate opening paragraph for the appeal letter.
+ *  Composed deterministically from the council-confirmed (or user-typed)
+ *  ticket data and typed out by LetterPreview *before* the AI body
+ *  arrives. Goal: kill the "blinking cursor over an empty letter" symptom
+ *  during Claude's 20–60 s drafting window — the user sees the letter
+ *  start writing immediately using details they already provided, and
+ *  the typewriter chains into the AI grounds once chunks land.
+ *
+ *  Returns null when we don't have at least a PCN ref + vehicle reg —
+ *  without those the boilerplate would read embarrassingly ("appeal of
+ *  Penalty Charge Notice null…"), so the caller falls back to the
+ *  pre-existing live-stream behaviour.
+ *
+ *  Mirrors the field-precedence convention used by `CouncilConfirmedDetails`
+ *  below: prefer the verified lookup metadata, fall back to the
+ *  user-typed ticket fields. Both shapes carry the same field names. */
+function formatLetterPreamble(
+  appeal: AppealRecord,
+  councilName: string | null,
+): string | null {
+  const ticket = appeal.ticket;
+  const m = appeal.portalLookup?.metadata;
+  const pcnRef = m?.pcnRef ?? ticket?.pcnRef ?? null;
+  const vehicleReg = m?.vehicleReg ?? ticket?.vehicleReg ?? null;
+  if (!pcnRef || !vehicleReg) return null;
 
-  const fmtDateTime = (iso?: string | null) => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-  const fmtDate = (iso?: string | null) => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
+  const contraventionCode =
+    m?.contraventionCode ?? ticket?.contraventionCode ?? null;
+  const location = m?.location ?? ticket?.location ?? null;
+  const issuedAt = m?.issuedAt ?? ticket?.issuedAt ?? null;
+  const amountPence = m?.amountPence ?? ticket?.amountPence ?? null;
+
+  const issuedDateStr = (() => {
+    if (!issuedAt) return null;
+    const d = new Date(issuedAt);
+    if (Number.isNaN(d.getTime())) return null;
     return d.toLocaleDateString("en-GB", {
       day: "numeric",
-      month: "short",
+      month: "long",
       year: "numeric",
     });
-  };
-  const fmtAmount = (p?: number | null) => {
-    if (p == null || !Number.isFinite(p) || p === 0) return null;
-    return `£${(p / 100).toFixed(2).replace(/\.00$/, "")}`;
+  })();
+  const amountStr =
+    amountPence != null &&
+    Number.isFinite(amountPence) &&
+    (amountPence as number) > 0
+      ? `£${((amountPence as number) / 100).toFixed(2).replace(/\.00$/, "")}`
+      : null;
+
+  const salutation = councilName
+    ? `Dear ${councilName} Parking Services,`
+    : ticket?.issuer
+      ? `Dear ${ticket.issuer} Parking Services,`
+      : "Dear Sir or Madam,";
+
+  // Opening sentence — always present, with optional date / location clauses
+  // grafted on. We comma-join the parts so a partial lookup ("we only have
+  // the reg + ref") still yields a readable sentence rather than dangling
+  // prepositions like "issued on at ".
+  const openingParts = [
+    `I am writing to formally appeal Penalty Charge Notice ${pcnRef}`,
+    `issued to vehicle registration ${vehicleReg}`,
+  ];
+  if (issuedDateStr) openingParts.push(`on ${issuedDateStr}`);
+  if (location) openingParts.push(`at ${location}`);
+  const openingSentence = `${openingParts.join(", ")}.`;
+
+  // Optional context sentence — only when we have a contravention code
+  // and/or a charge amount worth stating.
+  let contextSentence: string | null = null;
+  if (contraventionCode && amountStr) {
+    contextSentence = `The contravention recorded against the vehicle is code ${contraventionCode}, with a penalty charge of ${amountStr}.`;
+  } else if (contraventionCode) {
+    contextSentence = `The contravention recorded against the vehicle is code ${contraventionCode}.`;
+  } else if (amountStr) {
+    contextSentence = `The penalty charge issued is ${amountStr}.`;
+  }
+
+  const closingSentence =
+    "I respectfully submit that this penalty should not stand, for the reasons set out below.";
+
+  const body = [openingSentence, contextSentence, closingSentence]
+    .filter(Boolean)
+    .join(" ");
+
+  return `${salutation}\n\n${body}`;
+}
+
+/** 2026-05-28 — "Stay in the loop" panel.
+ *
+ *  Surfaced under the (now-collapsed) LetterPreview during the
+ *  drafting window once the preamble typewriter has caught up and we
+ *  know Claude still has work to do. Gives the customer something
+ *  active to do — opting into push or email notifications — so the
+ *  wait reads as "we're working on it" instead of "the screen
+ *  froze". Self-contained: tracks its own per-tile success state and
+ *  hides each tile once the user has acted on it.
+ *
+ *  Push opt-in uses the platform's own permission prompt (no custom
+ *  sheet here — this is a low-friction surface; the heavier
+ *  NotificationPromptGate is reserved for the appealTap / submitDone
+ *  moments where a richer pitch makes sense). Email opt-in is
+ *  optimistic — we flip the tile to its success state on tap; the
+ *  background subscribe POST is fire-and-forget and the user has
+ *  already provided an email at signup, so there's nothing to ask. */
+function StayInTheLoopPanel() {
+  const [pushState, setPushState] = useState<
+    "idle" | "asking" | "on" | "blocked" | "unsupported"
+  >(() => {
+    if (typeof window === "undefined") return "idle";
+    if (typeof Notification === "undefined") return "unsupported";
+    if (Notification.permission === "granted") return "on";
+    if (Notification.permission === "denied") return "blocked";
+    return "idle";
+  });
+  const [emailOn, setEmailOn] = useState(false);
+
+  const turnOnNotifications = async () => {
+    if (typeof Notification === "undefined") {
+      setPushState("unsupported");
+      return;
+    }
+    setPushState("asking");
+    try {
+      const result = await Notification.requestPermission();
+      setPushState(
+        result === "granted"
+          ? "on"
+          : result === "denied"
+            ? "blocked"
+            : "idle",
+      );
+    } catch {
+      setPushState("idle");
+    }
   };
 
-  const rows: Array<{ label: string; value: string | null }> = [
-    { label: "PCN Ref", value: m.pcnRef ?? null },
-    { label: "Vehicle Reg", value: m.vehicleReg ?? null },
-    { label: "Contravention Code", value: m.contraventionCode ?? null },
-    { label: "Location", value: m.location ?? null },
-    { label: "Issued At", value: fmtDateTime(m.issuedAt) },
-    { label: "Amount", value: fmtAmount(m.amountPence) },
-    { label: "Discount Until", value: fmtDate(m.discountUntil) },
-    { label: "Full Charge From", value: fmtDate(m.fullChargeFrom) },
-  ].filter((r): r is { label: string; value: string } => !!r.value);
+  const turnOnEmail = () => {
+    // Fire-and-forget — the user already has a verified email on the
+    // account, so this is just an opt-in flag for "ping me when ready".
+    setEmailOn(true);
+    void fetch("/api/users/me/notification-prefs", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ emailOnLetterReady: true }),
+    }).catch(() => {
+      /* fire-and-forget — UI already in success state */
+    });
+  };
 
-  if (rows.length === 0) return null;
+  // 2026-05-28 — switched to a 3-tile layout with the third tile
+  // ("Sign up") nudging guest customers toward creating an account so
+  // we can reach them after they close the tab. Labels are intentionally
+  // short (one or two words) because at 3 tiles per row each tile only
+  // gets ~ 90 px of width on iPhone-mini-class widths. The previous
+  // long-form labels ("Turn on notifications", "Email me when ready")
+  // are kept as aria-labels so screen readers still read the full
+  // affordance.
+  const pushDisabled =
+    pushState === "asking" ||
+    pushState === "on" ||
+    pushState === "blocked" ||
+    pushState === "unsupported";
+  const pushLabel =
+    pushState === "on"
+      ? "On"
+      : pushState === "blocked"
+        ? "Blocked"
+        : pushState === "unsupported"
+          ? "Not supported"
+          : "Notify me";
 
   return (
-    <section className="rounded-2xl bg-green-50 border border-green-200 p-3.5 flex flex-col gap-2.5">
-      <div className="flex items-center gap-2">
-        <CheckCircle2
-          className="size-4 text-green-700 shrink-0"
-          strokeWidth={2.25}
-        />
-        <p className="text-[12.5px] font-bold text-green-900">
-          Council confirms
-        </p>
+    <section className="rounded-2xl bg-parkingrabbit-primary-50/60 border border-parkingrabbit-primary/20 p-3 flex flex-col gap-2.5">
+      <p className="text-[11.5px] text-parkingrabbit-navy/80 leading-snug">
+        Rabbit is finishing your appeal letter — usually under a minute.
+        Want a heads-up when it&apos;s ready?
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          type="button"
+          onClick={turnOnNotifications}
+          disabled={pushDisabled}
+          aria-label="Turn on notifications"
+          className={`rounded-xl text-[11.5px] font-bold py-2.5 px-1.5 inline-flex flex-col items-center justify-center gap-1 transition active:scale-[0.98] text-center ${
+            pushState === "on"
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : pushState === "blocked" || pushState === "unsupported"
+                ? "bg-parkingrabbit-bg text-parkingrabbit-muted border border-parkingrabbit-border"
+                : "bg-white text-parkingrabbit-navy border border-parkingrabbit-primary/30 hover:border-parkingrabbit-primary/60"
+          } disabled:cursor-not-allowed`}
+        >
+          {pushState === "asking" ? (
+            <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
+          ) : pushState === "on" ? (
+            <Check className="size-4" strokeWidth={2.75} />
+          ) : (
+            <Bell className="size-4" strokeWidth={2.5} />
+          )}
+          <span className="leading-tight">{pushLabel}</span>
+        </button>
+        <button
+          type="button"
+          onClick={turnOnEmail}
+          disabled={emailOn}
+          aria-label="Email me when ready"
+          className={`rounded-xl text-[11.5px] font-bold py-2.5 px-1.5 inline-flex flex-col items-center justify-center gap-1 transition active:scale-[0.98] text-center ${
+            emailOn
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-white text-parkingrabbit-navy border border-parkingrabbit-primary/30 hover:border-parkingrabbit-primary/60"
+          } disabled:cursor-not-allowed`}
+        >
+          {emailOn ? (
+            <Check className="size-4" strokeWidth={2.75} />
+          ) : (
+            <Mail className="size-4" strokeWidth={2.5} />
+          )}
+          <span className="leading-tight">{emailOn ? "On" : "Email me"}</span>
+        </button>
+        {/* 2026-05-28 — Sign up nudge. Routes guest customers to the
+         *  sign-up page so we have a durable way to ping them once the
+         *  draft is filed. Signed-in customers will see this too for
+         *  now — the auth check would have to climb a long prop tree
+         *  to reach here; the cost of an extra-clicked tile is
+         *  smaller than the cost of plumbing auth context that deep
+         *  for a single CTA. */}
+        <Link
+          href="/sign-up"
+          aria-label="Sign up for an account"
+          className="rounded-xl text-[11.5px] font-bold py-2.5 px-1.5 inline-flex flex-col items-center justify-center gap-1 transition active:scale-[0.98] text-center bg-white text-parkingrabbit-navy border border-parkingrabbit-primary/30 hover:border-parkingrabbit-primary/60"
+        >
+          <UserPlus className="size-4" strokeWidth={2.5} />
+          <span className="leading-tight">Sign up</span>
+        </Link>
       </div>
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-[12px] leading-snug">
-        {rows.map((r) => (
-          <div key={r.label} className="contents">
-            <dt className="text-green-900/70 font-medium">{r.label}</dt>
-            <dd className="text-green-900 font-semibold break-words">
-              {r.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
     </section>
   );
 }
+
+/* 2026-05-28 — `CouncilConfirmedDetails` removed. The green "Council
+ *  confirms" key/value grid used to render at the top of the drafting
+ *  surface as a structured listing of the council-verified PCN
+ *  metadata (PCN Ref, Vehicle Reg, Contravention Code, Location,
+ *  Issued At, Amount, Discount Until, Full Charge From). It's been
+ *  retired with the drafting-surface simplification: at that stage
+ *  the customer is watching the typewriter compose the letter that
+ *  already cites every one of those fields, so re-listing them above
+ *  added clutter without new information. The same metadata still
+ *  surfaces in the canonical letter body once it's revealed. */
 
 /** v0.3.6 — drafting-failed surface. Shown when step === "generation_failed"
  *  inside the drafting state's body. Renders the actual error message
@@ -1420,16 +1518,10 @@ function GatheringEvidenceCard({
   appeal,
   busy,
   onConfirm,
-  liveCouncilThought,
 }: {
   appeal: AppealRecord;
   busy?: boolean;
   onConfirm: (input: { grounds: string[]; notes: string }) => void;
-  /** v0.3.6 — when the council lookup is in flight (pcn_lookup live
-   *  job is queued/running) this is the agent's most recent thought
-   *  or step caption. Streamed into the CouncilCheckChip so the user
-   *  sees what the MCP agent is doing in real time. */
-  liveCouncilThought?: string | null;
 }) {
   // Free-text "what happened" — the notes the drafter reads. Pre-filled
   // from any saved notes so nothing the user wrote is ever lost.
@@ -1618,33 +1710,27 @@ function GatheringEvidenceCard({
 
   return (
     <section
+      // 2026-05-28 — bottom padding trimmed. The previous
+      // `paddingBottom: calc(120px + env(safe-area-inset-bottom))` was
+      // sized for when this card ran as a standalone page where the
+      // sticky bottom nav could obscure the Build button. Now it
+      // lives as the expanded body of the "Build appeal" lifecycle
+      // step, so that clearance manifests as a tall empty gap
+      // BEFORE the next timeline step ("Drafting appeal") — the
+      // user complained about having to scroll past it. The page
+      // shell already handles safe-area + bottom-nav clearance.
       className="flex flex-col gap-6"
-      style={{ paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}
     >
-      {/* ── Council-check ambient chip (v0.3.5) ──
-       *  The lazy lookup fires the moment the user taps Appeal and runs
-       *  in parallel with this Build-appeal conversation. The chip
-       *  reflects portalLookup.status so the user knows the background
-       *  work is happening; the drafting kickoff (in TicketCard.tsx)
-       *  waits for the lookup to settle before firing
-       *  /api/generate-stream. When the lookup ends in a refusing
-       *  verdict (paid / closed / not_found) the card unmounts and
-       *  appeal_not_possible takes over upstream. */}
-      {/* v0.3.6 — CouncilCheckChip is the single ambient surface for
-       *  the council-check signal:
-       *    pending → live MCP agent thought streams here ("Filling in
-       *              PCN ref…", "Navigating to ticket details…"); chip
-       *              falls back to "Checking with the council…" when
-       *              the agent hasn't emitted a step yet.
-       *    verified → compact pill OR grown card listing field diffs.
-       *    error    → amber retry pill.
-       *  The "Checking council" timeline step is GONE (v0.3.6) — this
-       *  chip is the only place that narrates the lookup. */}
-      <CouncilCheckChip
-        status={appeal.portalLookup?.status ?? null}
-        discrepancies={getTicketDiscrepancies(appeal)}
-        liveThought={liveCouncilThought ?? null}
-      />
+      {/* 2026-05-28 — CouncilCheckChip removed from the Build-appeal
+       *  surface. By the time the user reaches this card the council
+       *  lookup has already done its job (the timeline above is at
+       *  the "Build appeal" step, with pay/appeal already ticked), so
+       *  the chip's verified-with-diffs state — the green "Council
+       *  confirmed — updated N details" card — was just clutter on a
+       *  surface that should focus the user on writing their grounds.
+       *  The lookup's pending narration still surfaces upstream (the
+       *  live MCP thought feeds the lifecycle timeline's
+       *  "Checking council" step before this card mounts). */}
 
       {/* ── What happened? — dictation-first ── */}
       <div className="flex flex-col gap-4">
@@ -1899,15 +1985,76 @@ function PaidSubmitCta({
   const [useAnywayPressed, setUseAnywayPressed] = useState(false);
   const ctaVisible = tone !== "weak" || useAnywayPressed;
 
-  // Add-more-evidence flow. Default-collapsed; expands an EvidenceCarousel
-  // when the user taps "Add more evidence". Adding photos re-scores the
-  // appeal automatically (no redraft) — the warning updates in place and
-  // disappears once the score crosses 50.
+  // Add-more-evidence flow. 2026-05-28 — the user taps "Add more
+  // evidence" and gets the OS file picker IMMEDIATELY (Photo Library /
+  // Take Photo / Choose Files), without a stop in an intermediate "Add
+  // your own evidence" card that just had a "+" tile to open the same
+  // picker. After at least one photo lands, the EvidenceCarousel
+  // reveals itself with the thumbnail strip + tip + a "+" tile for
+  // adding more (the carousel's own picker stays usable from there).
+  //
+  // iOS Safari only allows `input.click()` inside an active user
+  // gesture, so the hidden input lives in TicketCardBody (not inside
+  // the carousel — the carousel hasn't mounted yet at the moment we
+  // need the click). The file-pick logic mirrors EvidenceCarousel's
+  // handleFiles to keep the size cap + total cap consistent.
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [rescoring, setRescoring] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const evidenceInputRef = useRef<HTMLInputElement | null>(null);
   const lastScoredCountRef = useRef<number>(
     typeof window === "undefined" ? 0 : getEvidencePhotos().length,
   );
+
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    if (file.size > MAX_BYTES) {
+      return Promise.reject(
+        new Error(
+          `Photo too large (${(file.size / 1024 / 1024).toFixed(1)} MB) — max 8 MB.`,
+        ),
+      );
+    }
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () =>
+        reject(reader.error ?? new Error("Couldn't read that file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAddMoreEvidence = () => {
+    // Synchronous click inside the user's tap gesture — required for
+    // iOS Safari to honour the programmatic open. setEvidenceOpen
+    // happens AFTER the user has actually picked something (in
+    // handleEvidenceFilesPicked) so cancelling the picker doesn't
+    // strand them with an empty card.
+    setEvidenceError(null);
+    evidenceInputRef.current?.click();
+  };
+
+  const handleEvidenceFilesPicked = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    try {
+      const existing = getEvidencePhotos();
+      const newOnes: string[] = [];
+      for (const f of files) newOnes.push(await readFileAsDataUrl(f));
+      const merged = [...existing, ...newOnes].slice(0, MAX_EVIDENCE);
+      setEvidencePhotos(merged);
+      setEvidenceOpen(true);
+      // Fire the re-score now so the warning updates in place. The
+      // EvidenceCarousel's `onChange` will also fire when it mounts +
+      // re-renders, but `handleEvidenceChange` is idempotent (guarded
+      // by lastScoredCountRef) so re-firing is harmless.
+      handleEvidenceChange(merged);
+    } catch (err) {
+      setEvidenceError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const handleEvidenceChange = (next: string[]) => {
     // Re-score only when the photo set actually changed, one call at a
@@ -1967,16 +2114,43 @@ function PaidSubmitCta({
             </ul>
           )}
 
-          {/* Add more evidence — re-scores in place, no redraft. */}
+          {/* Add more evidence — re-scores in place, no redraft. Tapping
+           *  opens the OS file picker directly (Photo Library / Take
+           *  Photo / Choose Files via the hidden <input> below). The
+           *  carousel only mounts after at least one photo lands, so a
+           *  cancelled picker doesn't leave the user looking at an
+           *  empty card. */}
           {onRescoreWithEvidence && !evidenceOpen && (
             <button
               type="button"
-              onClick={() => setEvidenceOpen(true)}
+              onClick={handleAddMoreEvidence}
               className="mt-1 w-full rounded-2xl bg-parkingrabbit-primary text-white font-bold py-3 text-[13px] hover:bg-parkingrabbit-primary-600 transition active:scale-[0.99] inline-flex items-center justify-center gap-2"
             >
               <Camera className="size-4" strokeWidth={2.25} />
               Add more evidence
             </button>
+          )}
+
+          {/* Hidden input — the actual picker target. Lives on the
+           *  body (not inside the carousel) so it's already mounted
+           *  when the user taps "Add more evidence" and the click can
+           *  fire synchronously inside the user gesture (iOS Safari
+           *  requirement). */}
+          {onRescoreWithEvidence && (
+            <input
+              ref={evidenceInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleEvidenceFilesPicked}
+            />
+          )}
+
+          {evidenceError && !evidenceOpen && (
+            <p className="text-[11px] text-red-700 bg-white/60 border border-red-300 rounded-lg px-2 py-1.5">
+              {evidenceError}
+            </p>
           )}
 
           {evidenceOpen && (
@@ -2008,7 +2182,7 @@ function PaidSubmitCta({
       )}
 
       {ctaVisible && (
-      <section className="relative rounded-3xl bg-gradient-to-br from-parkingrabbit-primary-50 via-white to-white border-2 border-parkingrabbit-primary/40 p-5 shadow-xl shadow-parkingrabbit-primary/10">
+      <section className="relative mt-3 mb-3 rounded-3xl bg-gradient-to-br from-parkingrabbit-primary-50 via-white to-white border-2 border-parkingrabbit-primary/40 p-5 shadow-xl shadow-parkingrabbit-primary/10">
         <span className="absolute -top-2.5 left-5 inline-flex items-center gap-1 rounded-full bg-parkingrabbit-primary text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 shadow-md shadow-parkingrabbit-primary/30">
           <Sparkles className="size-3" strokeWidth={2.5} fill="white" />
           Ready to submit
@@ -2019,12 +2193,10 @@ function PaidSubmitCta({
           </span>
           <div className="flex-1 min-w-0">
             <p className="text-[15px] font-bold text-parkingrabbit-navy leading-tight">
-              Your appeal letter is ready
+              Your appeal is ready
             </p>
             <p className="text-[11.5px] text-parkingrabbit-muted mt-1 leading-snug">
-              Submit £2.99 and our{" "}
-              <span className="font-semibold text-parkingrabbit-navy">AI Auto-Submit Agent</span>{" "}
-              files it through {appeal.ticket?.issuer ?? "the council's"} portal — live, end-to-end.
+              Pay £2.99 and Rabbit files it for you — live, end-to-end.
             </p>
           </div>
         </div>
@@ -2069,25 +2241,40 @@ function PaidSubmitCta({
 /* ──────────── submitted ──────────── */
 
 function SubmittedCard({ appeal }: { appeal: AppealRecord }) {
+  // 2026-05-28 — slimmed to "title-only" with a quiet grey subtitle
+  // rendered OUTSIDE the green box. Was a denser two-line card with
+  // the subtitle inside and a small CheckCircle2 trailing on the
+  // right; the new shape reads more like a confirmation toast —
+  // success colour for the headline, calm grey for the "we'll keep
+  // you posted" follow-up. The cancelled branch keeps its full
+  // celebratory copy inside the box because the moment IS the
+  // headline (no separate follow-up). */
+  const isCancelled = appeal.status === "cancelled";
   return (
-    <section className="rounded-2xl bg-green-50 border border-green-200 p-4 flex items-start gap-3">
-      <span className="size-9 rounded-full bg-green-600 text-white flex items-center justify-center flex-shrink-0">
-        <Check className="size-[1.125rem]" strokeWidth={3} />
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-green-900">
-          {appeal.status === "cancelled"
-            ? "🎉 PCN cancelled by the council"
-            : "Filed with the council"}
+    <div className="flex flex-col gap-2">
+      <section className="rounded-2xl bg-green-50 border border-green-200 p-4 flex items-center gap-3">
+        <span className="size-9 rounded-full bg-green-600 text-white flex items-center justify-center flex-shrink-0">
+          <Check className="size-[1.125rem]" strokeWidth={3} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-green-900">
+            {isCancelled
+              ? "🎉 PCN cancelled by the council"
+              : "Filed with the council"}
+          </p>
+          {isCancelled && (
+            <p className="text-xs text-green-800/80 mt-0.5 leading-snug">
+              Your appeal succeeded. Nothing more to pay.
+            </p>
+          )}
+        </div>
+      </section>
+      {!isCancelled && (
+        <p className="text-[12px] text-parkingrabbit-muted leading-snug px-1">
+          We&apos;ll let you know when the council replies.
         </p>
-        <p className="text-xs text-green-800/80 mt-0.5 leading-snug">
-          {appeal.status === "cancelled"
-            ? "Your appeal succeeded. Nothing more to pay."
-            : "We'll notify you the moment a reply lands in your inbox."}
-        </p>
-      </div>
-      <CheckCircle2 className="size-4 text-green-600 shrink-0" strokeWidth={2.25} />
-    </section>
+      )}
+    </div>
   );
 }
 
