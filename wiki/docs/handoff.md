@@ -186,6 +186,17 @@ Iterated four times based on screenshots. Final shape:
 
 `MAX_BYTES` and `MAX_EVIDENCE` exported from `EvidenceCarousel` so the new picker path stays in sync with the carousel's own. Per-file size error renders as a small red inline toast under the CTA.
 
+#### Strand H — Admin `/admin/wiki` iframe URL runtime-overridable
+
+Symptom: the admin "Wiki" link iframe pointed at `http://localhost:8800` (the build-time fallback when `NEXT_PUBLIC_WIKI_URL` wasn't set) — which broke for anyone accessing the app through its Cloudflare quick tunnel, because the browser can't reach the docker daemon's loopback. Both the app and the wiki have their own Cloudflare quick tunnels, and quick-tunnel subdomains rotate on every restart, so baking the wiki tunnel URL into `NEXT_PUBLIC_WIKI_URL` at build time only helps until the next rotation.
+
+The fix (`app/admin/wiki/page.tsx`):
+
+- Converted the page to a client component.
+- New URL precedence: `localStorage["parkingrabbit.wikiUrl"]` (runtime override) → `NEXT_PUBLIC_WIKI_URL` (build-time) → `http://127.0.0.1:8800/` (default).
+- New "Change URL" button in the page header (Pencil glyph next to "Open in new tab") opens a `window.prompt()` — paste the current wiki tunnel URL and it sticks until cleared. Empty submission removes the override and falls back to the env default.
+- `.env.example` comment block expanded to explain the Cloudflare-tunnel pattern + point at the runtime override as the no-rebuild path.
+
 ### v0.3.13 (2026-05-27 → 2026-05-28)
 
 A very long iterative session covering speed, UX merges, the appeals-row consolidation, and the cross-user canonical reuse. Verified end-to-end via mobile MCP Playwright with the live Lambeth ticket. Branch: `feat/ticket-normalisation`. Uncommitted at end of session — handoff carries a `git status` + open-tasks pointer for the resumer.
