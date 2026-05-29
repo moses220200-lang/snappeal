@@ -72,7 +72,19 @@ Full enumeration + the derive ladder lives in `lib/deriveCardState.ts`. Per-kind
 
 ### v0.3.14 (2026-05-28 → 2026-05-29)
 
-A long iterative UX session driven entirely off mobile screenshots. Branch: `feat/post-v0313-ux-pass`. Touched ~20 files; the bulk is presentational polish on the ticket card + drafting + post-submit surfaces, plus one critical correctness fix in the date parser and a Whisper→Web-Speech swap on voice dictation. No DB migrations, no API changes (one route — `/api/users/me/notification-prefs` — gets an opt-in PATCH from a new fire-and-forget client call; the route itself was already there).
+A long iterative UX session driven entirely off mobile screenshots, finished off with an admin-wiki proxy fix and a council-logo seed run. Branch: `feat/post-v0313-ux-pass` (4 commits, all pushed). Touched ~25 files; the bulk is presentational polish on the ticket card + drafting + post-submit surfaces, plus one critical correctness fix in the date parser, a Whisper→Web-Speech swap on voice dictation, the wiki iframe path-prefix proxy work, and a council-logo DB populate-script run. No DB migrations, no API changes (one route — `/api/users/me/notification-prefs` — gets an opt-in PATCH from a new fire-and-forget client call; the route itself was already there).
+
+**Strand index for v0.3.14:**
+
+- **A** — London-local UK date parsing in `lib/parseUkDate.ts` (off-by-one-day fix on evening-issued PCNs). Test suite added.
+- **B** — Voice input: Whisper → Web Speech API (`VoiceNoteButton`).
+- **C** — Ticket card density rebalance (header rows + smaller issuer tile + pill scaling + chevron + collapsible details).
+- **D** — Drafting "stay in the loop" handoff panel + thinking-dots phase-machine timer bugfix.
+- **E** — Post-submit surface collapsed to a single green-toned `LetterPreview` (new `tone="submitted"` prop).
+- **F** — Copy / IA polish across Pay tiles, Review footer, Sign-up, Scan page, Common reasons, Home tile, filter pills, Confirm button + footer.
+- **G** — Evidence picker streamlined (single-tap "Add more evidence" → OS picker directly).
+- **H** — Admin `/admin/wiki` iframe: same-origin `/wiki/` default + runtime override + Next.js `/wiki/*` rewrite + `skipTrailingSlashRedirect` + MkDocs `use_directory_urls: false`. Verified through Cloudflare tunnel.
+- **I** — Council logos populated via `scripts/populate-council-logos.ts` (all 7 councils, Wikipedia Commons SVG→PNG thumbnails).
 
 #### Strand A — Critical: London-local UK date parsing (`lib/parseUkDate.ts`)
 
@@ -197,16 +209,31 @@ cd apps/web
 npx tsx --env-file=.env.local scripts/populate-council-logos.ts
 ```
 
-#### Strand H — Admin `/admin/wiki` iframe URL runtime-overridable
+#### Strand H — Admin `/admin/wiki` iframe URL — three concentric fixes
 
-Symptom: the admin "Wiki" link iframe pointed at `http://localhost:8800` (the build-time fallback when `NEXT_PUBLIC_WIKI_URL` wasn't set) — which broke for anyone accessing the app through its Cloudflare quick tunnel, because the browser can't reach the docker daemon's loopback. Both the app and the wiki have their own Cloudflare quick tunnels, and quick-tunnel subdomains rotate on every restart, so baking the wiki tunnel URL into `NEXT_PUBLIC_WIKI_URL` at build time only helps until the next rotation.
+Symptom: the admin "Wiki" link iframe pointed at `http://localhost:8800` (the build-time fallback when `NEXT_PUBLIC_WIKI_URL` wasn't set) — which broke for anyone accessing the app through its Cloudflare quick tunnel, because the browser can't reach the docker daemon's loopback. Both the app and the wiki have their own Cloudflare quick tunnels.
 
-The fix (`app/admin/wiki/page.tsx`):
+Three iterative fixes shipped (newest at the bottom is the one the operator landed on):
 
-- Converted the page to a client component.
-- New URL precedence: `localStorage["parkingrabbit.wikiUrl"]` (runtime override) → `NEXT_PUBLIC_WIKI_URL` (build-time) → `http://127.0.0.1:8800/` (default).
-- New "Change URL" button in the page header (Pencil glyph next to "Open in new tab") opens a `window.prompt()` — paste the current wiki tunnel URL and it sticks until cleared. Empty submission removes the override and falls back to the env default.
-- `.env.example` comment block expanded to explain the Cloudflare-tunnel pattern + point at the runtime override as the no-rebuild path.
+**1. Runtime override + client-component conversion** (`app/admin/wiki/page.tsx`)
+- Page converted to a client component.
+- URL precedence: `localStorage["parkingrabbit.wikiUrl"]` (runtime override) → `NEXT_PUBLIC_WIKI_URL` (build-time env) → `/wiki/` (same-origin default, see below).
+- "Change URL" button in the page header (Pencil glyph next to "Open in new tab") opens a `window.prompt()` — paste a wiki tunnel URL and it sticks until cleared. Empty submission removes the override and falls back to the env / default.
+- Page wrapper switched from `flex-1 flex flex-col` to `flex flex-col h-[calc(100vh-3.5rem)]` so the iframe always fills the viewport (was collapsing to ~200 px on some shells).
+
+**2. Same-origin `/wiki/` default + Next.js proxy** (`apps/web/next.config.ts`)
+- Default URL flipped from `http://127.0.0.1:8800/` to `/wiki/` (same origin). The repo's `Caddyfile` already proxies `/wiki/*` to the MkDocs container, so when the app is fronted by Caddy + Cloudflare the iframe just works without any tunnel-URL-specific reconfig.
+- Added a `rewrites()` entry mapping `/wiki/*` → `WIKI_PROXY_TARGET` (default `http://127.0.0.1:8800`, overridable for in-docker Next deployments → `http://parkingrabbit-wiki:8000`). Covers the bypass-Caddy case where Next.js is hit directly on `:3001`.
+- Added `skipTrailingSlashRedirect: true` so `/wiki/` (with trailing slash) doesn't 308 → `/wiki`, which would have broken MkDocs's relative asset paths. Audited every other route (`/app`, `/app/`, `/api/*`) — none regressed.
+
+**3. MkDocs path-prefix friendliness** (`wiki/mkdocs.yml`)
+- `use_directory_urls: false` so MkDocs emits `.html` URLs (`/handoff.html`) instead of directory URLs (`/handoff/`). The default directory mode 302-redirected `/handoff` → `/handoff/` with a `Location` header that didn't include the `/wiki` prefix, breaking internal nav inside the iframe. With `use_directory_urls: false`, no redirect happens — nav links resolve cleanly under the proxy.
+
+**4. The operator's final resolution path**
+
+The default `/wiki/` (same-origin) works locally via Caddy. For Cloudflare-fronted access where the wiki has its own separate Cloudflare tunnel, the operator set `NEXT_PUBLIC_WIKI_URL` in `apps/web/.env.local` to the wiki's tunnel URL — this bakes in at build time and works perfectly when the wiki's tunnel URL is stable. When that URL eventually rotates, the runtime override (#1 above) is the no-rebuild escape hatch: open `/admin/wiki`, click "Change URL", paste the new wiki tunnel URL.
+
+Verified through the app's Cloudflare tunnel via Playwright: 5/5 stylesheets load with 1101 CSS rules applied, font is Inter, body height is 5724 px — Material theme fully rendered. Screenshot saved at `wiki-via-cloudflare.png` for the next resumer who doubts the audit.
 
 ### v0.3.13 (2026-05-27 → 2026-05-28)
 
