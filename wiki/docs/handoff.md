@@ -186,6 +186,17 @@ Iterated four times based on screenshots. Final shape:
 
 `MAX_BYTES` and `MAX_EVIDENCE` exported from `EvidenceCarousel` so the new picker path stays in sync with the carousel's own. Per-file size error renders as a small red inline toast under the CTA.
 
+#### Strand I — Council logos populated in DB
+
+`scripts/populate-council-logos.ts` (already existed) was run on the local dev DB. All 7 councils now have `logoUrl` + `logoBg` set (Wikipedia Commons SVG → PNG thumbnails, white bg). Verified each URL returns `200 image/png`. The `IssuerLogoReel` tile reads these via `/api/councils` so the WE / LB / TfL etc. logos will now show in place of the text-initials placeholder.
+
+To re-run if you wipe the DB or seed a new council:
+
+```bash
+cd apps/web
+npx tsx --env-file=.env.local scripts/populate-council-logos.ts
+```
+
 #### Strand H — Admin `/admin/wiki` iframe URL runtime-overridable
 
 Symptom: the admin "Wiki" link iframe pointed at `http://localhost:8800` (the build-time fallback when `NEXT_PUBLIC_WIKI_URL` wasn't set) — which broke for anyone accessing the app through its Cloudflare quick tunnel, because the browser can't reach the docker daemon's loopback. Both the app and the wiki have their own Cloudflare quick tunnels, and quick-tunnel subdomains rotate on every restart, so baking the wiki tunnel URL into `NEXT_PUBLIC_WIKI_URL` at build time only helps until the next rotation.
