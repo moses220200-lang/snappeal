@@ -3,6 +3,15 @@ site_description: Pay or challenge London parking tickets in minutes.
 site_author: ParkingRabbit
 copyright: Copyright &copy; 2026 ParkingRabbit
 
+# 2026-05-29 — explicit .html URLs so internal nav doesn't 302-redirect
+# when the wiki is served behind a path-prefix proxy (the Next.js
+# /wiki/* rewrite + the repo Caddyfile). MkDocs's default
+# `use_directory_urls: true` returns 302 → /handoff/ for /handoff,
+# without the /wiki prefix the proxy needs, breaking nav links inside
+# the iframe. Flipping this off makes MkDocs emit clickable URLs like
+# /handoff.html that don't require any redirect to resolve correctly.
+use_directory_urls: false
+
 theme:
   name: material
   language: en

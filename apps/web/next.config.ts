@@ -11,6 +11,15 @@ const nextConfig: NextConfig = {
     "parkingrabbit.theailab.dev",
   ],
 
+  // Don't auto-redirect /foo/ → /foo. Required so the /admin/wiki
+  // iframe can load `/wiki/` (with trailing slash) and have MkDocs's
+  // RELATIVE asset paths (`assets/stylesheets/...`) resolve against
+  // `/wiki/` rather than against `/`. Without this, the browser
+  // ended up at `/wiki` after the 308, then tried to load
+  // `/assets/stylesheets/main.css` (404) instead of
+  // `/wiki/assets/stylesheets/main.css`, breaking the wiki's CSS.
+  skipTrailingSlashRedirect: true,
+
   // PR 2 (knowledge base): the generate-stream + generate routes read
   // markdown precedents / code briefs / council briefs from the
   // `apps/web/knowledge/**` folder at runtime via node:fs/promises.
